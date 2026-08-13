@@ -5,7 +5,7 @@ import TickNumber from './TickNumber';
 import SpeedToLead from './demos/SpeedToLead';
 import SupportAgent from './demos/SupportAgent';
 import RueNoir from './demos/RueNoir';
-import Embertithe from './demos/Embertithe';
+import CrmDemo from './demos/CrmDemo';
 import YouTubeGrid from './demos/YouTubeGrid';
 import './Projects.css';
 
@@ -13,7 +13,7 @@ const DEMOS = {
   speedToLead: SpeedToLead,
   supportAgent: SupportAgent,
   rueNoir: RueNoir,
-  embertithe: Embertithe,
+  crm: CrmDemo,
   youtube: YouTubeGrid,
 };
 

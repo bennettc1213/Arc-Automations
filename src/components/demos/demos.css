@@ -555,3 +555,133 @@
   font-size: 10px;
   padding-left: 2px;
 }
+
+/* -- 04 · home-service crm ----------------------- */
+
+.demo-crm__body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 148px;
+  gap: 14px;
+  padding: 14px 18px;
+}
+
+.demo-crm__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.demo-crm__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 10px 12px;
+  border-radius: 8px;
+  transition:
+    border-color 0.35s,
+    background 0.35s,
+    box-shadow 0.35s;
+}
+
+.demo-crm__row.is-hot {
+  border-color: rgba(255, 77, 0, 0.55);
+  box-shadow: 0 0 20px rgba(255, 77, 0, 0.14);
+}
+
+.demo-crm__id {
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.demo-crm__name {
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.25;
+  display: block;
+}
+
+.demo-crm__job {
+  font-size: 10.5px;
+  color: var(--faint);
+  display: block;
+}
+
+.demo-crm__amount {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.demo-crm__chip {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  color: var(--faint);
+  white-space: nowrap;
+  transition:
+    border-color 0.35s,
+    color 0.35s,
+    background 0.35s;
+}
+
+.demo-crm__chip.is-live {
+  color: var(--accent);
+  border-color: rgba(255, 77, 0, 0.5);
+  background: rgba(255, 77, 0, 0.06);
+}
+
+.demo-crm__today {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.demo-crm__today-label {
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.demo-crm__today ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.demo-crm__today li {
+  font-size: 9.5px;
+  color: var(--faint);
+  line-height: 1.3;
+  padding-left: 8px;
+  border-left: 2px solid var(--line-strong);
+}
+
+.demo-crm__today li.is-done {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.demo-crm__today li.is-now {
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+.demo-crm__state {
+  transition: color 0.35s;
+}
+
+.demo-crm__state.is-synced {
+  color: var(--accent);
+}
