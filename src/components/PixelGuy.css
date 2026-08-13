@@ -1,0 +1,46 @@
+.pixelguy {
+  display: inline-block;
+  line-height: 0;
+  flex: none;
+  /* no transition — he snaps */
+}
+
+.pixelguy svg {
+  display: block;
+}
+
+.pixelmark {
+  display: inline-flex;
+  line-height: 0;
+}
+
+.pixel-roamer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pixel-roamer__guy {
+  position: absolute;
+  top: 0;
+  left: 0;
+  line-height: 0;
+  opacity: 0.45; /* present, never competing */
+  will-change: transform;
+}
+
+.pixel-walker {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pixel-walker__guy {
+  position: absolute;
+  bottom: 27px; /* feet on the ticker text line */
+  left: 0;
+  display: block;
+  line-height: 0;
+  will-change: transform;
+}

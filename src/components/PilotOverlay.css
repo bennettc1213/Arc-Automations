@@ -1,0 +1,231 @@
+/* full-screen overlay — the site's language, no SaaS card. Nothing here
+   animates over 200ms: conversion path, not showcase. */
+
+.pilot {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background-color: var(--bg);
+  background-image: radial-gradient(circle, rgba(255, 77, 0, 0.06) 1px, transparent 1.4px);
+  background-size: 28px 28px;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+
+.pilot__bar {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 20px var(--gutter);
+  border-bottom: 1px solid var(--line);
+}
+
+.pilot__progress {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.pilot__back {
+  color: var(--muted);
+}
+
+.pilot__back:hover {
+  color: var(--text);
+  translate: 1px 1px;
+}
+
+.pilot__close {
+  margin-left: auto;
+  color: var(--muted);
+  padding: 6px;
+  line-height: 0;
+}
+
+.pilot__close:hover {
+  color: var(--accent);
+  translate: 1px 1px;
+}
+
+.pilot__body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px var(--gutter) 48px;
+  overflow-y: auto;
+}
+
+.pilot__step {
+  width: min(640px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.pilot__q {
+  font-size: clamp(1.6rem, 3.4vw, 2.6rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.pilot__options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* big tap targets, square corners, snap states */
+.pilot__opt {
+  padding: 18px 22px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--surface);
+  text-align: left;
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.pilot__opt:hover {
+  border-color: var(--accent);
+  translate: 1px 1px;
+}
+
+.pilot__opt.is-picked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0a0a0b;
+}
+
+.pilot__fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.pilot__field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.pilot__field span {
+  color: var(--faint);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.pilot__field input {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font: inherit;
+  padding: 14px 16px;
+}
+
+.pilot__field input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.pilot__err {
+  font-style: normal;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.pilot__next {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--accent);
+  color: #0a0a0b;
+  font-weight: 500;
+  font-size: 1.05rem;
+  padding: 15px 28px;
+  border-radius: 0;
+}
+
+.pilot__next:hover {
+  background: var(--accent-hot);
+  translate: 1px 1px;
+}
+
+/* ── booking ─────────────────────────────────── */
+
+.pilot__booking {
+  width: min(860px, 100%);
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.pilot__booknow {
+  font-size: clamp(2.6rem, 7vw, 5.4rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+  color: var(--accent);
+}
+
+.pilot__confline {
+  color: var(--muted);
+}
+
+.pilot__embed {
+  width: 100%;
+  height: min(56vh, 560px);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-2);
+}
+
+.pilot__embed iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.pilot__tz {
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.pilot__fallback {
+  color: var(--muted);
+}
+
+.pilot__fallback:hover {
+  color: var(--accent);
+}
+
+.pilot__nofall {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  border: 1px dashed var(--line-strong);
+  padding: 28px;
+  width: 100%;
+}
+
+.pilot__nofall-copy {
+  color: var(--muted);
+  max-width: 44ch;
+  line-height: 1.6;
+}
+
+.pilot__done {
+  align-items: flex-start;
+  gap: 18px;
+}
+
+@media (max-width: 600px) {
+  .pilot__fields {
+    grid-template-columns: 1fr;
+  }
+  .pilot__body {
+    align-items: flex-start;
+    padding-top: 8vh;
+  }
+}

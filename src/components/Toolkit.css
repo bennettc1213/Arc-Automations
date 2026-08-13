@@ -1,0 +1,93 @@
+.toolkit {
+  padding-top: clamp(70px, 10vh, 130px);
+  border-top: 1px solid var(--line);
+}
+
+.toolkit__headrow {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 18px;
+}
+
+.toolkit__hint {
+  color: var(--faint);
+  padding-bottom: 10px;
+}
+
+.toolkit__pit {
+  position: relative;
+  height: min(62vh, 560px);
+  margin-top: 34px;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.toolkit__pit:active {
+  cursor: grabbing;
+}
+
+.toolkit__floorline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--line-strong);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 13px 22px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  font-size: clamp(0.95rem, 1.4vw, 1.2rem);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.chip--core {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0a0a0b;
+}
+
+.chip--physics {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  will-change: transform;
+}
+
+.chip--physics.is-live {
+  opacity: 1;
+}
+
+.toolkit__static {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-block: 30px 60px;
+}
+
+.pitguy {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  line-height: 0;
+  will-change: transform;
+}
+
+.pitguy.is-live {
+  opacity: 1;
+}

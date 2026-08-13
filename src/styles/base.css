@@ -1,0 +1,317 @@
+/* ────────────────────────────────────────────────
+   base.css — tokens, reset, typography, primitives
+   ──────────────────────────────────────────────── */
+
+:root {
+  --bg: #0a0a0b;
+  --bg-2: #0f0f11;
+  --surface: #141416;
+  --surface-2: #1a1a1d;
+  --line: rgba(237, 237, 239, 0.09);
+  --line-strong: rgba(237, 237, 239, 0.18);
+  --text: #ededef;
+  --muted: #96969e;
+  --faint: #5c5c64;
+  --accent: #ff4d00;
+  --accent-hot: #ff6b2b;
+  --accent-lite: #ffa366;
+  --accent-dim: rgba(255, 77, 0, 0.13);
+  --accent-glow: rgba(255, 77, 0, 0.45);
+
+  /* rue noir echo palette — lifted from its real tokens */
+  --rn-paper: #d8d5ce;
+  --rn-paper-light: #e4e1da;
+  --rn-ink: #1f1d1a;
+  --rn-ink-soft: #4a4741;
+  --rn-ember: #c4622d;
+
+  --font-sans: 'Space Grotesk Variable', 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace;
+  --font-garamond: 'EB Garamond', Georgia, serif;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-inout: cubic-bezier(0.76, 0, 0.24, 1);
+
+  --nav-h: 72px;
+  --gutter: clamp(20px, 4vw, 64px);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: auto; /* lenis owns scrolling; native smooth would fight it */
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) var(--bg);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--accent);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-hot);
+}
+
+/* the square cursor replaces the native one — desktop, motion-ok only */
+@media (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  * {
+    cursor: none !important;
+  }
+}
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+
+::selection {
+  background: var(--accent);
+  color: #0a0a0b;
+}
+
+img,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+/* ── type primitives ─────────────────────────── */
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.eyebrow::before {
+  content: '';
+  width: 28px;
+  height: 1px;
+  background: var(--accent);
+  flex: none;
+}
+
+.section-title {
+  font-size: clamp(2.2rem, 5.4vw, 4.4rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+}
+
+/* ── layout primitives ───────────────────────── */
+
+.wrap {
+  padding-inline: var(--gutter);
+  max-width: 1560px;
+  margin-inline: auto;
+}
+
+section {
+  position: relative;
+}
+
+/* honest media slot — shown until a real asset is dropped in */
+.slot {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 14px, rgba(237, 237, 239, 0.018) 14px 15px),
+    var(--bg-2);
+  color: var(--faint);
+  text-align: center;
+  padding: 24px;
+}
+
+.slot__name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.slot__spec {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.slot__mark {
+  color: var(--accent);
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* focus visibility — FocusRing draws orange pixel-corners instead */
+:focus-visible {
+  outline: none;
+}
+
+.focus-ring {
+  pointer-events: none;
+  z-index: 9990;
+}
+
+.focus-ring i {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--accent);
+}
+
+.focus-ring i:nth-child(1) {
+  top: 0;
+  left: 0;
+  border-right: none;
+  border-bottom: none;
+}
+.focus-ring i:nth-child(2) {
+  top: 0;
+  right: 0;
+  border-left: none;
+  border-bottom: none;
+}
+.focus-ring i:nth-child(3) {
+  bottom: 0;
+  left: 0;
+  border-right: none;
+  border-top: none;
+}
+.focus-ring i:nth-child(4) {
+  bottom: 0;
+  right: 0;
+  border-left: none;
+  border-top: none;
+}
+
+/* the trail rides between the background and the content */
+main,
+.footer {
+  position: relative;
+  z-index: 2;
+}
+
+.cursor-trail {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0; /* hidden until the mouse first moves */
+}
+
+.cursor-trail span {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: var(--accent);
+  will-change: transform;
+}
+
+/* the cursor — a small orange square, never a dot */
+.cursor-square {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border: 1px solid #0a0a0b;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  /* no transition — it snaps between sizes */
+}
+
+/* type-in label caret */
+.typelabel__caret {
+  display: inline-block;
+  width: 7px;
+  height: 11px;
+  background: var(--accent);
+  vertical-align: -1px;
+  margin-left: 1px;
+}
+
+/* hover = 1px down-right, like a physical button press. No tween. */
+.nav__links a:hover,
+.nav__cta:hover,
+.nav__wordmark:hover,
+.hero__btn:hover,
+.footer__cta:hover,
+.footer__meta a:hover,
+.acc__head:hover {
+  translate: 1px 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

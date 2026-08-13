@@ -1,0 +1,142 @@
+.hero {
+  position: relative;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: calc(var(--nav-h) + 40px) var(--gutter) 48px;
+  max-width: 1560px;
+  margin-inline: auto;
+  width: 100%;
+}
+
+/* his floor line — the quiet strip between nav and headline */
+.hero__roam {
+  position: absolute;
+  left: var(--gutter);
+  right: var(--gutter);
+  top: calc(var(--nav-h) + 9vh);
+  height: 40px;
+  z-index: -1;
+}
+
+.hero__eyebrow {
+  margin-bottom: clamp(20px, 4vh, 44px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hero__eyebrow::before {
+  content: '';
+  width: 30px;
+  height: 1px;
+  background: var(--accent);
+  flex: none;
+}
+
+.hero__title {
+  font-size: clamp(3.1rem, 11.4vw, 9.8rem);
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 0.96;
+  text-transform: lowercase;
+}
+
+/* mask wrapper for the load-in line reveal */
+.hero__reveal {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.06em; /* keep descenders inside the mask */
+  margin-bottom: -0.06em;
+}
+
+.hero__reveal > span {
+  display: block;
+  will-change: transform;
+}
+
+.hero__reveal--accent {
+  color: var(--accent);
+}
+
+.cycler {
+  position: relative; /* contain popLayout's absolutely-positioned exiting word */
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  padding-bottom: 0.06em;
+  margin-bottom: -0.06em;
+}
+
+.cycler__word {
+  display: inline-block;
+  will-change: transform;
+}
+
+.hero__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 40px;
+  margin-top: clamp(28px, 5vh, 56px);
+}
+
+.hero__sub {
+  max-width: 46ch;
+  color: var(--muted);
+  font-size: clamp(0.95rem, 1.3vw, 1.12rem);
+  line-height: 1.55;
+}
+
+.hero__row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+}
+
+.hero__btn {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  padding: 12px 20px;
+  border-radius: 999px;
+  transition: background 0.25s, border-color 0.25s, color 0.25s;
+  white-space: nowrap;
+}
+
+.hero__btn--ghost {
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+}
+
+.hero__btn--ghost:hover {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+.hero__btn--solid {
+  background: var(--accent);
+  color: #0a0a0b;
+  font-weight: 500;
+}
+
+.hero__btn--solid:hover {
+  background: var(--accent-hot);
+}
+
+.hero__loc {
+  color: var(--faint);
+}
+
+@media (max-width: 900px) {
+  .hero__foot {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 24px;
+  }
+  .hero__loc {
+    display: none;
+  }
+}

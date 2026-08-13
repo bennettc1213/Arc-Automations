@@ -1,0 +1,264 @@
+.workflows {
+  padding-block: clamp(90px, 14vh, 170px) clamp(60px, 9vh, 110px);
+}
+
+.workflows__title {
+  margin-block: 18px clamp(30px, 5vh, 52px);
+}
+
+/* ── pixel-block tabs ────────────────────────── */
+
+.wf__tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 26px;
+}
+
+.wf__tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 16px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0; /* pixel blocks, not pills */
+  background: var(--surface);
+  text-align: left;
+  /* switching is mechanical — no transition */
+}
+
+.wf__tab:hover {
+  border-color: var(--accent);
+  translate: 1px 1px;
+}
+
+.wf__tab.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0a0a0b;
+}
+
+.wf__tab-index {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.wf__tab.is-active .wf__tab-index {
+  color: rgba(10, 10, 11, 0.65);
+}
+
+.wf__tab-label {
+  font-weight: 500;
+  font-size: clamp(0.85rem, 1.2vw, 1.05rem);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.wf__tab-tag {
+  font-size: 10px;
+  color: var(--faint);
+  letter-spacing: 0.06em;
+}
+
+.wf__tab.is-active .wf__tab-tag {
+  color: rgba(10, 10, 11, 0.65);
+}
+
+/* ── stage ───────────────────────────────────── */
+
+.wf__stage {
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  min-height: 540px;
+  display: flex;
+}
+
+.wf__panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(20px, 3vw, 36px);
+  gap: 22px;
+  min-width: 0;
+}
+
+.wf__panelhead {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+}
+
+.wf__num {
+  font-size: clamp(2.2rem, 3.6vw, 3.2rem);
+  font-weight: 600;
+  line-height: 0.9;
+  letter-spacing: -0.03em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.wf__panelmeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wf__name {
+  font-size: clamp(1.3rem, 2.2vw, 1.9rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.wf__tag {
+  color: var(--accent);
+  letter-spacing: 0.1em;
+  font-size: 11px;
+}
+
+/* the canvas — hero of the panel */
+.wf__canvas {
+  position: relative;
+  flex: 1;
+  min-height: 320px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.wf__canvas-scroll {
+  position: absolute;
+  inset: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.wf__shot {
+  height: 100%;
+  width: auto;
+  max-width: none; /* wider than viewport = horizontal scroll, like the flow */
+}
+
+.wf__canvas-scroll .slot {
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+
+/* one-shot execution sweep, left to right — the path a real run takes */
+.wf__sweep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -140px;
+  width: 140px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 77, 0, 0.16),
+    rgba(255, 77, 0, 0.28),
+    transparent
+  );
+  pointer-events: none;
+  animation: wf-sweep 1.15s ease-out 0.15s forwards;
+}
+
+@keyframes wf-sweep {
+  to {
+    left: 100%;
+  }
+}
+
+.wf__breakdown {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.wf__breakdown dt {
+  color: var(--accent);
+  margin-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.wf__breakdown dd {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+/* ── tab 04 — and more ───────────────────────── */
+
+.wf__more {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 20px;
+  padding: clamp(40px, 6vw, 80px) 24px 84px;
+  background-image: radial-gradient(circle, rgba(255, 77, 0, 0.07) 1px, transparent 1.4px);
+  background-size: 28px 28px;
+}
+
+.wf__statement {
+  font-size: clamp(2rem, 5vw, 4.2rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+}
+
+.wf__substatement {
+  color: var(--muted);
+  max-width: 46ch;
+  line-height: 1.6;
+}
+
+.wf__cta {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--accent);
+  color: #0a0a0b;
+  font-weight: 500;
+  font-size: 1.05rem;
+  padding: 15px 28px;
+  border-radius: 0;
+}
+
+.wf__cta:hover {
+  background: var(--accent-hot);
+  translate: 1px 1px;
+}
+
+.wf__more-guy {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  line-height: 0;
+}
+
+/* ── responsive ──────────────────────────────── */
+
+@media (max-width: 900px) {
+  .wf__tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wf__breakdown {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .wf__stage {
+    min-height: 0;
+  }
+  .wf__canvas {
+    min-height: 240px;
+  }
+}

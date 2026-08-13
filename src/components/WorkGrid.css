@@ -1,0 +1,144 @@
+.workgrid {
+  padding-block: clamp(90px, 14vh, 170px) clamp(70px, 10vh, 130px);
+}
+
+.workgrid__title {
+  margin-block: 18px clamp(36px, 6vh, 64px);
+}
+
+.workgrid__rows {
+  border-top: 1px solid var(--line);
+}
+
+.wrow {
+  border-bottom: 1px solid var(--line);
+  transition: background 0.35s;
+}
+
+.wrow:hover {
+  background: var(--bg-2);
+}
+
+.wrow__bar {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 140px 72px 40px;
+  align-items: center;
+  gap: 16px;
+  padding: 22px 12px;
+  cursor: default;
+}
+
+.wrow__idx {
+  color: var(--faint);
+}
+
+.wrow__name {
+  font-size: clamp(1.2rem, 2.4vw, 1.9rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  transition: color 0.3s, transform 0.35s var(--ease-out);
+}
+
+.wrow:hover .wrow__name {
+  color: var(--accent);
+  transform: translateX(8px);
+}
+
+.wrow__kind,
+.wrow__year {
+  color: var(--faint);
+  text-align: right;
+}
+
+.wrow__arrow {
+  color: var(--faint);
+  text-align: right;
+  transition: color 0.3s, transform 0.35s var(--ease-out);
+}
+
+.wrow:hover .wrow__arrow {
+  color: var(--accent);
+  transform: rotate(45deg);
+}
+
+/* grid-rows expand trick — no JS on desktop */
+.wrow__reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.55s var(--ease-inout);
+}
+
+.wrow:hover .wrow__reveal,
+.wrow.is-open .wrow__reveal {
+  grid-template-rows: 1fr;
+}
+
+.wrow__reveal-clip {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.wrow__url {
+  padding: 4px 12px 12px 80px;
+  color: var(--muted);
+}
+
+.wrow__url a:hover {
+  color: var(--accent);
+}
+
+.wrow__shot {
+  margin: 0 12px 24px 80px;
+  height: clamp(240px, 34vw, 420px);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.wrow__shot--link {
+  display: block;
+  position: relative;
+}
+
+.wrow__shot--link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.wrow__shot--link:hover::after {
+  opacity: 0.07;
+}
+
+.wrow__shot img,
+.wrow__shot video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top left;
+}
+
+@media (max-width: 768px) {
+  .wrow__bar {
+    grid-template-columns: 44px minmax(0, 1fr) 40px;
+    cursor: pointer;
+  }
+  .wrow__kind,
+  .wrow__year {
+    display: none;
+  }
+  /* hover-reveal becomes tap-to-open */
+  .wrow:hover:not(.is-open) .wrow__reveal {
+    grid-template-rows: 0fr;
+  }
+  .wrow__url {
+    padding-left: 56px;
+  }
+  .wrow__shot {
+    margin-left: 56px;
+    height: 220px;
+  }
+}

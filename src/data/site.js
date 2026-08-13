@@ -1,0 +1,265 @@
+// ─────────────────────────────────────────────────────────────
+// site.js — every word, number, and link on the site lives here.
+// Edit this file, not the components.
+// ─────────────────────────────────────────────────────────────
+
+export const site = {
+  wordmark: 'ben',
+  brand: 'arc automations',
+  email: 'bennettch1213@gmail.com', // swap for hello@arcautomations.com when the domain email exists
+
+  hero: {
+    eyebrow: 'arc automations — ai systems for home-services contractors',
+    lines: ["we don't just", 'wire up'],
+    // last word cycles; `hold` is how long each stays on screen (ms)
+    cycle: [
+      { word: 'zaps.', hold: 1800 },
+      { word: 'demos.', hold: 1800 },
+      { word: 'templates.', hold: 1800 },
+      { word: 'workflows.', hold: 3400 },
+    ],
+    sub: 'production automation for hvac, plumbing, roofing & restoration crews — built on n8n, claude code, and gohighlevel. leads answered in seconds, not voicemail.',
+    location: 'northern utah',
+  },
+
+  marqueeA: [
+    'n8n',
+    'claude code',
+    'gohighlevel',
+    'rag',
+    'react three fiber',
+    'webhooks',
+    'lead automation',
+    'missed-call textback',
+    'ai voice + sms',
+    'review engines',
+  ],
+
+  marqueeB: [
+    'speed-to-lead',
+    'booked jobs',
+    '24/7 intake',
+    'error-handled',
+    'production only',
+    'no templates',
+    'built by hand',
+  ],
+
+  // ⚠️ EDIT THESE NUMBERS — these are stand-ins until Ben supplies real figures.
+  stats: [
+    { value: 12, format: 'plain', label: 'workflows in production' },
+    { value: 1400, format: 'plus', label: 'leads routed' },
+    { value: 60, format: 'under-seconds', label: 'median lead response' },
+    { value: 18, format: 'plain', label: 'months self-taught' },
+  ],
+
+  bio: {
+    kicker: 'the receipts',
+    heading: 'self-taught. already shipping.',
+    body: [
+      'arc automations builds out of northern utah — ai intake and follow-up systems for the crews that keep houses standing: hvac, plumbing, roofing, restoration.',
+      'founded by ben chu — incoming information systems freshman (ai minor) at the university of utah, david eccles school of business, fall 2026. the degree is incoming. the systems are already in production.',
+    ],
+  },
+
+  projects: [
+    {
+      id: 'speed-to-lead',
+      index: '01',
+      title: 'n8n speed-to-lead',
+      tag: '( n8n · GHL · twilio )',
+      status: 'flagship — in production',
+      copy: 'a lead fills out a form at 11pm. by 11:01 they have a text, a call queued, and a slot on the calendar — before the competitor’s office even opens. production lead-intake, wired straight into gohighlevel.',
+      points: ['instant sms + call bridge', 'lead scoring before routing', 'loud failures — errors page us, not the contractor'],
+      demo: 'speedToLead',
+    },
+    {
+      id: 'lead-qualification-agent',
+      index: '02',
+      title: 'lead qualification agent',
+      tag: '( n8n · claude · GHL )',
+      status: 'in production',
+      copy: 'an n8n agent that works every inbound inquiry — asks the qualifying questions, scores intent against your service area and job types, and routes hot leads straight to your phone.',
+      points: ['qualifies before you pick up', 'grounded in your services + coverage area', 'hot leads routed, tire-kickers handled politely'],
+      demo: 'supportAgent',
+    },
+    {
+      id: 'rue-noir',
+      index: '03',
+      title: 'rue noir coffee',
+      tag: '( design · gsap · scroll )',
+      status: 'design build',
+      copy: 'a paris-noir coffee site with a cinematic scroll hero — a slow descent from the eiffel tower down to the cup. proof the automation guy can also make things beautiful.',
+      points: ['scroll-driven hero sequence', 'aged-paper grain, engraved plates', 'its hero, echoed live in this card →'],
+      demo: 'rueNoir',
+      // local preview while rue noir awaits deploy — swap for the real domain
+      liveUrl: 'http://localhost:5180',
+    },
+    {
+      id: 'embertithe',
+      index: '04',
+      title: 'embertithe',
+      tag: '( r3f · rapier · three.js )',
+      status: 'vertical slice',
+      copy: 'a souls-like vertical slice in react three fiber and rapier — real physics, a corruption mechanic that trades power for humanity, and combat that punishes greed.',
+      points: ['react three fiber + rapier physics', 'corruption: power at a price', 'built in the browser, no engine'],
+      demo: 'embertithe',
+    },
+    {
+      id: 'youtube',
+      index: '05',
+      title: 'the youtube channel',
+      tag: '( content · funnel )',
+      status: 'top of funnel',
+      copy: 'comedy-forward videos that pull curious contractors toward arc automations. the top of the funnel is a punchline; the bottom is a booked call.',
+      points: ['comedy in, contractors out', 'every video routes to the agency', 'thumbnails engineered like headlines'],
+      demo: 'youtube',
+    },
+  ],
+
+  // the index — hover-reveal grid. url: null renders the honest label instead of a fake link.
+  workIndex: [
+    { title: 'n8n speed-to-lead', year: '2026', kind: 'automation', url: null, urlLabel: 'in production · private', media: 'speed-to-lead-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
+    { title: 'lead qualification agent', year: '2026', kind: 'ai agent', url: null, urlLabel: 'in production · private', media: 'lead-qualification-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
+    { title: 'warranty expiration tracker', year: '2026', kind: 'automation', url: null, urlLabel: 'deployed · n8n cloud', media: 'warranty-tracker-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
+    { title: 'rue noir coffee', year: '2026', kind: 'site', url: 'http://localhost:5180', urlLabel: 'live · local preview', media: 'rue-noir-cover.jpg', mediaSpec: 'hero frame, 1920×1080' },
+    { title: 'pale ember espresso', year: '2026', kind: 'site', url: null, urlLabel: 'local build · deploy pending', media: 'pale-ember-cover.jpg', mediaSpec: 'hero frame, 1920×1080' },
+    { title: 'embertithe', year: '2026', kind: 'game', url: null, urlLabel: 'vertical slice · local build', media: 'embertithe-cover.jpg', mediaSpec: 'combat still, 1920×1080' },
+    { title: 'youtube channel', year: '2026', kind: 'content', url: null, urlLabel: 'add channel url in site.js', media: 'youtube-cover.jpg', mediaSpec: 'best thumbnail, 1280×720' },
+  ],
+
+  toolkit: [
+    { label: 'n8n', core: true },
+    { label: 'claude code', core: true },
+    { label: 'gohighlevel', core: true },
+    { label: 'javascript' },
+    { label: 'node.js' },
+    { label: 'react' },
+    { label: 'react three fiber' },
+    { label: 'rapier' },
+    { label: 'three.js' },
+    { label: 'gsap' },
+    { label: 'lenis' },
+    { label: 'framer motion' },
+    { label: 'matter.js' },
+    { label: 'webhooks' },
+    { label: 'rest apis' },
+    { label: 'rag' },
+    { label: 'twilio' },
+    { label: 'vite' },
+  ],
+
+  // the workflows — proof-of-work section. canvases are real screenshots
+  // (see ASSETS.md); no generated node graphs, no invented stats.
+  workflows: [
+    {
+      id: 'speed-to-lead',
+      label: 'speed-to-lead',
+      tag: '( n8n · GHL · twilio )',
+      canvas: 'speed-to-lead-canvas.png',
+      breakdown: {
+        trigger: 'a lead submits a form — or a call slips to voicemail',
+        does: 'scores the lead, creates the contact in gohighlevel, fires a text back and queues the call bridge',
+        gets: 'a lead that hears back before your competitor’s office even picks up',
+      },
+    },
+    {
+      id: 'warranty-tracker',
+      label: 'warranty expiration tracker',
+      tag: '( n8n · GHL · cron )',
+      canvas: 'warranty-tracker-canvas.png',
+      breakdown: {
+        trigger: 'a nightly cron sweeps the customer list',
+        does: 'finds warranties coming up on expiration, drafts the outreach, queues the follow-up sequence',
+        gets: 'renewal work booked before the lapse — not a scramble after it',
+      },
+    },
+    {
+      id: 'lead-qualification',
+      label: 'lead qualification agent',
+      tag: '( n8n · claude · GHL )',
+      canvas: 'lead-qualification-canvas.png',
+      breakdown: {
+        trigger: 'a new inquiry lands — form, sms, or chat',
+        does: 'asks the qualifying questions, scores intent against your service area and job types, syncs it all to gohighlevel',
+        gets: 'hot leads on your phone; tire-kickers answered politely without you',
+      },
+    },
+  ],
+
+  // start-a-pilot overlay — intake questions + booking config
+  pilot: {
+    questions: [
+      {
+        key: 'trade',
+        q: 'what kind of work do you do?',
+        options: ['hvac', 'plumbing', 'roofing', 'restoration', 'other'],
+      },
+      {
+        key: 'pain',
+        q: 'what’s eating your week?',
+        options: [
+          'leads going cold before we call back',
+          'drowning in customer questions',
+          'chasing warranty renewals',
+          'manual scheduling',
+          'not sure yet — want to explore',
+        ],
+      },
+      {
+        key: 'volume',
+        q: 'how many calls / leads a week?',
+        options: ['under 20', '20–50', '50–100', '100+'],
+      },
+    ],
+    // pain → which pilot the booking line shows
+    pilotFor: {
+      'leads going cold before we call back': 'speed-to-lead pilot',
+      'drowning in customer questions': 'lead qualification pilot',
+      'chasing warranty renewals': 'warranty tracker pilot',
+      'manual scheduling': 'scheduling pilot',
+      'not sure yet — want to explore': 'discovery call',
+    },
+    booking: {
+      // pick 'calcom' or 'ghl' and paste the link; until then the flow
+      // falls back to a pre-filled email — never a dead end.
+      provider: null,
+      embedUrl: '',
+    },
+  },
+
+  process: [
+    {
+      q: 'we find the leak',
+      a: 'one afternoon with your numbers: where calls go to voicemail, where forms sit unread, where reviews never get asked for. most shops are losing jobs in the first five minutes — we find exactly where.',
+    },
+    {
+      q: 'one pilot, one week',
+      a: 'a single flow, live in production — usually speed-to-lead. wired to your gohighlevel, tested against real leads, measured against your old response time. small enough to trust, real enough to matter.',
+    },
+    {
+      q: 'it plugs into what you already run',
+      a: 'no rip-and-replace. gohighlevel, jobber, servicetitan, a google sheet your office manager loves — the automation wraps around whatever is answering the phones today.',
+    },
+    {
+      q: 'you see every number',
+      a: 'response time, booked rate, missed calls recovered. a dashboard, not a vibe. if the system stops earning its keep, you’ll know before we tell you.',
+    },
+    {
+      q: 'it fails loud, not silent',
+      a: 'every workflow ships with error branches, retries, and alerts. a 2am failure pages us — not you, and never the customer. silent breakage is the one thing we don’t ship.',
+    },
+  ],
+
+  footer: {
+    heading: 'your leads are waiting.',
+    sub: 'most contractors respond in hours. yours will respond in seconds.',
+    cta: 'start a pilot',
+    school: 'information systems (ai minor) — university of utah, fall 2026',
+    location: 'northern utah, mst',
+    // add real links as they exist: { label: 'youtube', url: 'https://…' }
+    links: [],
+  },
+
+  ticker: ['arc automations', 'northern utah', 'open for pilot builds', 'speed-to-lead < 60s', 'built by hand, not a template'],
+};

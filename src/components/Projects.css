@@ -1,0 +1,235 @@
+.projects__head {
+  padding-block: clamp(60px, 10vh, 130px) clamp(40px, 8vh, 90px);
+}
+
+.projects__head .eyebrow {
+  margin-bottom: 18px;
+}
+
+.projects__head-dim {
+  color: var(--faint);
+}
+
+/* ── sticky card stack ───────────────────────── */
+
+.panel {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+}
+
+.panel__inner {
+  height: 100%;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: clamp(32px, 5vw, 80px);
+  padding: calc(var(--nav-h) + 12px) var(--gutter) 40px;
+  max-width: 1560px;
+  margin-inline: auto;
+  will-change: transform;
+}
+
+/* full-bleed background so the covering card hides the one beneath —
+   carries the same faint dot grid so the texture never disappears */
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: var(--bg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .panel::before {
+    background-image: radial-gradient(circle, rgba(255, 77, 0, 0.06) 1px, transparent 1.4px);
+    background-size: 28px 28px;
+  }
+}
+
+/* faint circuit line from the index to the visual, under the content */
+.panel__circuit {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.panel__circuit-path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  opacity: 0.12;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.panel__meta,
+.panel__visual-wrap {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── click-to-view-live pattern ──────────────── */
+
+.panel__visual-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel__visual-url {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--faint);
+  transition: color 0.2s;
+}
+
+.panel__visual-arrow {
+  font-style: normal;
+  opacity: 0;
+  translate: -4px 0;
+  transition: opacity 0.2s, translate 0.2s var(--ease-out);
+}
+
+.panel__visual-link:hover .panel__visual-url {
+  color: var(--accent);
+}
+
+.panel__visual-link:hover .panel__visual-arrow {
+  opacity: 1;
+  translate: 0 0;
+}
+
+.panel__visual-glow {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.panel__visual-link:hover .panel__visual-glow {
+  opacity: 0.07;
+}
+
+.panel__inner {
+  position: relative;
+}
+
+.panel__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.panel__indexrow {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+}
+
+.panel__num {
+  font-size: clamp(2.6rem, 4.4vw, 4rem);
+  font-weight: 600;
+  line-height: 0.9;
+  letter-spacing: -0.03em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.panel__indices {
+  display: flex;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+
+.panel__indices li {
+  color: var(--faint);
+  /* no transition — the counter snaps like machinery */
+}
+
+.panel__indices li.is-active {
+  color: var(--text);
+}
+
+.panel__tag {
+  color: var(--accent);
+  letter-spacing: 0.1em;
+}
+
+.panel__title {
+  font-size: clamp(2rem, 4.2vw, 3.6rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.panel__copy {
+  color: var(--muted);
+  max-width: 46ch;
+  line-height: 1.6;
+}
+
+.panel__points {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.panel__points span {
+  color: var(--accent);
+  margin-right: 6px;
+}
+
+.panel__status {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 7px 14px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.panel__visual {
+  height: min(64vh, 620px);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--bg-2);
+  overflow: hidden;
+  position: relative;
+  will-change: transform;
+}
+
+/* ── mobile: plain stacked cards, no pinning ─── */
+
+@media (max-width: 900px) {
+  .panel {
+    /* relative, not static — keeps ::before scoped to the panel */
+    position: relative;
+    height: auto;
+  }
+  .panel__inner {
+    grid-template-columns: 1fr;
+    height: auto;
+    padding: 56px var(--gutter);
+    gap: 32px;
+  }
+  .panel__visual {
+    order: -1;
+    height: 340px;
+  }
+  .panel__circuit {
+    display: none;
+  }
+  .panel::before {
+    background-size: 44px 44px;
+  }
+}
