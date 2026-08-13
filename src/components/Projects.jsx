@@ -162,6 +162,20 @@ export default function Projects() {
                   ))}
                 </ul>
                 <span className="panel__status mono">{p.status}</span>
+                {p.liveUrl ? (
+                  <a
+                    className="panel__visit mono"
+                    href={p.liveUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${p.title} — visit the live site`}
+                  >
+                    visit live site
+                    <i className="panel__visit-arrow" aria-hidden="true">
+                      ↗
+                    </i>
+                  </a>
+                ) : null}
               </div>
 
               {p.liveUrl ? (
