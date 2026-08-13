@@ -10,7 +10,6 @@ naming the file it's waiting for.
 | File | Used in | Spec |
 | --- | --- | --- |
 | `rue-noir-01.jpg` … `rue-noir-04.jpg` | 03 rue noir demo — frames crossfade behind the live type echo | hero frames, 1600×1200+, exported dark-ish so the ink type stays readable |
-| `embertithe-clip.mp4` | 04 embertithe card (replaces the ember slot) | looping combat clip, 10–20 s, 1080p, H.264, muted |
 | `youtube-thumb-01.jpg` … `youtube-thumb-06.jpg` | 05 youtube grid | 1280×720 thumbnails |
 | `youtube-clip-01.mp4` … `youtube-clip-06.mp4` | optional — hover-to-play over the matching thumb | short muted clips, ≤10 s |
 
@@ -23,7 +22,7 @@ naming the file it's waiting for.
 | `warranty-tracker-canvas.png` | warranty expiration tracker — also tab 02 of "the workflows" | full-res n8n canvas screenshot |
 | `rue-noir-cover.jpg` | rue noir coffee | hero frame, 1920×1080 |
 | `pale-ember-cover.jpg` | pale ember espresso | hero frame, 1920×1080 |
-| `embertithe-cover.jpg` | embertithe | combat still, 1920×1080 |
+| `crm-cover.jpg` | home-service crm | crm board, 1920×1080 |
 | `youtube-cover.jpg` | youtube channel | best thumbnail, 1280×720 |
 
 > The three canvas files are the hero of "the workflows" section — export them
@@ -36,8 +35,9 @@ naming the file it's waiting for.
 - **Booking backend** — `pilot.booking`: set `provider` to `'ghl'` or
   `'calcom'` and paste your calendar/event link as `embedUrl`. Until then the
   BOOK NOW step falls back to a pre-filled email (never a dead end).
-- **Rue Noir live URL** — currently `http://localhost:5180` (local preview).
-  Swap `liveUrl` in `projects` and `url` in `workIndex` when it deploys.
+- **Rue Noir live URL** — live at `https://bennettc1213.github.io/rue-noir-coffee`;
+  the portfolio card and index row already link there. Pale ember still uses
+  the status label until it deploys.
 
 - **Stats** — the four numbers under “the receipts” are stand-ins
   (`12`, `1,400+`, `<60s`, `18`). Replace with your real figures.

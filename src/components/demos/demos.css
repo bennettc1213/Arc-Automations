@@ -383,94 +383,6 @@
   background: var(--rn-ember);
 }
 
-/* ── 04 · embertithe ─────────────────────────── */
-
-.demo-et {
-  background: #070607;
-  align-items: center;
-  justify-content: center;
-}
-
-.demo-et__clip {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.demo-et__embers {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.demo-et__slot {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  text-align: center;
-  padding: 24px;
-}
-
-.demo-et__hud {
-  position: absolute;
-  left: 20px;
-  right: 20px;
-  bottom: 18px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.demo-et__hud-label {
-  color: var(--faint);
-  font-size: 10.5px;
-  letter-spacing: 0.14em;
-}
-
-.demo-et__meter {
-  flex: 1;
-  display: flex;
-  gap: 4px;
-}
-
-.demo-et__meter span {
-  flex: 1;
-  height: 6px;
-  background: rgba(255, 96, 24, 0.14);
-  border-radius: 2px;
-}
-
-.demo-et__meter.is-live span {
-  animation: et-corrupt 10.8s ease-in-out infinite;
-}
-
-@keyframes et-corrupt {
-  0%,
-  6% {
-    background: rgba(255, 96, 24, 0.14);
-  }
-  9%,
-  78% {
-    background: var(--accent);
-    box-shadow: 0 0 8px rgba(255, 77, 0, 0.4);
-  }
-  82%,
-  100% {
-    background: rgba(255, 96, 24, 0.14);
-    box-shadow: none;
-  }
-}
-
-.demo-et__hud-note {
-  color: var(--faint);
-  font-size: 10.5px;
-}
-
 /* ── 05 · youtube grid ───────────────────────── */
 
 .demo-yt__live {
@@ -556,7 +468,7 @@
   padding-left: 2px;
 }
 
-/* -- 04 � home-service crm ----------------------- */
+/* -- 04 � home-service crm ----------------------- */
 
 .demo-crm__body {
   flex: 1;
