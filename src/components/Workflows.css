@@ -70,7 +70,7 @@
 .wf__stage {
   border: 1px solid var(--line);
   background: var(--bg-2);
-  min-height: 540px;
+  min-height: 400px;
   display: flex;
 }
 
@@ -117,110 +117,46 @@
   font-size: 11px;
 }
 
-/* the canvas — hero of the panel */
-.wf__canvas {
-  position: relative;
-  flex: 1;
-  min-height: 320px;
-  border: 1px solid var(--line);
-  background: var(--bg);
-  overflow: hidden;
-}
+/* ── the description — the whole point of the panel ── */
 
-.wf__canvas-scroll {
-  position: absolute;
-  inset: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-}
-
-.wf__shot {
-  height: 100%;
-  width: auto;
-  max-width: none; /* wider than viewport = horizontal scroll, like the flow */
-}
-
-.wf__canvas-scroll .slot {
-  height: 100%;
-  border: none;
-  border-radius: 0;
-}
-
-/* one-shot execution sweep, left to right — the path a real run takes */
-.wf__sweep {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -140px;
-  width: 140px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 77, 0, 0.16),
-    rgba(255, 77, 0, 0.28),
-    transparent
-  );
-  pointer-events: none;
-  animation: wf-sweep 1.15s ease-out 0.15s forwards;
-}
-
-@keyframes wf-sweep {
-  to {
-    left: 100%;
-  }
-}
-
-.wf__breakdown {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.wf__breakdown dt {
-  color: var(--accent);
-  margin-bottom: 6px;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-}
-
-.wf__breakdown dd {
-  color: var(--muted);
-  font-size: 0.92rem;
-  line-height: 1.55;
-}
-
-/* ── tab 04 — and more ───────────────────────── */
-
-.wf__more {
-  position: relative;
+.wf__desc {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  text-align: center;
-  gap: 20px;
-  padding: clamp(40px, 6vw, 80px) 24px 84px;
-  background-image: radial-gradient(circle, rgba(255, 77, 0, 0.07) 1px, transparent 1.4px);
-  background-size: 28px 28px;
+  gap: 26px;
+  padding-block: 16px;
 }
 
-.wf__statement {
-  font-size: clamp(2rem, 5vw, 4.2rem);
-  font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1.02;
-}
-
-.wf__substatement {
-  color: var(--muted);
-  max-width: 46ch;
+.wf__desc-copy {
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
   line-height: 1.6;
+  letter-spacing: -0.01em;
+  max-width: 62ch;
 }
 
-.wf__cta {
-  margin-top: 8px;
+.wf__points {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.wf__points li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.wf__points li span {
+  color: var(--accent);
+  flex: none;
+}
+
+.wf__desc .wf__cta {
+  align-self: flex-start;
+  margin-top: 4px;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -232,17 +168,9 @@
   border-radius: 0;
 }
 
-.wf__cta:hover {
+.wf__desc .wf__cta:hover {
   background: var(--accent-hot);
   translate: 1px 1px;
-}
-
-.wf__more-guy {
-  position: absolute;
-  bottom: 18px;
-  left: 50%;
-  transform: translateX(-50%);
-  line-height: 0;
 }
 
 /* ── responsive ──────────────────────────────── */
@@ -251,14 +179,7 @@
   .wf__tabs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .wf__breakdown {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
   .wf__stage {
     min-height: 0;
-  }
-  .wf__canvas {
-    min-height: 240px;
   }
 }

@@ -148,41 +148,95 @@ export const site = {
     { label: 'vite' },
   ],
 
-  // the workflows — proof-of-work section. canvases are real screenshots
-  // (see ASSETS.md); no generated node graphs, no invented stats.
+  // the workflows — every tab is an offering. each one answers "what do I get".
   workflows: [
     {
       id: 'speed-to-lead',
       label: 'speed-to-lead',
       tag: '( n8n · GHL · twilio )',
-      canvas: 'speed-to-lead-canvas.png',
-      breakdown: {
-        trigger: 'a lead submits a form — or a call slips to voicemail',
-        does: 'scores the lead, creates the contact in gohighlevel, fires a text back and queues the call bridge',
-        gets: 'a lead that hears back before your competitor’s office even picks up',
-      },
+      description:
+        'a lead fills out a form at 11pm — by 11:01 they have a text, a call queued, and a slot on the calendar, before the competitor’s office even opens. production lead-intake wired straight into gohighlevel.',
+      points: ['instant sms + call bridge', 'lead scoring before routing', 'loud failures — errors page us, not the contractor'],
     },
     {
       id: 'warranty-tracker',
       label: 'warranty expiration tracker',
       tag: '( n8n · GHL · cron )',
-      canvas: 'warranty-tracker-canvas.png',
-      breakdown: {
-        trigger: 'a nightly cron sweeps the customer list',
-        does: 'finds warranties coming up on expiration, drafts the outreach, queues the follow-up sequence',
-        gets: 'renewal work booked before the lapse — not a scramble after it',
-      },
+      description:
+        'a nightly sweep finds warranties coming up on expiration, drafts the outreach, and queues the follow-up sequence — renewal work booked before the lapse, not a scramble after it.',
+      points: ['nightly cron over the customer list', 'drafts + queues the outreach', 'renewal work booked early'],
     },
     {
       id: 'lead-qualification',
       label: 'lead qualification agent',
       tag: '( n8n · claude · GHL )',
-      canvas: 'lead-qualification-canvas.png',
-      breakdown: {
-        trigger: 'a new inquiry lands — form, sms, or chat',
-        does: 'asks the qualifying questions, scores intent against your service area and job types, syncs it all to gohighlevel',
-        gets: 'hot leads on your phone; tire-kickers answered politely without you',
-      },
+      description:
+        'an n8n agent that works every inbound inquiry — asks the qualifying questions, scores intent against your service area and job types, and routes hot leads straight to your phone.',
+      points: ['qualifies before you pick up', 'grounded in your services + coverage area', 'hot leads routed, tire-kickers handled politely'],
+    },
+    {
+      id: 'workflow-automations',
+      label: 'workflow automations',
+      tag: '( n8n · custom )',
+      description:
+        'custom n8n workflows that wire your tools together and run the repetitive parts of your operation — on a schedule, a webhook, or an event.',
+      points: ['scheduled / webhook / event triggered', 'connects the tools you already use', 'error branches — failures page us, not you'],
+    },
+    {
+      id: 'ai-chat-bots',
+      label: 'ai chat & service bots',
+      tag: '( n8n · claude · openai )',
+      description:
+        'chat and voice bots that answer customer questions at 2am, qualify leads before they reach you, and hand off to a human the moment it matters.',
+      points: ['24/7 on every channel — web, sms, voice', 'answers grounded in your actual services', 'smooth handoff to a human'],
+    },
+    {
+      id: 'websites',
+      label: 'professional websites',
+      tag: '( react · design )',
+      description:
+        'fast, custom-built websites that make your business look like it has its act together — built to turn visitors into booked calls, not just to look pretty.',
+      points: ['custom design, no templates', 'built for speed + lead capture', 'wired into your crm from day one'],
+    },
+    {
+      id: 'crm-data',
+      label: 'crm & data integration',
+      tag: '( gohighlevel · api )',
+      description:
+        'your crm, jobber, servicetitan, or a google sheet your office manager loves — wired together so a lead that enters anywhere shows up everywhere. no double entry.',
+      points: ['gohighlevel, jobber, servicetitan + more', 'two-way sync, no double entry', 'one source of truth for your numbers'],
+    },
+    {
+      id: 'business-process',
+      label: 'business process automation',
+      tag: '( n8n · custom )',
+      description:
+        'back-office operations — invoicing, follow-ups, scheduling, reporting — automated end to end, so your team works the exceptions instead of the busywork.',
+      points: ['invoicing, scheduling, reporting', 'end-to-end, not point solutions', 'your team works the exceptions'],
+    },
+    {
+      id: 'marketing-automation',
+      label: 'marketing automation',
+      tag: '( email · sms )',
+      description:
+        'follow-up sequences, drip campaigns, and review engines that keep your name in front of the people who have already raised their hand.',
+      points: ['email + sms nurture sequences', 'review engines on autopilot', 'every campaign measured'],
+    },
+    {
+      id: 'ai-analytics',
+      label: 'ai-powered analytics',
+      tag: '( ai · dashboards )',
+      description:
+        'your numbers, explained. dashboards that show response time, booked rate, and where leads are leaking — with ai summaries instead of spreadsheets nobody opens.',
+      points: ['live dashboards, not static reports', 'ai-written summaries of the week', 'find the leak before it costs a job'],
+    },
+    {
+      id: 'custom-saas',
+      label: 'custom saas & portals',
+      tag: '( custom · saas )',
+      description:
+        'bespoke software built around exactly how you work — employee portals, client portals, internal tools, or a whole product for your market.',
+      points: ['employee + client portals', 'internal tools built to your process', 'from a single tool to a full product'],
     },
   ],
 
