@@ -92,8 +92,7 @@ export const site = {
       copy: 'a paris-noir coffee site with a cinematic scroll hero — a slow descent from the eiffel tower down to the cup. proof the automation guy can also make things beautiful.',
       points: ['scroll-driven hero sequence', 'aged-paper grain, engraved plates', 'its hero, echoed live in this card →'],
       demo: 'rueNoir',
-      // local preview while rue noir awaits deploy — swap for the real domain
-      liveUrl: 'http://localhost:5180',
+      liveUrl: 'https://github.com/bennettc1213/rue-noir-coffee',
     },
     {
       id: 'embertithe',
@@ -122,7 +121,7 @@ export const site = {
     { title: 'n8n speed-to-lead', year: '2026', kind: 'automation', url: null, urlLabel: 'in production · private', media: 'speed-to-lead-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
     { title: 'lead qualification agent', year: '2026', kind: 'ai agent', url: null, urlLabel: 'in production · private', media: 'lead-qualification-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
     { title: 'warranty expiration tracker', year: '2026', kind: 'automation', url: null, urlLabel: 'deployed · n8n cloud', media: 'warranty-tracker-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
-    { title: 'rue noir coffee', year: '2026', kind: 'site', url: 'http://localhost:5180', urlLabel: 'live · local preview', media: 'rue-noir-cover.jpg', mediaSpec: 'hero frame, 1920×1080' },
+    { title: 'rue noir coffee', year: '2026', kind: 'site', url: 'https://github.com/bennettc1213/rue-noir-coffee', urlLabel: 'github · public repo', media: 'rue-noir-cover.jpg', mediaSpec: 'hero frame, 1920×1080' },
     { title: 'pale ember espresso', year: '2026', kind: 'site', url: null, urlLabel: 'local build · deploy pending', media: 'pale-ember-cover.jpg', mediaSpec: 'hero frame, 1920×1080' },
     { title: 'embertithe', year: '2026', kind: 'game', url: null, urlLabel: 'vertical slice · local build', media: 'embertithe-cover.jpg', mediaSpec: 'combat still, 1920×1080' },
     { title: 'youtube channel', year: '2026', kind: 'content', url: null, urlLabel: 'add channel url in site.js', media: 'youtube-cover.jpg', mediaSpec: 'best thumbnail, 1280×720' },
