@@ -13,7 +13,7 @@ export default function Workflows() {
   return (
     <section className="workflows wrap" id="workflows" aria-label="what we build">
       <p className="eyebrow">03 — what we build</p>
-      <h2 className="section-title workflows__title">the offering.</h2>
+      <h2 className="section-title workflows__title">our specialty.</h2>
 
       <div className="wf__tabs" role="tablist" aria-label="offerings">
         {TABS.map((t, i) => (
