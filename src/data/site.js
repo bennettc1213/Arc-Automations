@@ -273,6 +273,24 @@ export const site = {
       'manual scheduling': 'scheduling pilot',
       'not sure yet — want to explore': 'discovery call',
     },
+    // openPilot(key) short-circuits to one of these — no trade/pain/volume intake
+    presets: {
+      'marketing-automation': {
+        label: 'marketing automation pilot',
+        questions: [
+          { key: 'channels', q: 'where does your marketing live right now?', options: ['google ads', 'facebook + instagram', 'organic · seo', 'word of mouth', 'nowhere yet'] },
+          { key: 'goal', q: 'what should it do for you?', options: ['more booked jobs', 'more calls from ads', 'reviews on autopilot', 'repeat + referral business', 'not sure — that’s the point'] },
+          { key: 'material', q: 'what can we work with today?', options: ['real photos of the work', 'a stack of past reviews', 'videos of jobs', 'a logo and a story', 'barely anything — help us start'] },
+        ],
+        fields: [
+          { key: 'name', label: 'name', type: 'text', autoComplete: 'name' },
+          { key: 'business', label: 'business', type: 'text', autoComplete: 'organization' },
+          { key: 'website', label: 'website / url', type: 'url', autoComplete: 'url' },
+          { key: 'email', label: 'email', type: 'email', autoComplete: 'email' },
+          { key: 'phone', label: 'phone', type: 'tel', autoComplete: 'tel' },
+        ],
+      },
+    },
     booking: {
       // pick 'calcom' or 'ghl' and paste the link; until then the flow
       // falls back to a pre-filled email — never a dead end.

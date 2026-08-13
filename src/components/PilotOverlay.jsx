@@ -6,42 +6,39 @@ import TickOnChange from './TickOnChange';
 import PixelGuy from './PixelGuy';
 import './PilotOverlay.css';
 
-const QUESTIONS = site.pilot.questions;
-const FIELDS = [
+const DEFAULT_FIELDS = [
   { key: 'name', label: 'name', type: 'text', autoComplete: 'name' },
   { key: 'business', label: 'business', type: 'text', autoComplete: 'organization' },
   { key: 'email', label: 'email', type: 'email', autoComplete: 'email' },
   { key: 'phone', label: 'phone', type: 'tel', autoComplete: 'tel' },
 ];
-const TOTAL_STEPS = 4; // 3 choice questions + contact screen
 
-function validateContact(c) {
+function validateContact(contact) {
   const errors = {};
-  if (!c.name?.trim()) errors.name = 'need a name';
-  if (!c.business?.trim()) errors.business = 'need the business';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email || '')) errors.email = 'real email, please';
-  if ((c.phone || '').replace(/\D/g, '').length < 7) errors.phone = 'real phone, please';
+  if (!contact.name?.trim()) errors.name = 'need a name';
+  if (!contact.business?.trim()) errors.business = 'need the business';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email || '')) errors.email = 'real email, please';
+  if ((contact.phone || '').replace(/\D/g, '').length < 7) errors.phone = 'real phone, please';
+  if (contact.website && !/^https?:\/\/.+/i.test(contact.website.trim())) {
+    errors.website = 'https://…';
+  }
   return errors;
 }
 
-function buildMailto(answers, contact, pilotLabel) {
+function buildMailto(answers, contact, pilotLabel, questions, fields) {
   const body = [
     `pilot: ${pilotLabel}`,
-    `trade: ${answers.trade || '—'}`,
-    `pain: ${answers.pain || '—'}`,
-    `volume: ${answers.volume || '—'}`,
+    ...questions.map((q) => `${q.key}: ${answers[q.key] || '—'}`),
     '',
-    `name: ${contact.name || ''}`,
-    `business: ${contact.business || ''}`,
-    `phone: ${contact.phone || ''}`,
+    ...fields.map((f) => `${f.label}: ${contact[f.key] || ''}`),
   ].join('\n');
   return `mailto:${site.email}?subject=${encodeURIComponent(
-    `pilot request — ${answers.trade || 'contractor'}`
+    `pilot request — ${pilotLabel}`
   )}&body=${encodeURIComponent(body)}`;
 }
 
-function buildEmbedSrc(booking, answers, contact) {
-  const notes = `trade: ${answers.trade} | pain: ${answers.pain} | volume: ${answers.volume} | business: ${contact.business}`;
+function buildEmbedSrc(booking, answers, contact, questions) {
+  const notes = questions.map((q) => `${q.key}: ${answers[q.key]}`).join(' | ');
   if (booking.provider === 'calcom') {
     const u = new URL(booking.embedUrl);
     u.searchParams.set('theme', 'dark');
@@ -79,13 +76,22 @@ function PixelX() {
 
 export default function PilotOverlay() {
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState(0); // 0..2 choices, 3 contact, 4 booking
+  const [pilotKey, setPilotKey] = useState(null);
+  const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [contact, setContact] = useState({});
   const [errors, setErrors] = useState({});
   const [booked, setBooked] = useState(false);
   const panelRef = useRef(null);
   const restoreFocus = useRef(null);
+
+  // preset flow (openPilot('marketing-automation')) or generic intake
+  const preset = pilotKey ? site.pilot.presets?.[pilotKey] : null;
+  const questions = preset ? preset.questions : site.pilot.questions;
+  const fields = preset ? preset.fields : DEFAULT_FIELDS;
+  const questionCount = questions.length;
+  const totalSteps = questionCount + 1; // questions + contact screen
+  const bookingStep = totalSteps;
 
   const close = useCallback(() => {
     setOpen(false);
@@ -97,8 +103,9 @@ export default function PilotOverlay() {
   // open via the bus, from any "start a pilot" button
   useEffect(
     () =>
-      onOpenPilot(() => {
+      onOpenPilot(({ key } = {}) => {
         restoreFocus.current = document.activeElement;
+        setPilotKey(key ?? null);
         setStep(0);
         setAnswers({});
         setContact({});
@@ -117,14 +124,14 @@ export default function PilotOverlay() {
     if (!open) return undefined;
     const onKey = (e) => {
       if (e.key === 'Escape') close();
-      if (e.key === 'Enter' && step < 3) {
-        const q = QUESTIONS[step];
+      if (e.key === 'Enter' && step < questionCount) {
+        const q = questions[step];
         if (answers[q.key]) setStep((s) => s + 1);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, step, answers, close]);
+  }, [open, step, questionCount, questions, answers, close]);
 
   // best-effort: catch booking-success postMessage from an embed
   useEffect(() => {
@@ -141,11 +148,12 @@ export default function PilotOverlay() {
 
   if (!open) return null;
 
-  const pilotLabel = site.pilot.pilotFor[answers.pain] || 'pilot build';
+  const pilotLabel =
+    preset?.label ?? site.pilot.pilotFor[answers.pain] ?? 'pilot build';
   const booking = site.pilot.booking;
   const embedSrc =
     booking.provider && booking.embedUrl
-      ? buildEmbedSrc(booking, answers, contact)
+      ? buildEmbedSrc(booking, answers, contact, questions)
       : null;
 
   const pick = (key, value) => {
@@ -158,7 +166,7 @@ export default function PilotOverlay() {
     e.preventDefault();
     const errs = validateContact(contact);
     setErrors(errs);
-    if (Object.keys(errs).length === 0) setStep(4);
+    if (Object.keys(errs).length === 0) setStep(bookingStep);
   };
 
   return (
@@ -171,9 +179,9 @@ export default function PilotOverlay() {
       tabIndex={-1}
     >
       <header className="pilot__bar">
-        {step < 4 ? (
+        {step < bookingStep ? (
           <span className="pilot__progress mono">
-            <TickOnChange value={step + 1} /> / {String(TOTAL_STEPS).padStart(2, '0')}
+            <TickOnChange value={step + 1} /> / {String(totalSteps).padStart(2, '0')}
           </span>
         ) : (
           <span className="pilot__progress mono">{pilotLabel}</span>
@@ -193,15 +201,15 @@ export default function PilotOverlay() {
       </header>
 
       <div className="pilot__body">
-        {step < 3 && (
+        {step < questionCount && (
           <div className="pilot__step" key={step}>
-            <h2 className="pilot__q">{QUESTIONS[step].q}</h2>
+            <h2 className="pilot__q">{questions[step].q}</h2>
             <div className="pilot__options">
-              {QUESTIONS[step].options.map((opt) => (
+              {questions[step].options.map((opt) => (
                 <button
                   key={opt}
-                  className={`pilot__opt ${answers[QUESTIONS[step].key] === opt ? 'is-picked' : ''}`}
-                  onClick={() => pick(QUESTIONS[step].key, opt)}
+                  className={`pilot__opt ${answers[questions[step].key] === opt ? 'is-picked' : ''}`}
+                  onClick={() => pick(questions[step].key, opt)}
                 >
                   {opt}
                 </button>
@@ -210,11 +218,11 @@ export default function PilotOverlay() {
           </div>
         )}
 
-        {step === 3 && (
+        {step === questionCount && (
           <form className="pilot__step" onSubmit={submitContact} noValidate>
             <h2 className="pilot__q">where do we send the plan?</h2>
             <div className="pilot__fields">
-              {FIELDS.map((f) => (
+              {fields.map((f) => (
                 <label className="pilot__field" key={f.key}>
                   <span className="mono">{f.label}</span>
                   <input
@@ -235,7 +243,7 @@ export default function PilotOverlay() {
           </form>
         )}
 
-        {step === 4 && !booked && (
+        {step === bookingStep && !booked && (
           <div className="pilot__step pilot__booking">
             <h2 className="pilot__booknow">BOOK NOW</h2>
             <p className="pilot__confline mono">
@@ -256,7 +264,7 @@ export default function PilotOverlay() {
                 </p>
                 <a
                   className="pilot__fallback mono"
-                  href={buildMailto(answers, contact, pilotLabel)}
+                  href={buildMailto(answers, contact, pilotLabel, questions, fields)}
                 >
                   calendar not loading? email us instead →
                 </a>
@@ -269,7 +277,7 @@ export default function PilotOverlay() {
                 </p>
                 <a
                   className="pilot__next"
-                  href={buildMailto(answers, contact, pilotLabel)}
+                  href={buildMailto(answers, contact, pilotLabel, questions, fields)}
                 >
                   email us the details <span aria-hidden="true">→</span>
                 </a>

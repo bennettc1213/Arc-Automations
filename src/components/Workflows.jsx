@@ -52,7 +52,7 @@ export default function Workflows() {
                 ))}
               </ul>
             )}
-            <button className="wf__cta" onClick={openPilot}>
+            <button className="wf__cta" onClick={() => openPilot('marketing-automation')}>
               start a pilot <span aria-hidden="true">→</span>
             </button>
           </div>
