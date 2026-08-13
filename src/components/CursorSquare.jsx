@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useMedia, useReducedMotion } from '../lib/hooks';
 
 const INTERACTIVE =
-  'a, button, [role="button"], input, .wrow__bar, .acc__head, .demo-yt__cell, .chip--physics, .toolkit__pit';
+  'a, button, [role="button"], input, .wrow__bar, .acc__head, .chip--physics, .toolkit__pit';
 
 // trail: 10 squares, shrinking and fading as they fall behind
 const TRAIL = [

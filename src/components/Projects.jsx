@@ -6,7 +6,7 @@ import SpeedToLead from './demos/SpeedToLead';
 import SupportAgent from './demos/SupportAgent';
 import RueNoir from './demos/RueNoir';
 import CrmDemo from './demos/CrmDemo';
-import YouTubeGrid from './demos/YouTubeGrid';
+import MissedCall from './demos/MissedCall';
 import './Projects.css';
 
 const DEMOS = {
@@ -14,7 +14,7 @@ const DEMOS = {
   supportAgent: SupportAgent,
   rueNoir: RueNoir,
   crm: CrmDemo,
-  youtube: YouTubeGrid,
+  missedCall: MissedCall,
 };
 
 const INDICES = site.projects.map((p) => p.index);

@@ -383,92 +383,145 @@
   background: var(--rn-ember);
 }
 
-/* ── 05 · youtube grid ───────────────────────── */
+/* ── 05 · missed-call text-back ──────────────── */
 
-.demo-yt__live {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.demo-yt__live i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #e33;
-  animation: nav-pulse 2s ease-in-out infinite;
-}
-
-.demo-yt__grid {
+.demo-mc__body {
   flex: 1;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: 1fr 1fr;
-  gap: 10px;
-  padding: 14px;
   min-height: 0;
-}
-
-.demo-yt__cell {
-  position: relative;
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  transition: transform 0.35s var(--ease-out), border-color 0.35s;
-}
-
-.demo-yt__cell:hover {
-  transform: scale(1.03);
-  border-color: var(--line-strong);
-}
-
-.demo-yt__cell img,
-.demo-yt__cell video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.demo-yt__cell video {
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.demo-yt__cell video.is-on {
-  opacity: 1;
-}
-
-.demo-yt__empty {
-  position: absolute;
-  inset: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 9.5px;
-  color: var(--faint);
-  padding: 8px;
-  text-align: center;
+  gap: 12px;
+  padding: 14px 18px;
 }
 
-.demo-yt__play {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 1px solid var(--line-strong);
+.demo-mc__call {
   display: flex;
   align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  font-size: 10px;
-  padding-left: 2px;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  transition: border-color 0.4s;
 }
 
-/* -- 04 � home-service crm ----------------------- */
+.demo-mc__call.is-missed {
+  border-color: rgba(255, 77, 0, 0.45);
+}
+
+.demo-mc__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--faint);
+  flex-shrink: 0;
+}
+
+.demo-mc__dot.is-ringing {
+  background: #ff4d00;
+  animation: mc-ring 1s ease-in-out infinite;
+}
+
+@keyframes mc-ring {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 0, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 77, 0, 0);
+  }
+}
+
+.demo-mc__call-line {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.demo-mc__timer {
+  font-size: 11px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.demo-mc__thread {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+}
+
+.demo-mc__msg {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  max-width: 88%;
+  font-size: 13px;
+  line-height: 1.45;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.4s, transform 0.4s var(--ease-out);
+}
+
+.demo-mc__msg.is-on {
+  opacity: 1;
+  transform: none;
+}
+
+.demo-mc__msg--them {
+  align-self: flex-start;
+  background: var(--surface);
+}
+
+.demo-mc__msg--us {
+  align-self: flex-end;
+  background: var(--surface-2);
+  border-color: rgba(255, 77, 0, 0.3);
+}
+
+.demo-mc__who {
+  display: block;
+  font-size: 10.5px;
+  color: var(--faint);
+  margin-bottom: 6px;
+}
+
+.demo-mc__msg--us .demo-mc__who {
+  color: var(--accent);
+}
+
+.demo-mc__booked {
+  align-self: center;
+  font-size: 10.5px;
+  color: var(--accent);
+  border: 1px dashed rgba(255, 77, 0, 0.5);
+  border-radius: 999px;
+  padding: 7px 14px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.4s, transform 0.4s var(--ease-out);
+}
+
+.demo-mc__booked.is-on {
+  opacity: 1;
+  transform: none;
+}
+
+.demo-mc__state {
+  transition: color 0.35s;
+}
+
+.demo-mc__state.is-synced {
+  color: var(--accent);
+}
+
+/* ── 04 · home-service crm ───────────────────── */
 
 .demo-crm__body {
   flex: 1;

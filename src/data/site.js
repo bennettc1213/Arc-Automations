@@ -105,14 +105,14 @@ export const site = {
       demo: 'crm',
     },
     {
-      id: 'youtube',
+      id: 'missed-call-text-back',
       index: '05',
-      title: 'the youtube channel',
-      tag: '( content · funnel )',
-      status: 'top of funnel',
-      copy: 'comedy-forward videos that pull curious contractors toward arc automations. the top of the funnel is a punchline; the bottom is a booked call.',
-      points: ['comedy in, contractors out', 'every video routes to the agency', 'thumbnails engineered like headlines'],
-      demo: 'youtube',
+      title: 'missed-call text-back',
+      tag: '( n8n · twilio · GHL )',
+      status: 'design build',
+      copy: 'the calls contractors miss while they are on a roof — answered in 42 seconds by a text, with a booking link already in the thread. no lead ever goes to voicemail and dies.',
+      points: ['every missed call texts back in under a minute', 'caller id, name, and intent, already parsed', 'one tap on the link becomes a booked job'],
+      demo: 'missedCall',
     },
   ],
 
@@ -124,7 +124,7 @@ export const site = {
     { title: 'rue noir coffee', year: '2026', kind: 'site', url: 'https://bennettc1213.github.io/rue-noir-coffee', urlLabel: 'live site', media: 'rue-noir-cover.jpg', mediaSpec: 'hero frame, 1920×1080' },
     { title: 'pale ember espresso', year: '2026', kind: 'site', url: null, urlLabel: 'local build · deploy pending', media: 'pale-ember-cover.jpg', mediaSpec: 'hero frame, 1920×1080' },
     { title: 'home-service crm', year: '2026', kind: 'app', url: null, urlLabel: 'design build · in production soon', media: 'crm-cover.jpg', mediaSpec: 'crm board, 1920×1080' },
-    { title: 'youtube channel', year: '2026', kind: 'content', url: null, urlLabel: 'add channel url in site.js', media: 'youtube-cover.jpg', mediaSpec: 'best thumbnail, 1280×720' },
+    { title: 'missed-call text-back', year: '2026', kind: 'automation', url: null, urlLabel: 'design build · in production soon', media: 'missed-call-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
   ],
 
   toolkit: [

@@ -10,8 +10,6 @@ naming the file it's waiting for.
 | File | Used in | Spec |
 | --- | --- | --- |
 | `rue-noir-01.jpg` … `rue-noir-04.jpg` | 03 rue noir demo — frames crossfade behind the live type echo | hero frames, 1600×1200+, exported dark-ish so the ink type stays readable |
-| `youtube-thumb-01.jpg` … `youtube-thumb-06.jpg` | 05 youtube grid | 1280×720 thumbnails |
-| `youtube-clip-01.mp4` … `youtube-clip-06.mp4` | optional — hover-to-play over the matching thumb | short muted clips, ≤10 s |
 
 ## Work index (hover-reveal grid)
 
@@ -23,7 +21,7 @@ naming the file it's waiting for.
 | `rue-noir-cover.jpg` | rue noir coffee | hero frame, 1920×1080 |
 | `pale-ember-cover.jpg` | pale ember espresso | hero frame, 1920×1080 |
 | `crm-cover.jpg` | home-service crm | crm board, 1920×1080 |
-| `youtube-cover.jpg` | youtube channel | best thumbnail, 1280×720 |
+| `missed-call-canvas.png` | missed-call text-back | full-res n8n canvas screenshot |
 
 > The three canvas files are the hero of "the workflows" section — export them
 > wide and readable (the panel scrolls horizontally if the flow is wider than
@@ -42,8 +40,6 @@ naming the file it's waiting for.
 - **Stats** — the four numbers under “the receipts” are stand-ins
   (`12`, `1,400+`, `<60s`, `18`). Replace with your real figures.
 - **Email** — currently your gmail; swap for a domain address when it exists.
-- **YouTube URL** — add it to the `youtube channel` row in `workIndex`
-  (`url: 'https://…'`) and to `footer.links`.
 - **Live URLs** — when rue noir / pale ember deploy, set their `url` fields
   so the grid rows link out instead of showing the status label.
 
