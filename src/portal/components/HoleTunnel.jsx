@@ -42,6 +42,9 @@ const MAX_SCALE = 8;
 /* deltaY units needed to cross the gap — roughly seven notches of a mouse wheel. */
 const SPEED = 0.0016;
 
+/* how long the canvas takes to dissolve once it has committed to flying through */
+const FADE_MS = 620;
+
 const ROWS = 36;
 const COLUMNS = 30;
 const LAYERS = 3;
@@ -180,15 +183,15 @@ export default function HoleTunnel({ onBreach, onDone }) {
     let raf = 0;
     let disposed = false;
     let locked = false;
-    let fading = false;
     let fadeTimer = 0;
+    let fadeStart = 0;
     const start = performance.now();
+    let last = start;
 
     let scale = MIN_SCALE;
     let target = MIN_SCALE;
     let approach = 0.08;
     let kick = 0;
-    let opacity = 1;
 
     const setProgress = () => {
       const p = Math.min(1, Math.max(0, (target - MIN_SCALE) / (BREACH_SCALE - MIN_SCALE)));
@@ -206,7 +209,7 @@ export default function HoleTunnel({ onBreach, onDone }) {
          hiding a blank page while it dies. */
       breachRef.current?.();
       fadeTimer = window.setTimeout(() => {
-        fading = true;
+        fadeStart = performance.now();
         /* keep flying for the length of the fade rather than stopping dead. */
         target = MAX_SCALE;
         approach = 0.05;
@@ -291,25 +294,37 @@ export default function HoleTunnel({ onBreach, onDone }) {
       renderer.dispose();
     };
 
-    const frame = () => {
+    const frame = (now) => {
       raf = requestAnimationFrame(frame);
-      if (document.hidden) return;
+      if (document.hidden) {
+        last = now;
+        return;
+      }
 
-      const time = (performance.now() - start) / 1000;
-      scale += (target - scale) * approach;
-      kick *= 0.9;
+      /* everything below is driven by elapsed time, not by frame count. a
+         per-frame decrement makes the entrance take longer the slower the
+         device is, which is backwards — the machine that struggles to render
+         it is the one that should be held up by it least. */
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const time = (now - start) / 1000;
+
+      /* the same easing curve at any refresh rate: 0.08 per frame at 60fps. */
+      const ease = 1 - (1 - approach) ** (dt * 60);
+      scale += (target - scale) * ease;
+      kick *= 0.9 ** (dt * 60);
       scene.scale.setScalar(scale);
 
-      if (fading) {
-        opacity -= 0.035;
-        if (opacity <= 0) {
+      if (fadeStart) {
+        const p = Math.min(1, (now - fadeStart) / FADE_MS);
+        if (p >= 1) {
           /* release the GPU first, then ask the parent to drop us from the
              tree. the unmount runs teardown again and it no-ops. */
           teardown();
           doneRef.current?.();
           return;
         }
-        renderer.domElement.style.opacity = String(opacity);
+        renderer.domElement.style.opacity = String(1 - p);
       }
 
       let i = 0;
