@@ -1,0 +1,728 @@
+/* ────────────────────────────────────────────────
+   portal.css — the arc portal, as an instrument
+
+   Inherits every token from base.css. Nothing here redefines a colour the
+   marketing site already owns; the portal is the same product, not a
+   sibling app that happens to share a logo.
+
+   Two rules govern this file:
+
+   1. Orange (--accent) is interactive only. It is never used to say a
+      system is healthy, degraded or down. The site's rule is "one accent,
+      no exceptions" and status colour is not an accent — it is signal,
+      and it is the only other colour permitted on the page.
+   2. Status is never colour alone. Every state carries a distinct glyph
+      and a written label, so it survives colourblindness, a bad screen in
+      daylight, and a greyscale screenshot pasted into an email.
+   ──────────────────────────────────────────────── */
+
+.portal {
+  --ok: #2fd07a;
+  --ok-dim: rgba(47, 208, 122, 0.12);
+  /* deliberately a true yellow, not amber. amber sits ~20 degrees from the
+     brand orange and the two are confusable at a glance — on a page whose
+     whole job is an unambiguous status read, that is a defect. */
+  --warn: #ffd400;
+  --warn-dim: rgba(255, 212, 0, 0.12);
+  /* crimson rather than a pure red, for the same separation reason. */
+  --fail: #ff2e63;
+  --fail-dim: rgba(255, 46, 99, 0.12);
+
+  --panel-pad: clamp(16px, 2vw, 24px);
+
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* every numeral in the portal is mono and tabular. this is not cosmetic:
+   proportional digits shift sideways as live values change, and that jitter
+   is exactly the small wrongness that makes a readout feel untrustworthy. */
+.portal .mono,
+.portal [class*='pt-num'],
+.portal [class*='pt-stat'] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ── header ──────────────────────────────────── */
+
+.pt-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--line);
+  background: rgba(10, 10, 11, 0.86);
+  backdrop-filter: blur(8px);
+}
+
+.pt-head__in {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 60px;
+  padding-inline: var(--gutter);
+  max-width: 1560px;
+  margin-inline: auto;
+}
+
+.pt-head__mark {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  color: var(--text);
+}
+
+.pt-head__mark b {
+  color: var(--accent);
+  font-weight: inherit;
+}
+
+.pt-head__sep {
+  width: 1px;
+  height: 16px;
+  background: var(--line-strong);
+  flex: none;
+}
+
+.pt-head__tenant {
+  font-size: 14px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pt-head__right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.pt-head__link {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.pt-head__link:hover {
+  color: var(--accent);
+  translate: 1px 1px;
+}
+
+/* ── status band — the one question the portal answers ──── */
+
+.pt-status {
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+}
+
+.pt-status__in {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 18px var(--gutter);
+  max-width: 1560px;
+  margin-inline: auto;
+}
+
+/* a glyph character rather than a tinted box. square / triangle / circle read
+   as three different states with the colour stripped out entirely, which is
+   the point — a status a screenshot cannot convey is not a status. */
+.pt-status__glyph {
+  font-size: 11px;
+  line-height: 1;
+  flex: none;
+}
+
+.pt-status--ok .pt-status__glyph {
+  color: var(--ok);
+}
+.pt-status--degraded .pt-status__glyph {
+  color: var(--warn);
+}
+.pt-status--failed .pt-status__glyph {
+  color: var(--fail);
+}
+
+.pt-status__label {
+  font-size: clamp(15px, 1.6vw, 18px);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.pt-status--ok .pt-status__label {
+  color: var(--ok);
+}
+.pt-status--degraded .pt-status__label {
+  color: var(--warn);
+}
+.pt-status--failed .pt-status__label {
+  color: var(--fail);
+}
+
+.pt-status__detail {
+  flex-basis: 100%;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 72ch;
+}
+
+.pt-status__check {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* ── body grid ───────────────────────────────── */
+
+.pt-body {
+  flex: 1;
+  width: 100%;
+  max-width: 1560px;
+  margin-inline: auto;
+  padding: clamp(20px, 3vw, 36px) var(--gutter) 64px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(20px, 2.4vw, 32px);
+}
+
+/* the feed becomes a permanent right rail on a wide screen. it is the most
+   convincing thing in the product — it should not be below the fold when
+   there is room for it. */
+@media (min-width: 1080px) {
+  .pt-body {
+    grid-template-columns: minmax(0, 1fr) 380px;
+    align-items: start;
+  }
+}
+
+.pt-col {
+  min-width: 0;
+  display: grid;
+  gap: clamp(20px, 2.4vw, 32px);
+}
+
+/* ── panel primitive ─────────────────────────── */
+
+.pt-panel {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: var(--panel-pad);
+}
+
+.pt-panel__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+/* the site's signature eyebrow: orange tick, then a mono label. */
+.pt-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pt-eyebrow::before {
+  content: '';
+  width: 20px;
+  height: 1px;
+  background: var(--accent);
+  flex: none;
+}
+
+.pt-panel__note {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* ── metrics ─────────────────────────────────── */
+
+/* deliberately not four equal cards. the lead count is the number an owner
+   opens this page to see; the rest are supporting evidence and are sized
+   like it. */
+.pt-metrics {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 640px) {
+  .pt-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .pt-metric--lead {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1080px) {
+  .pt-metrics {
+    grid-template-columns: 1.4fr repeat(3, minmax(0, 1fr));
+  }
+  .pt-metric--lead {
+    grid-column: auto;
+    grid-row: 1;
+  }
+}
+
+.pt-metric {
+  background: var(--surface);
+  padding: var(--panel-pad);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pt-metric__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+
+.pt-metric__val {
+  font-family: var(--font-mono);
+  font-size: clamp(2rem, 4vw, 2.9rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--text);
+}
+
+.pt-metric--lead .pt-metric__val {
+  font-size: clamp(3rem, 7vw, 5.2rem);
+  color: var(--accent);
+}
+
+.pt-metric__val--none {
+  color: var(--faint);
+}
+
+.pt-metric__sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+  margin-top: auto;
+}
+
+/* ── charts (hand-rolled svg, no chart library) ──────────
+   a charting dependency brings its own visual language — rounded bars, drop
+   shadows, tooltip chrome — and fighting it back to this look costs more
+   than drawing two charts. these are ~40 lines of svg each. */
+
+.pt-chart {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.pt-chart__grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.pt-chart__bar {
+  fill: var(--accent-dim);
+  transition: fill 120ms var(--ease-out);
+}
+
+.pt-chart__bar:hover {
+  fill: var(--accent);
+}
+
+.pt-chart__bar--empty {
+  fill: rgba(237, 237, 239, 0.05);
+}
+
+.pt-chart__axis {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  fill: var(--faint);
+}
+
+.pt-chart__val {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--muted);
+}
+
+.pt-chart__legend {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* ── event feed ──────────────────────────────── */
+
+.pt-feed {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  max-height: min(720px, 78vh);
+}
+
+.pt-feed__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: var(--panel-pad);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+/* a live-ness pulse. one of only two animations in the portal, and it earns
+   its place: it is the proof the pipeline is running right now. */
+.pt-feed__live {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+
+.pt-feed__live i {
+  width: 6px;
+  height: 6px;
+  background: var(--ok);
+  animation: pt-pulse 2.4s var(--ease-inout) infinite;
+}
+
+.pt-feed__live--off i {
+  background: var(--faint);
+  animation: none;
+}
+
+@keyframes pt-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.pt-feed__scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.pt-thread {
+  border-bottom: 1px solid var(--line);
+  padding: 14px var(--panel-pad);
+}
+
+.pt-thread:last-child {
+  border-bottom: none;
+}
+
+/* the second earned animation: a genuinely new row arriving. only rows that
+   arrived over the socket after first paint get this — replaying it on every
+   render would make a static page look like it was faking activity. */
+.pt-thread--fresh {
+  animation: pt-in 220ms var(--ease-out) both;
+}
+
+@keyframes pt-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pt-thread__top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.pt-thread__time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+  flex: none;
+}
+
+.pt-thread__src {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pt-thread__ms {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ok);
+  flex: none;
+}
+
+.pt-thread__ms--fail {
+  color: var(--fail);
+}
+
+/* the step chain: lead -> text -> routed, drawn as connected ticks so the
+   sequence reads as a pipeline rather than four unrelated log lines. */
+.pt-steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-top: 9px;
+}
+
+.pt-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+
+.pt-step__dot {
+  width: 5px;
+  height: 5px;
+  background: var(--muted);
+  flex: none;
+}
+
+.pt-step--fail .pt-step__dot {
+  background: var(--fail);
+}
+.pt-step--fail {
+  color: var(--fail);
+}
+
+.pt-step__line {
+  width: 14px;
+  height: 1px;
+  background: var(--line-strong);
+  margin-inline: 7px;
+  flex: none;
+}
+
+.pt-feed__empty {
+  padding: 40px var(--panel-pad);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--faint);
+}
+
+/* ── early-data state ────────────────────────── */
+
+.pt-early {
+  border: 1px dashed var(--line-strong);
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 14px, rgba(237, 237, 239, 0.018) 14px 15px),
+    var(--bg-2);
+  padding: clamp(28px, 5vw, 56px);
+  text-align: center;
+}
+
+.pt-early__title {
+  font-size: clamp(1.1rem, 2vw, 1.4rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+}
+
+.pt-early__body {
+  font-size: 14px;
+  color: var(--muted);
+  max-width: 52ch;
+  margin-inline: auto;
+}
+
+/* ── auth surfaces ───────────────────────────── */
+
+.pt-auth {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--gutter);
+  background: var(--bg);
+}
+
+.pt-auth__card {
+  width: 100%;
+  max-width: 400px;
+}
+
+.pt-auth__mark {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  margin-bottom: 36px;
+}
+
+.pt-auth__mark b {
+  color: var(--accent);
+  font-weight: inherit;
+}
+
+.pt-auth__title {
+  font-size: clamp(1.5rem, 3.4vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  margin-bottom: 8px;
+}
+
+.pt-auth__body {
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 26px;
+}
+
+.pt-field {
+  display: block;
+  margin-bottom: 18px;
+}
+
+.pt-field__label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+  margin-bottom: 8px;
+}
+
+.pt-field__input {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.pt-field__input::placeholder {
+  color: var(--faint);
+}
+
+.pt-field__input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.pt-btn {
+  width: 100%;
+  padding: 13px 18px;
+  background: var(--accent);
+  color: #0a0a0b;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  border: 1px solid var(--accent);
+}
+
+.pt-btn:hover:not(:disabled) {
+  background: var(--accent-hot);
+  border-color: var(--accent-hot);
+  translate: 1px 1px;
+}
+
+.pt-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pt-btn--ghost {
+  background: none;
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.pt-btn--ghost:hover:not(:disabled) {
+  background: none;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pt-auth__err {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fail);
+  margin-bottom: 14px;
+}
+
+.pt-auth__fine {
+  font-size: 12px;
+  color: var(--faint);
+  margin-top: 26px;
+  line-height: 1.6;
+}
+
+.pt-auth__fine a {
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.pt-auth__fine a:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── demo banner ─────────────────────────────── */
+
+.pt-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px var(--gutter);
+  border-bottom: 1px solid var(--line);
+  background: var(--accent-dim);
+}
+
+.pt-banner__tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 2px 7px;
+  flex: none;
+}
+
+.pt-banner p {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}

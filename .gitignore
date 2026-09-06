@@ -2,3 +2,8 @@ node_modules
 dist
 .DS_Store
 *.local
+.env
+.env.*
+
+# regenerated on every build so the demo cannot silently age out
+src/portal/demo/demo-data.json

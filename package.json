@@ -4,20 +4,27 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/build-demo-data.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/build-demo-data.mjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "postbuild": "node scripts/spa-fallback.mjs",
+    "preview": "vite preview",
+    "demo-data": "node scripts/build-demo-data.mjs"
   },
   "dependencies": {
     "@fontsource-variable/space-grotesk": "^5.1.0",
     "@fontsource/eb-garamond": "^5.1.0",
     "@fontsource/ibm-plex-mono": "^5.1.0",
+    "@supabase/supabase-js": "^2.115.0",
     "framer-motion": "^11.15.0",
     "gsap": "^3.12.5",
     "lenis": "^1.1.18",
+    "luxon": "^3.7.2",
     "matter-js": "^0.20.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
