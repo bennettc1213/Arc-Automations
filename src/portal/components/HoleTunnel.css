@@ -1,0 +1,102 @@
+/* the entrance overlay. sits above everything on the portal home until it has
+   flown through itself, then removes its own canvas and stops taking clicks. */
+
+.tunnel {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+  overscroll-behavior: contain;
+  touch-action: none;
+  cursor: none;
+}
+
+.tunnel canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* the moment it commits to flying through, it stops taking input — the portal
+   is already fading up underneath and must be clickable through the fade. */
+.tunnel[data-phase='locked'] {
+  pointer-events: none;
+}
+
+.tunnel__cue {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(32px, 7vh, 68px);
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-mono);
+  pointer-events: none;
+  transition: opacity 0.45s var(--ease-out), translate 0.45s var(--ease-out);
+  /* the instruction sits on top of the busiest part of the animation, so it
+     carries its own ground. without it the one piece of text that tells you
+     how to get through is the least readable thing on the screen. */
+  padding: 16px 26px 14px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: rgba(10, 10, 11, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.tunnel[data-phase='locked'] .tunnel__cue {
+  opacity: 0;
+  translate: -50% 14px;
+}
+
+.tunnel__label {
+  font-size: 12.5px;
+  letter-spacing: 0.22em;
+  text-transform: lowercase;
+  color: var(--text);
+  animation: tunnel-breathe 2.6s ease-in-out infinite;
+}
+
+.tunnel__track {
+  position: relative;
+  display: block;
+  width: clamp(140px, 22vw, 240px);
+  height: 2px;
+  background: var(--line-strong);
+  overflow: hidden;
+}
+
+.tunnel__bar {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
+  /* the lerp already smooths the scene; this only smooths the readout. */
+  transition: transform 0.22s var(--ease-out);
+}
+
+.tunnel__hint {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+
+@keyframes tunnel-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tunnel__label {
+    animation: none;
+    opacity: 1;
+  }
+}
