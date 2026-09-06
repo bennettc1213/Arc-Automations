@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { scrollToId } from '../lib/SmoothScroll';
 import { openPilot } from '../lib/pilot';
 import { site } from '../data/site';
@@ -72,10 +73,19 @@ export default function Nav() {
           ))}
         </nav>
 
-        <button className="nav__cta" onClick={openPilot}>
-          <span className="nav__dot" aria-hidden="true" />
-          start a pilot
-        </button>
+        <div className="nav__actions">
+          {/* points at /portal rather than /login so it resolves correctly either way:
+              a client with a live session lands on their dashboard, and everyone else
+              is bounced to sign-in by the route itself. */}
+          <Link className="nav__portal" to="/portal">
+            portal
+          </Link>
+
+          <button className="nav__cta" onClick={openPilot}>
+            <span className="nav__dot" aria-hidden="true" />
+            start a pilot
+          </button>
+        </div>
       </div>
       <span className="nav__progress" ref={barRef} aria-hidden="true" />
     </header>

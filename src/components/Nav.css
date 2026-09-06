@@ -56,6 +56,28 @@
   color: var(--text);
 }
 
+.nav__actions {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2vw, 22px);
+}
+
+/* deliberately not a second pill. "start a pilot" is the conversion the site is
+   built around, and two equally-weighted buttons would flatten it — the portal is
+   for people who are already clients and know to look for it. */
+.nav__portal {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+  transition: color 0.25s;
+}
+
+.nav__portal:hover {
+  color: var(--text);
+}
+
 .nav__cta {
   display: inline-flex;
   align-items: center;
