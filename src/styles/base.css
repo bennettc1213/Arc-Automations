@@ -297,7 +297,7 @@ main,
 
 /* hover = 1px down-right, like a physical button press. No tween. */
 .nav__links a:hover,
-.nav__cta:hover,
+.glowbtn:hover,
 .nav__wordmark:hover,
 .hero__btn:hover,
 .footer__cta:hover,

@@ -1,0 +1,147 @@
+/* ────────────────────────────────────────────────
+   GlowButton — pill with a rotating conic-gradient rim
+   ──────────────────────────────────────────────── */
+
+.glowbtn {
+  position: relative;
+  display: inline-flex;
+  padding: 1.5px; /* ring thickness: the face inset is what you actually see */
+  border-radius: 999px;
+  overflow: hidden;
+  isolation: isolate;
+  border: 0;
+  background: var(--line-strong); /* static rim if the ring never paints */
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.glowbtn__ring {
+  position: absolute;
+  /* oversized so the cone's centre stays outside the pill — otherwise the
+     hub of the gradient shows through the rim as a dead spot. */
+  inset: -250%;
+  animation: glowbtn-spin 4s linear infinite;
+}
+
+.glowbtn__face {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 999px;
+  padding: 8px 17px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 0.28s var(--ease-out), color 0.28s var(--ease-out);
+}
+
+@keyframes glowbtn-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* ── ghost: dark face, accent rim ─────────────────────────── */
+
+.glowbtn--ghost .glowbtn__ring {
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 210deg,
+    var(--accent) 300deg,
+    var(--accent-lite) 330deg,
+    transparent 360deg
+  );
+}
+
+.glowbtn--ghost .glowbtn__face {
+  background-color: var(--bg);
+  color: var(--muted);
+}
+
+.glowbtn--ghost:hover .glowbtn__face,
+.glowbtn--ghost:focus-visible .glowbtn__face {
+  background-color: var(--surface);
+  color: var(--text);
+}
+
+/* ── primary: accent-tinted face, hotter rim ──────────────── */
+
+.glowbtn--primary .glowbtn__ring {
+  /* wider, brighter sweep — it has to read against a lit face, not a dark one */
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 170deg,
+    var(--accent-hot) 260deg,
+    var(--accent-lite) 300deg,
+    #fff 330deg,
+    transparent 360deg
+  );
+  animation-duration: 3s;
+}
+
+.glowbtn--primary .glowbtn__face {
+  /* translucent accent composited over an opaque base: tinted, but still
+     solid enough to hide the ring passing behind it. */
+  background-color: var(--bg);
+  background-image: linear-gradient(var(--accent-dim), var(--accent-dim));
+  color: var(--text);
+}
+
+.glowbtn--primary:hover .glowbtn__face,
+.glowbtn--primary:focus-visible .glowbtn__face {
+  background-color: var(--accent);
+  background-image: none;
+  color: #0a0a0b;
+}
+
+/* ── shared bits ──────────────────────────────────────────── */
+
+.glowbtn__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  animation: glowbtn-pulse 2.4s ease-in-out infinite;
+  flex: none;
+}
+
+.glowbtn--primary:hover .glowbtn__dot {
+  background: #0a0a0b;
+  box-shadow: none;
+}
+
+@keyframes glowbtn-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* the pill already draws its own focus rim, so the global ring would be a
+   second box outside a rounded shape. keep it for the rim, drop the outline. */
+.glowbtn:focus-visible {
+  outline: none;
+  background: var(--accent);
+}
+
+@media (max-width: 768px) {
+  .glowbtn__face {
+    padding: 8px 13px;
+  }
+}
+
+/* a permanently rotating rim is exactly the kind of motion this opts out of.
+   the gradient stays put at its start angle, which still reads as a lit edge. */
+@media (prefers-reduced-motion: reduce) {
+  .glowbtn__ring,
+  .glowbtn__dot {
+    animation: none;
+  }
+}

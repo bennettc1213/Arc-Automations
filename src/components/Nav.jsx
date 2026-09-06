@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { scrollToId } from '../lib/SmoothScroll';
 import { openPilot } from '../lib/pilot';
 import { site } from '../data/site';
 import PixelGuy from './PixelGuy';
+import GlowButton from './GlowButton';
 import './Nav.css';
 
 const LINKS = [
@@ -77,14 +77,14 @@ export default function Nav() {
           {/* points at /portal rather than /login so it resolves correctly either way:
               a client with a live session lands on their dashboard, and everyone else
               is bounced to sign-in by the route itself. */}
-          <Link className="nav__portal" to="/portal">
+          <GlowButton to="/portal" variant="ghost">
             portal
-          </Link>
+          </GlowButton>
 
-          <button className="nav__cta" onClick={openPilot}>
-            <span className="nav__dot" aria-hidden="true" />
+          <GlowButton variant="primary" onClick={openPilot}>
+            <span className="glowbtn__dot" aria-hidden="true" />
             start a pilot
-          </button>
+          </GlowButton>
         </div>
       </div>
       <span className="nav__progress" ref={barRef} aria-hidden="true" />
