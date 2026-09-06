@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import ArcMark from '../../components/ArcMark';
 
 /**
  * the frame every portal surface renders inside.
@@ -12,8 +13,11 @@ export default function PortalShell({ tenantName, onSignOut, children }) {
     <div className="portal">
       <header className="pt-head">
         <div className="pt-head__in">
-          <Link to="/" className="pt-head__mark">
-            arc<b>.</b>portal
+          <Link to="/portal" className="pt-head__mark">
+            <ArcMark size={19} title="arc automations" />
+            <span>
+              arc<b>.</b>portal
+            </span>
           </Link>
 
           {tenantName && (

@@ -48,10 +48,24 @@
 }
 
 .ph__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-family: var(--font-mono);
   font-size: 13px;
   letter-spacing: 0.18em;
   color: var(--text);
+}
+
+.ph__mark:hover {
+  translate: 1px 1px;
+}
+
+/* the mark at hero scale. it sits above the eyebrow as the first thing in the
+   column, so the page opens on the brand rather than on a label. */
+.ph__crest {
+  display: block;
+  margin-bottom: 26px;
 }
 
 .ph__mark b {
@@ -261,6 +275,9 @@
 }
 
 .ph__footmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   letter-spacing: 0.18em;
 }
 

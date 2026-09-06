@@ -68,10 +68,17 @@
 }
 
 .pt-head__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-family: var(--font-mono);
   font-size: 13px;
   letter-spacing: 0.18em;
   color: var(--text);
+}
+
+.pt-head__mark:hover {
+  translate: 1px 1px;
 }
 
 .pt-head__mark b {
@@ -584,6 +591,9 @@
 }
 
 .pt-auth__mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-family: var(--font-mono);
   font-size: 13px;
   letter-spacing: 0.18em;

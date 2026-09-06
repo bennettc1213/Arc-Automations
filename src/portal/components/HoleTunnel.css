@@ -78,10 +78,24 @@
   transition: transform 0.22s var(--ease-out);
 }
 
-.tunnel__hint {
+/* the cue block ignores the pointer so the click-anywhere-to-skip still works
+   through it; the button itself has to opt back in. */
+.tunnel__skip {
+  pointer-events: auto;
+  font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.16em;
   color: var(--faint);
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.tunnel__skip:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  translate: 1px 1px;
 }
 
 @keyframes tunnel-breathe {

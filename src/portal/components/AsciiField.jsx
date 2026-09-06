@@ -209,10 +209,10 @@ export default function AsciiField() {
 
       for (let b = 0; b < buckets.length; b++) buckets[b].length = 0;
 
-      /* pointer parallax, in cells. the wordmark sits deepest and moves least. */
-      const parx = tx < -900 ? 0 : (px - cols / 2) * 0.06;
-      const pary = ty < -900 ? 0 : (py - rows / 2) * 0.06;
-
+      /* no pointer parallax. shifting the whole grid by a fraction of a cell
+         made every character on screen jitter between two positions as the
+         mouse moved — the field looked like it was shaking. only the wordmark
+         responds to the pointer now, and only within the cursor's radius. */
       const radius = Math.max(9, cols * 0.09);
 
       for (let y = 0; y < rows; y++) {
@@ -226,18 +226,20 @@ export default function AsciiField() {
           /* ── the wordmark ──────────────────────────────
              sampled through an outward displacement, so the letters bulge away
              from the cursor like a membrane being pushed. */
-          const spread = infl * 4.2;
+          /* the whole of the pointer interaction now lives in this one branch,
+             so it carries what the void used to add. */
+          const spread = infl * 5.4;
           const nx = dist > 0.001 ? dx / dist : 0;
           const ny = dist > 0.001 ? dy / dist : 0;
-          const mx = Math.round(x - parx + nx * spread);
-          const my = Math.round(y - pary + ny * spread);
+          const mx = Math.round(x + nx * spread);
+          const my = Math.round(y + ny * spread);
 
           let cover = 0;
           if (mx >= 0 && mx < cols && my >= 0 && my < rows) cover = mask[my * cols + mx];
 
           if (cover > 0.06) {
             const shimmer = 0.12 * Math.sin(time * 0.0013 + x * 0.14 + y * 0.22);
-            const lit = Math.min(1, cover + shimmer + infl * 0.55);
+            const lit = Math.min(1, cover + shimmer + infl * 0.72);
             const ci = VOID_N + Math.min(INK.length - 1, Math.floor(lit * INK.length));
             const ri = Math.min(RAMP.length - 1, 2 + Math.floor(lit * (RAMP.length - 3)));
             buckets[ci].push(x * cellW, y * cellH + cellH * 0.5, ri);
@@ -245,26 +247,17 @@ export default function AsciiField() {
           }
 
           /* ── the space it stands in ────────────────────
-             three parallax layers of sparse characters. the nearest layer moves
-             most and burns brightest, which is the whole of the 3D read. */
+             three depth layers of sparse characters, each breathing at its own
+             rate. every cell here is anchored: the field is the room, and a
+             room does not move because you moved your hand in it. */
           const layer = (hash(x * 7 + 3, y * 13 + 5) * 3) | 0;
           const depth = (layer + 1) / 3;
-          const sx = Math.round(x - parx * depth * 5);
-          const sy = Math.round(y - pary * depth * 5);
-          const seed = hash(sx, sy);
+          const seed = hash(x, y);
           if (seed > 0.055 + depth * 0.045) continue;
 
           const twinkle = 0.5 + 0.5 * Math.sin(time * 0.0007 + seed * 90);
-          const level = depth * 0.55 + twinkle * 0.25 + infl * 0.9;
+          const level = depth * 0.55 + twinkle * 0.25;
           if (level < 0.18) continue;
-
-          if (infl > 0.35) {
-            /* close to the cursor the void warms up rather than just brightening,
-               so the pointer feels like it is carrying the accent with it. */
-            const ci = VOID_N + Math.min(INK.length - 1, Math.floor(infl * 4));
-            buckets[ci].push(x * cellW, y * cellH + cellH * 0.5, 1 + ((seed * 5) | 0));
-            continue;
-          }
 
           const ci = Math.min(VOID_N - 1, Math.floor(level * VOID_N));
           buckets[ci].push(x * cellW, y * cellH + cellH * 0.5, 1 + ((seed * 40) % 4 | 0));

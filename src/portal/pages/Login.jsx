@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import ArcMark from '../../components/ArcMark';
 import { getSupabase, isConfigured } from '../lib/supabase';
 
 /**
@@ -46,7 +47,10 @@ export default function Login() {
       <div className="pt-auth">
         <div className="pt-auth__card">
           <p className="pt-auth__mark">
-            arc<b>.</b>portal
+            <ArcMark size={20} title="arc automations" />
+            <span>
+              arc<b>.</b>portal
+            </span>
           </p>
           <h1 className="pt-auth__title">check your email</h1>
           <p className="pt-auth__body">
@@ -65,7 +69,10 @@ export default function Login() {
     <div className="pt-auth">
       <form className="pt-auth__card" onSubmit={handleSubmit}>
         <p className="pt-auth__mark">
-          arc<b>.</b>portal
+          <ArcMark size={20} title="arc automations" />
+          <span>
+            arc<b>.</b>portal
+          </span>
         </p>
         <h1 className="pt-auth__title">sign in</h1>
         <p className="pt-auth__body">we email you a link. no password to remember.</p>

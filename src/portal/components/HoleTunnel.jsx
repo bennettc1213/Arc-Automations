@@ -39,11 +39,33 @@ const MIN_SCALE = 1.5;
 const BREACH_SCALE = 2.7;
 const MAX_SCALE = 8;
 
-/* deltaY units needed to cross the gap — roughly seven notches of a mouse wheel. */
-const SPEED = 0.0016;
+/* how long the pull takes on its own, with no input at all */
+const PULL_MS = 3400;
+
+/* a wheel or a drag hurries it along; it is never required to finish. one notch
+   is worth about a fifth of a second of the pull. */
+const URGE = 0.55;
 
 /* how long the canvas takes to dissolve once it has committed to flying through */
 const FADE_MS = 620;
+
+/**
+ * the pull curve.
+ *
+ * `grip` is gravity: slow to start, then runaway. `drag` is the thing holding
+ * on — it catches twice on the way in and loses its hold as the fall takes
+ * over. subtracting one from the other is what makes the descent feel resisted
+ * rather than merely animated, and a plain ease-in does not read that way.
+ */
+function pull(t) {
+  const grip = t ** 2.1;
+  /* the resistance is a fraction OF the fall, never a flat subtraction from
+     it. as a constant it exceeded the curve over the first third and pinned
+     progress at zero for the best part of a second — which reads as a stall,
+     not as tension. proportional, it can only ever slow the descent. */
+  const drag = Math.sin(t * Math.PI * 2.6) * 0.32 * grip * (1 - t) ** 0.5;
+  return Math.min(1, Math.max(0, grip - drag));
+}
 
 const ROWS = 36;
 const COLUMNS = 30;
@@ -113,6 +135,10 @@ export default function HoleTunnel({ onBreach, onDone }) {
   const doneRef = useRef(onDone);
   breachRef.current = onBreach;
   doneRef.current = onDone;
+  /* lets the skip button reach into the effect's closure without the effect
+     having to be rebuilt to hand it out. */
+  const skipRef = useRef(null);
+  const breachNow = () => skipRef.current?.();
 
   useEffect(() => {
     const host = hostRef.current;
@@ -192,10 +218,13 @@ export default function HoleTunnel({ onBreach, onDone }) {
     let target = MIN_SCALE;
     let approach = 0.08;
     let kick = 0;
+    /* milliseconds of the pull already spent. advances with the clock on its
+       own; a wheel or a drag only adds to it. */
+    let elapsed = 0;
+    let roll = 0;
 
-    const setProgress = () => {
-      const p = Math.min(1, Math.max(0, (target - MIN_SCALE) / (BREACH_SCALE - MIN_SCALE)));
-      if (bar) bar.style.transform = `scaleX(${p})`;
+    const setProgress = (p) => {
+      if (bar) bar.style.transform = `scaleX(${Math.min(1, Math.max(0, p))})`;
     };
 
     const breach = () => {
@@ -203,7 +232,7 @@ export default function HoleTunnel({ onBreach, onDone }) {
       locked = true;
       target = BREACH_SCALE;
       approach = 0.14;
-      setProgress();
+      setProgress(1);
       setPhase('locked');
       /* the portal starts fading up now, underneath, so the canvas is never
          hiding a blank page while it dies. */
@@ -216,18 +245,18 @@ export default function HoleTunnel({ onBreach, onDone }) {
       }, 420);
     };
 
-    const push = (delta) => {
-      if (disposed) return;
+    skipRef.current = breach;
+
+    /* input is impatience, not propulsion — it buys time off the pull. */
+    const urge = (delta) => {
+      if (disposed || locked) return;
       kick = Math.min(1, Math.max(kick, Math.abs(delta) * 0.0016));
-      if (locked) return;
-      target = Math.min(MAX_SCALE, Math.max(MIN_SCALE, target + delta * SPEED));
-      setProgress();
-      if (target >= BREACH_SCALE) breach();
+      if (delta > 0) elapsed += delta * URGE;
     };
 
     const onWheel = (e) => {
       e.preventDefault();
-      push(e.deltaY || 0);
+      urge(e.deltaY || 0);
     };
 
     let touchY = null;
@@ -238,22 +267,22 @@ export default function HoleTunnel({ onBreach, onDone }) {
       if (touchY == null) return;
       e.preventDefault();
       const y = e.touches[0].clientY;
-      push((touchY - y) * 2.2);
+      urge((touchY - y) * 2.2);
       touchY = y;
     };
     const onTouchEnd = () => {
       touchY = null;
     };
 
-    /* a scroll-gated door that only answers to a wheel is a door with no handle
-       for anyone on a keyboard. */
+    /* the entrance finishes by itself, so every key here is a way out of it
+       rather than a way through it. */
     const onKey = (e) => {
       if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
         e.preventDefault();
         breach();
       } else if (e.key === 'ArrowDown' || e.key === 'PageDown') {
         e.preventDefault();
-        push(340);
+        urge(340);
       }
     };
 
@@ -308,6 +337,26 @@ export default function HoleTunnel({ onBreach, onDone }) {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       const time = (now - start) / 1000;
+
+      /* the pull. nothing is required of the visitor: the clock alone carries
+         it all the way to the breach. */
+      if (!locked) {
+        elapsed += dt * 1000;
+        const t = Math.min(1, elapsed / PULL_MS);
+        const p = pull(t);
+        target = MIN_SCALE + p * (BREACH_SCALE - MIN_SCALE);
+        setProgress(p);
+
+        /* a slow roll and a widening lens, which is most of why it reads as
+           cinema rather than as a scaling transform. */
+        roll = p * 0.22;
+        camera.up.set(Math.sin(roll), Math.cos(roll), 0);
+        camera.lookAt(0, 0, 0);
+        camera.fov = 60 + p * 9;
+        camera.updateProjectionMatrix();
+
+        if (t >= 1) breach();
+      }
 
       /* the same easing curve at any refresh rate: 0.08 per frame at 60fps. */
       const ease = 1 - (1 - approach) ** (dt * 60);
@@ -368,7 +417,7 @@ export default function HoleTunnel({ onBreach, onDone }) {
     };
 
     raf = requestAnimationFrame(frame);
-    setProgress();
+    setProgress(0);
 
     return teardown;
   }, []);
@@ -376,11 +425,15 @@ export default function HoleTunnel({ onBreach, onDone }) {
   return (
     <div className="tunnel" ref={hostRef} data-phase={phase}>
       <div className="tunnel__cue">
-        <span className="tunnel__label">scroll to enter</span>
+        <span className="tunnel__label">entering the portal</span>
         <span className="tunnel__track">
           <span className="tunnel__bar" ref={barRef} />
         </span>
-        <span className="tunnel__hint">wheel, drag, or press enter</span>
+        {/* it plays on every arrival, so the way past it has to be stated
+            rather than discovered. */}
+        <button className="tunnel__skip" type="button" onClick={breachNow}>
+          skip
+        </button>
       </div>
     </div>
   );

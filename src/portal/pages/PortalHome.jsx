@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import GlowButton from '../../components/GlowButton';
+import ArcMark from '../../components/ArcMark';
 import AsciiField from '../components/AsciiField';
 import { getSupabase, isConfigured } from '../lib/supabase';
 import { site } from '../../data/site';
@@ -20,8 +21,6 @@ import './PortalHome.css';
  * to be the reason a client cannot reach their dashboard.
  */
 
-const ENTERED_KEY = 'arc.portal.entered';
-
 const PANELS = [
   {
     tag: '01',
@@ -40,17 +39,12 @@ const PANELS = [
   },
 ];
 
-/* the tunnel is an arrival, and you only arrive once. a client checking numbers
-   three times a day should not have to fly through it three times a day. */
+/* the entrance plays on every arrival at /portal. it is short, it skips on a
+   click or a keypress, and it is the transition between the two halves of the
+   product — suppressing it after the first visit made the door only exist once. */
 function shouldSkipEntrance() {
   if (typeof window === 'undefined') return true;
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return true;
-  try {
-    return window.sessionStorage.getItem(ENTERED_KEY) === '1';
-  } catch {
-    /* private mode can throw on access alone — that is not a reason to block. */
-    return false;
-  }
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 export default function PortalHome() {
@@ -63,14 +57,7 @@ export default function PortalHome() {
   const [Tunnel, setTunnel] = useState(null);
   const [signedIn, setSignedIn] = useState(false);
 
-  const enter = useCallback(() => {
-    setEntered(true);
-    try {
-      window.sessionStorage.setItem(ENTERED_KEY, '1');
-    } catch {
-      /* nothing to do — the entrance simply plays again next route change. */
-    }
-  }, []);
+  const enter = useCallback(() => setEntered(true), []);
 
   const finish = useCallback(() => setFlown(true), []);
 
@@ -136,7 +123,10 @@ export default function PortalHome() {
       <div className="ph__stage" data-entered={entered ? 'true' : 'false'}>
         <header className="ph__bar">
           <Link className="ph__mark" to="/portal">
-            arc<b>.</b>portal
+            <ArcMark size={21} title="arc automations" />
+            <span>
+              arc<b>.</b>portal
+            </span>
           </Link>
           <nav className="ph__barnav" aria-label="portal">
             <Link to="/">back to the site</Link>
@@ -148,6 +138,7 @@ export default function PortalHome() {
           <AsciiField />
 
           <div className="ph__heroin">
+            <ArcMark className="ph__crest" size={58} />
             <p className="ph__eyebrow">client portal</p>
             <h1 className="ph__title">
               your automations,
@@ -200,7 +191,10 @@ export default function PortalHome() {
             address not recognised? it has not been linked yet —{' '}
             <a href={`mailto:${site.email}`}>get in touch</a> and it will be.
           </p>
-          <p className="ph__footmark">{site.brand}</p>
+          <p className="ph__footmark">
+            <ArcMark size={16} />
+            {site.brand}
+          </p>
         </footer>
       </div>
     </div>
