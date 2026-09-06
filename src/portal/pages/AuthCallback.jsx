@@ -27,7 +27,7 @@ export default function AuthCallback() {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session && !done) {
         done = true;
-        navigate('/portal', { replace: true });
+        navigate('/portal/dashboard', { replace: true });
       }
     });
 
@@ -36,7 +36,7 @@ export default function AuthCallback() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session && !done) {
         done = true;
-        navigate('/portal', { replace: true });
+        navigate('/portal/dashboard', { replace: true });
       } else if (!session) {
         setError('that link is invalid or has expired.');
       }

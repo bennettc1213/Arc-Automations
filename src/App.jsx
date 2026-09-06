@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import CursorSquare from './components/CursorSquare';
 import FocusRing from './components/FocusRing';
 import Site from './Site';
+import PortalHome from './portal/pages/PortalHome';
 import Portal from './portal/pages/Portal';
 import Login from './portal/pages/Login';
 import Demo from './portal/pages/Demo';
@@ -24,7 +25,12 @@ export default function App() {
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/" element={<Site />} />
-        <Route path="/portal" element={<Portal />} />
+        {/* /portal is the portal's front door, open to anyone. the dashboard it
+            guards is a level down, and that route is the one that demands a
+            session. splitting them is what lets the portal button on the
+            marketing site lead somewhere that explains itself. */}
+        <Route path="/portal" element={<PortalHome />} />
+        <Route path="/portal/dashboard" element={<Portal />} />
         <Route path="/login" element={<Login />} />
         <Route path="/demo" element={<Demo />} />
         <Route path="/auth/callback" element={<AuthCallback />} />

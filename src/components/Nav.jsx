@@ -74,9 +74,9 @@ export default function Nav() {
         </nav>
 
         <div className="nav__actions">
-          {/* points at /portal rather than /login so it resolves correctly either way:
-              a client with a live session lands on their dashboard, and everyone else
-              is bounced to sign-in by the route itself. */}
+          {/* the portal's front door, not the sign-in form. it explains what is
+              behind the login before asking anyone to prove they belong there,
+              and routes on to the dashboard or the form from its own page. */}
           <GlowButton to="/portal" variant="ghost">
             portal
           </GlowButton>

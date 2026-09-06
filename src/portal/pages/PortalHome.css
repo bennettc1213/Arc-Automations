@@ -1,0 +1,283 @@
+/* ────────────────────────────────────────────────
+   PortalHome.css — the portal's front door
+
+   Inherits every token from base.css. Same rule as portal.css: this is the
+   same product as the marketing site, so it borrows nothing new.
+   ──────────────────────────────────────────────── */
+
+.ph {
+  min-height: 100dvh;
+  background: var(--bg);
+}
+
+/* what the visitor looks at while the entrance chunk is still downloading.
+   black, so it is indistinguishable from the tunnel's own first frame. */
+.ph__veil {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+}
+
+/* the page is built and laid out underneath the tunnel the whole time, then
+   revealed — so the reveal lands on finished type, never on reflowing text. */
+.ph__stage {
+  opacity: 0;
+  transition: opacity 0.7s var(--ease-out), scale 0.9s var(--ease-out);
+  scale: 1.04;
+  transform-origin: 50% 40%;
+}
+
+.ph__stage[data-entered='true'] {
+  opacity: 1;
+  scale: 1;
+}
+
+/* ── bar ─────────────────────────────────────── */
+
+.ph__bar {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 60px;
+  padding-inline: var(--gutter);
+  max-width: 1560px;
+  margin-inline: auto;
+}
+
+.ph__mark {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  color: var(--text);
+}
+
+.ph__mark b {
+  color: var(--accent);
+  font-weight: inherit;
+}
+
+.ph__barnav {
+  margin-left: auto;
+  display: flex;
+  gap: 22px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.ph__barnav a {
+  color: var(--faint);
+  transition: color 0.25s;
+}
+
+.ph__barnav a:hover {
+  color: var(--accent);
+  translate: 1px 1px;
+}
+
+/* ── hero ────────────────────────────────────── */
+
+.ph__hero {
+  position: relative;
+  min-height: calc(100dvh - 60px);
+  display: flex;
+  align-items: center;
+  padding: clamp(48px, 9vh, 96px) var(--gutter);
+  overflow: hidden;
+}
+
+/* the character field is scenery; everything legible sits above it.
+   the scrim covers the copy column hard and lets go across the rest, rather
+   than dimming the whole hero — a full-bleed wash buys the paragraph its
+   contrast by taking the wordmark down with it. */
+.ph__hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      100deg,
+      rgba(10, 10, 11, 0.97) 0%,
+      rgba(10, 10, 11, 0.93) 30%,
+      rgba(10, 10, 11, 0.55) 52%,
+      rgba(10, 10, 11, 0.14) 74%,
+      rgba(10, 10, 11, 0.06) 100%
+    ),
+    linear-gradient(to bottom, var(--bg) 0%, transparent 14%, transparent 86%, var(--bg) 100%);
+}
+
+/* under 1100px the copy is centred over the field, so it needs the flat wash
+   the wide layout deliberately avoids. */
+@media (max-width: 1099px) {
+  .ph__hero::after {
+    background:
+      radial-gradient(
+        ellipse 85% 65% at 50% 45%,
+        rgba(10, 10, 11, 0.94) 0%,
+        rgba(10, 10, 11, 0.78) 55%,
+        rgba(10, 10, 11, 0.3) 100%
+      ),
+      linear-gradient(to bottom, var(--bg) 0%, transparent 12%, transparent 88%, var(--bg) 100%);
+  }
+}
+
+.ph__heroin {
+  position: relative;
+  z-index: 2;
+  max-width: 660px;
+  width: 100%;
+  margin-inline: auto;
+}
+
+@media (min-width: 1100px) {
+  .ph__heroin {
+    margin-inline: 0;
+  }
+}
+
+.ph__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.ph__eyebrow::before {
+  content: '';
+  width: 28px;
+  height: 1px;
+  background: var(--accent);
+  flex: none;
+}
+
+.ph__title {
+  font-size: clamp(2.4rem, 6vw, 4.6rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+  margin-bottom: 22px;
+}
+
+.ph__sub {
+  max-width: 52ch;
+  color: var(--muted);
+  font-size: clamp(1rem, 1.4vw, 1.12rem);
+  line-height: 1.6;
+  margin-bottom: 34px;
+}
+
+.ph__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.ph__note {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+
+/* ── panels ──────────────────────────────────── */
+
+.ph__panels {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border-block: 1px solid var(--line);
+}
+
+.ph__panel {
+  background: var(--bg);
+  padding: clamp(26px, 3.4vw, 44px) var(--gutter);
+  transition: background 0.3s var(--ease-out);
+}
+
+.ph__panel:hover {
+  background: var(--bg-2);
+}
+
+.ph__paneltag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+}
+
+.ph__paneltitle {
+  margin: 14px 0 10px;
+  font-size: 1.22rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.ph__panelbody {
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.62;
+  max-width: 42ch;
+}
+
+/* ── foot ────────────────────────────────────── */
+
+.ph__foot {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 30px var(--gutter);
+  max-width: 1560px;
+  margin-inline: auto;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+
+.ph__foot a {
+  color: var(--accent);
+}
+
+.ph__foot a:hover {
+  color: var(--accent-hot);
+}
+
+.ph__footmark {
+  letter-spacing: 0.18em;
+}
+
+@media (max-width: 700px) {
+  .ph__hero {
+    min-height: auto;
+    padding-block: clamp(56px, 12vh, 96px);
+  }
+
+  .ph__actions {
+    gap: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ph__stage {
+    transition: none;
+    scale: 1;
+  }
+}
