@@ -134,7 +134,7 @@ export default function PortalHome() {
      asking to be removed. if it ever fails to — no WebGL, a lost context, a
      frame loop that never gets a frame — it would sit on top of the page it
      just revealed and the portal would look like a black screen. the reveal
-     itself is 1040ms of wall clock, so anything still up at two seconds has
+     itself is 560ms of wall clock, so anything still up at two seconds has
      stopped being a transition. */
   useEffect(() => {
     if (!entered || flown) return undefined;

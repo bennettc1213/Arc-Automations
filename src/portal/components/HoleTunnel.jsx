@@ -40,14 +40,15 @@ const BREACH_SCALE = 2.7;
 const MAX_SCALE = 8;
 
 /* how long the pull takes on its own, with no input at all */
-const PULL_MS = 2600;
+const PULL_MS = 1400;
 
-/* a wheel or a drag hurries it along; it is never required to finish. one notch
-   is worth about a fifth of a second of the pull. */
-const URGE = 0.55;
+/* a wheel or a drag hurries it along; it is never required to finish. scaled
+   up alongside the shorter pull so a notch still buys the same fraction of
+   it, rather than mattering less every time PULL_MS comes down. */
+const URGE = 1.0;
 
 /* how long the canvas takes to dissolve once it has committed to flying through */
-const FADE_MS = 620;
+const FADE_MS = 380;
 
 /**
  * the pull curve.
@@ -261,7 +262,7 @@ export default function HoleTunnel({ onBreach, onDone }) {
         /* keep flying for the length of the fade rather than stopping dead. */
         target = MAX_SCALE;
         approach = 0.05;
-      }, 320);
+      }, 180);
     };
 
     skipRef.current = breach;
