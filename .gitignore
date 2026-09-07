@@ -7,3 +7,6 @@ dist
 
 # regenerated on every build so the demo cannot silently age out
 src/portal/demo/demo-data.json
+
+# stray verification screenshots
+bisect-*.png
