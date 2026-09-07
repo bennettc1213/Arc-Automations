@@ -40,7 +40,7 @@ const BREACH_SCALE = 2.7;
 const MAX_SCALE = 8;
 
 /* how long the pull takes on its own, with no input at all */
-const PULL_MS = 3400;
+const PULL_MS = 2600;
 
 /* a wheel or a drag hurries it along; it is never required to finish. one notch
    is worth about a fifth of a second of the pull. */
@@ -261,7 +261,7 @@ export default function HoleTunnel({ onBreach, onDone }) {
         /* keep flying for the length of the fade rather than stopping dead. */
         target = MAX_SCALE;
         approach = 0.05;
-      }, 420);
+      }, 320);
     };
 
     skipRef.current = breach;
