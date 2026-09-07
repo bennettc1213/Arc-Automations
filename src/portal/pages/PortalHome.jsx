@@ -21,6 +21,9 @@ import './PortalHome.css';
  * to be the reason a client cannot reach their dashboard.
  */
 
+/* guards the one-shot reload used to recover from a stale deploy */
+const RELOAD_KEY = 'arc.portal.chunkRetry';
+
 const PANELS = [
   {
     tag: '01',
@@ -70,6 +73,24 @@ export default function PortalHome() {
       .then((mod) => live && setTunnel(() => mod.default))
       .catch(() => {
         if (!live) return;
+        /* a chunk that fails to load almost always means this tab is running
+           an index.html from an earlier deploy, naming asset files that no
+           longer exist — every build renames them. one reload picks up the
+           current build. the flag is what stops that becoming a loop when the
+           failure is something else, and sessionStorage is right for it
+           because the question is only ever "in this tab, already tried?". */
+        let retried = false;
+        try {
+          retried = window.sessionStorage.getItem(RELOAD_KEY) === '1';
+          window.sessionStorage.setItem(RELOAD_KEY, '1');
+        } catch {
+          /* storage unavailable: treat as already retried and open the door */
+          retried = true;
+        }
+        if (!retried) {
+          window.location.reload();
+          return;
+        }
         enter();
         finish();
       });
@@ -91,6 +112,19 @@ export default function PortalHome() {
     }, 8000);
     return () => window.clearTimeout(t);
   }, [entered, Tunnel, enter, finish]);
+
+  /* the last word on the overlay.
+     the tunnel is an opaque full-screen element and it is responsible for
+     asking to be removed. if it ever fails to — no WebGL, a lost context, a
+     frame loop that never gets a frame — it would sit on top of the page it
+     just revealed and the portal would look like a black screen. the reveal
+     itself is 1040ms of wall clock, so anything still up at two seconds has
+     stopped being a transition. */
+  useEffect(() => {
+    if (!entered || flown) return undefined;
+    const t = window.setTimeout(finish, 2000);
+    return () => window.clearTimeout(t);
+  }, [entered, flown, finish]);
 
   /* nothing behind the tunnel should scroll while it is still the whole screen. */
   useEffect(() => {

@@ -148,9 +148,20 @@ export default function HoleTunnel({ onBreach, onDone }) {
     let renderer;
     try {
       renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      /* three does not always throw on a refused context — on some machines it
+         logs and hands back a renderer with nothing behind it. */
+      if (!renderer.getContext()) throw new Error('no webgl context');
     } catch {
-      /* no WebGL: the portal still has to open. skip straight through. */
+      /* no WebGL. open the door and, just as importantly, ask to be taken off
+         the page: this host is an opaque full-screen element, so leaving it
+         mounted blacks out the portal it was supposed to be revealing. */
+      try {
+        renderer?.dispose?.();
+      } catch {
+        /* nothing to release */
+      }
       breachRef.current?.();
+      doneRef.current?.();
       return undefined;
     }
 
