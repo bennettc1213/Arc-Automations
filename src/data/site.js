@@ -45,23 +45,6 @@ export const site = {
     'built by hand',
   ],
 
-  // ⚠️ EDIT THESE NUMBERS — these are stand-ins until Ben supplies real figures.
-  stats: [
-    { value: 12, format: 'plain', label: 'workflows in production' },
-    { value: 1400, format: 'plus', label: 'leads routed' },
-    { value: 60, format: 'under-seconds', label: 'median lead response' },
-    { value: 18, format: 'plain', label: 'months self-taught' },
-  ],
-
-  bio: {
-    kicker: 'the receipts',
-    heading: 'self-taught. already shipping.',
-    body: [
-      'arc automations builds out of northern utah — ai intake and follow-up systems for the crews that keep houses standing: hvac, plumbing, roofing, restoration.',
-      'founded by ben chu — incoming information systems freshman (ai minor) at the university of utah, david eccles school of business, fall 2026. the degree is incoming. the systems are already in production.',
-    ],
-  },
-
   projects: [
     {
       id: 'speed-to-lead',

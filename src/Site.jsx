@@ -3,7 +3,6 @@ import WarmGrid from './components/WarmGrid';
 import Nav from './components/Nav';
 import Hero from './components/Hero';
 import Marquee from './components/Marquee';
-import Stats from './components/Stats';
 import Projects from './components/Projects';
 import Workflows from './components/Workflows';
 import PilotOverlay from './components/PilotOverlay';
@@ -26,7 +25,6 @@ export default function Site() {
       <main id="top">
         <Hero />
         <Marquee items={site.marqueeA} />
-        <Stats />
         <Projects />
         <Marquee items={site.marqueeB} separator="·" reverse className="marquee--big" />
         <Workflows />
