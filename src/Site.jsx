@@ -25,9 +25,9 @@ export default function Site() {
       <main id="top">
         <Hero />
         <Marquee items={site.marqueeA} />
-        <Projects />
-        <Marquee items={site.marqueeB} separator="·" reverse className="marquee--big" />
         <Workflows />
+        <Marquee items={site.marqueeB} separator="·" reverse className="marquee--big" />
+        <Projects />
         <WorkGrid />
         <Toolkit />
         <Process />

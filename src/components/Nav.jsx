@@ -7,8 +7,8 @@ import GlowButton from './GlowButton';
 import './Nav.css';
 
 const LINKS = [
-  { id: 'work', label: 'work' },
   { id: 'workflows', label: 'workflows' },
+  { id: 'work', label: 'work' },
   { id: 'index', label: 'index' },
   { id: 'toolkit', label: 'toolkit' },
   { id: 'process', label: 'process' },
