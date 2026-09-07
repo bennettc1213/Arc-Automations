@@ -57,7 +57,12 @@ const FADE_MS = 620;
  * over. subtracting one from the other is what makes the descent feel resisted
  * rather than merely animated, and a plain ease-in does not read that way.
  */
-function pull(t) {
+function pull(input) {
+  /* clamped before it is used as a base, not after. a negative base raised to
+     a fractional exponent is NaN in javascript, and a single NaN here reaches
+     scene.scale and turns the entire scene into a degenerate matrix that draws
+     nothing — a black screen for the rest of the entrance. */
+  const t = Math.min(1, Math.max(0, input));
   const grip = t ** 2.1;
   /* the resistance is a fraction OF the fall, never a flat subtraction from
      it. as a constant it exceeded the curve over the first third and pinned
@@ -222,8 +227,12 @@ export default function HoleTunnel({ onBreach, onDone }) {
     let locked = false;
     let fadeTimer = 0;
     let fadeStart = 0;
-    const start = performance.now();
-    let last = start;
+    /* both taken from the first animation-frame timestamp rather than from
+       performance.now() here. requestAnimationFrame stamps a callback with the
+       time the frame began, which is BEFORE this effect runs — seeding the
+       clock from here makes the first delta negative. */
+    let start = 0;
+    let last = 0;
 
     let scale = MIN_SCALE;
     let target = MIN_SCALE;
@@ -232,7 +241,6 @@ export default function HoleTunnel({ onBreach, onDone }) {
     /* milliseconds of the pull already spent. advances with the clock on its
        own; a wheel or a drag only adds to it. */
     let elapsed = 0;
-    let roll = 0;
 
     const setProgress = (p) => {
       if (bar) bar.style.transform = `scaleX(${Math.min(1, Math.max(0, p))})`;
@@ -336,6 +344,10 @@ export default function HoleTunnel({ onBreach, onDone }) {
 
     const frame = (now) => {
       raf = requestAnimationFrame(frame);
+      if (!start) {
+        start = now;
+        last = now;
+      }
       if (document.hidden) {
         last = now;
         return;
@@ -345,9 +357,11 @@ export default function HoleTunnel({ onBreach, onDone }) {
          per-frame decrement makes the entrance take longer the slower the
          device is, which is backwards — the machine that struggles to render
          it is the one that should be held up by it least. */
-      const dt = Math.min(0.1, (now - last) / 1000);
+      /* never negative: a clock that can run backwards feeds a negative base
+         into the pull curve, and one NaN is permanent. */
+      const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
       last = now;
-      const time = (now - start) / 1000;
+      const time = Math.max(0, (now - start) / 1000);
 
       /* the pull. nothing is required of the visitor: the clock alone carries
          it all the way to the breach. */
@@ -358,14 +372,6 @@ export default function HoleTunnel({ onBreach, onDone }) {
         target = MIN_SCALE + p * (BREACH_SCALE - MIN_SCALE);
         setProgress(p);
 
-        /* a slow roll and a widening lens, which is most of why it reads as
-           cinema rather than as a scaling transform. */
-        roll = p * 0.22;
-        camera.up.set(Math.sin(roll), Math.cos(roll), 0);
-        camera.lookAt(0, 0, 0);
-        camera.fov = 60 + p * 9;
-        camera.updateProjectionMatrix();
-
         if (t >= 1) breach();
       }
 
@@ -373,6 +379,10 @@ export default function HoleTunnel({ onBreach, onDone }) {
       const ease = 1 - (1 - approach) ** (dt * 60);
       scale += (target - scale) * ease;
       kick *= 0.9 ** (dt * 60);
+      /* last line of defence. a non-finite scale reaches the scene matrix and
+         everything silently stops drawing, which is the worst failure this
+         component has: it looks like a dead page rather than a broken effect. */
+      if (!Number.isFinite(scale)) scale = MIN_SCALE;
       scene.scale.setScalar(scale);
 
       if (fadeStart) {

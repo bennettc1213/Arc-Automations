@@ -113,6 +113,22 @@ export default function PortalHome() {
     return () => window.clearTimeout(t);
   }, [entered, Tunnel, enter, finish]);
 
+  /* coming back with the browser's back button can restore this page from the
+     back/forward cache, which hands back the live DOM and never remounts the
+     component — so the entrance would be skipped precisely when someone is
+     re-entering the portal. a restore replays it. */
+  useEffect(() => {
+    const onShow = (e) => {
+      if (!e.persisted) return;
+      const skip = shouldSkipEntrance();
+      setTunnel(null);
+      setEntered(skip);
+      setFlown(skip);
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
+
   /* the last word on the overlay.
      the tunnel is an opaque full-screen element and it is responsible for
      asking to be removed. if it ever fails to — no WebGL, a lost context, a
