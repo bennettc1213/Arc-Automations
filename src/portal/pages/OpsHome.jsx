@@ -19,8 +19,13 @@ import './PortalHome.css';
  *
  * what is different is who it is for and how you get in. no client ID here —
  * client IDs identify accounts, and there is no account on this side, only a
- * person. so it is an email and a password, with a magic link as the fallback for
- * the first sign-in and for a forgotten password. the link comes back to
+ * person. and only one of them, so the door is a single password field: the
+ * address the password belongs to is a constant in site.js rather than a box,
+ * because a form that asks a question it already knows the answer to is a form
+ * you resent every morning.
+ *
+ * a one-click magic link stays as the fallback — it is how you get in before a
+ * password exists and how you get back in having lost it. it comes back to
  * /auth/callback carrying a destination, which is why the operator lands in the
  * console rather than in a client dashboard they are not a member of.
  */
@@ -62,13 +67,19 @@ export default function OpsHome() {
   const { entered, flown, Tunnel, enter, finish } = useEntrance();
   const navigate = useNavigate();
   const [session, setSession] = useState({ kind: 'unknown' });
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  /* password first, link second. the console is opened several times a day by one
-     person, and a magic link means leaving the tab, finding an email and coming
-     back — fine as a recovery path, wrong as the everyday one. */
-  const [mode, setMode] = useState('password');
   const [send, setSend] = useState({ kind: 'idle' });
+
+  /* one field, because there is one operator. the address is a constant in
+     site.js rather than an input: supabase has to be told which account the
+     password belongs to, but there is only ever one answer here and asking for
+     it daily is a form asking a question it already knows.
+
+     it costs nothing to publish. that address is already in the footer and in
+     every mailto on the site, so it was never a second factor — the password is
+     the secret, and arc_admins plus row level security are what make the console
+     empty for anyone who gets past it. */
+  const email = site.opsEmail;
 
   /* only decides which button is shown. it defaults to signed-out, because the
      failure that matters is sending somebody who cannot get in to a console that
@@ -205,71 +216,46 @@ export default function OpsHome() {
                 </p>
               </div>
             ) : (
-              <form
-                className="ph__signin"
-                onSubmit={mode === 'password' ? signIn : requestLink}
-              >
+              <form className="ph__signin" onSubmit={signIn}>
+                {/* one field. the account this password belongs to is a constant,
+                    so there is nothing else to ask. */}
                 <label className="pt-field" style={{ marginBottom: 12 }}>
-                  <span className="pt-field__label">operator email</span>
+                  <span className="pt-field__label">password</span>
                   <input
                     className="pt-field__input"
-                    type="email"
+                    type="password"
                     required
-                    autoComplete="email"
-                    placeholder="you@arcautomations.com"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
+                    autoFocus
+                    autoComplete="current-password"
+                    placeholder="••••••••••••"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
                   />
                 </label>
-
-                {mode === 'password' && (
-                  <label className="pt-field" style={{ marginBottom: 12 }}>
-                    <span className="pt-field__label">password</span>
-                    <input
-                      className="pt-field__input"
-                      type="password"
-                      required
-                      autoComplete="current-password"
-                      placeholder="••••••••••••"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                    />
-                  </label>
-                )}
 
                 {send.kind === 'error' && <p className="pt-auth__err">{send.message}</p>}
 
                 <button className="pt-btn" type="submit" disabled={send.kind === 'sending'}>
-                  {send.kind === 'sending'
-                    ? mode === 'password'
-                      ? 'signing in…'
-                      : 'sending…'
-                    : mode === 'password'
-                      ? 'sign in'
-                      : 'email me a link'}
+                  {send.kind === 'sending' ? 'signing in…' : 'sign in'}
                 </button>
 
-                {/* the fallback is a real one, not a courtesy: it is how you get in
-                    the first time, and how you get back in having forgotten the
-                    password. it stays a button rather than a link because it does
-                    not change the page. */}
+                {/* the recovery path, and now a one-click one: with the address
+                    already known there is no form to fill in, so this is a button
+                    rather than a second mode of the page. it is how you get in the
+                    first time and how you get back in having forgotten the
+                    password — not a courtesy. */}
                 <button
                   type="button"
                   className="ph__switch"
-                  onClick={() => {
-                    setMode((m) => (m === 'password' ? 'link' : 'password'));
-                    setSend({ kind: 'idle' });
-                  }}
+                  onClick={requestLink}
+                  disabled={send.kind === 'sending'}
                 >
-                  {mode === 'password'
-                    ? 'no password yet? email me a link instead'
-                    : 'sign in with a password instead'}
+                  forgot it? email me a sign-in link instead
                 </button>
 
                 <p className="ph__note" style={{ marginTop: 14 }}>
-                  the address has to already exist in auth and be listed in{' '}
-                  <span className="mono">arc_admins</span>. there is no sign-up here on purpose —
-                  set the password from inside the console, under supabase.
+                  one operator, no sign-up. set or change the password from inside the console,
+                  under supabase.
                 </p>
               </form>
             )}

@@ -8,6 +8,17 @@ export const site = {
   brand: 'arc automations',
   email: 'bennettch1213@gmail.com', // swap for hello@arcautomations.com when the domain email exists
 
+  /* the operator console's sign-in identity.
+     supabase authenticates a password against an account, so something has to
+     name the account — and with one operator that is a constant, not a field
+     somebody retypes daily. it is kept separate from `email` above because that
+     one is the public contact address and is expected to become a shared inbox;
+     this one is a login and must keep pointing at a real auth user.
+     not a secret: the same address is already printed in the footer and every
+     mailto on the site. what protects /ops is the password plus arc_admins and
+     row level security, never the obscurity of the address. */
+  opsEmail: 'bennettch1213@gmail.com',
+
   hero: {
     eyebrow: 'arc automations — ai systems for home-services contractors',
     lines: ["we don't just", 'wire up'],

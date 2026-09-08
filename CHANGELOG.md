@@ -7,6 +7,16 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-09-08
+
+### Changed
+- The operator door at `/ops` is now a single password field. The account the
+  password belongs to is a constant (`site.opsEmail`) rather than an input —
+  there is one operator, and the address is already public in the footer and
+  every mailto on the site, so it was never acting as a second factor.
+- The magic-link fallback is one click instead of a second form, since there is
+  no longer an address to type into it.
+
 ## [1.4.1] - 2026-09-08
 
 ### Added
@@ -127,7 +137,8 @@ the portal workspace rearchitecture.
 - Initial commit: portfolio site deployed to GitHub Pages via Actions.
 
 [Unreleased]: https://github.com/bennettc1213/Arc-Automations/compare/21bb26b...HEAD
-[1.4.1]: https://github.com/bennettc1213/Arc-Automations/compare/a3b23eb...HEAD
+[1.4.2]: https://github.com/bennettc1213/Arc-Automations/compare/d2db0cc...HEAD
+[1.4.1]: https://github.com/bennettc1213/Arc-Automations/compare/a3b23eb...d2db0cc
 [1.4.0]: https://github.com/bennettc1213/Arc-Automations/compare/21bb26b...HEAD
 [1.3.2]: https://github.com/bennettc1213/Arc-Automations/commit/21bb26b
 [1.3.1]: https://github.com/bennettc1213/Arc-Automations/compare/4ff072f...7437bb8
