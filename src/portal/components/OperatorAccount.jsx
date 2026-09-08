@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Panel } from './ui';
-import { ActionButton, Field, Notice, TextInput } from './ops-ui';
+import { ActionButton, Disclosure, Field, Notice, TextInput } from './ops-ui';
 import { getSupabase } from '../lib/supabase';
 
 /**
@@ -99,6 +99,55 @@ export default function OperatorAccount({ email }) {
           gets an empty console, because postgres refuses the rows.
         </p>
       </Notice>
+
+      {/* closed by default — this is a reference for the one afternoon a year
+          somebody new needs console access, not something to read every visit.
+          it exists because writing these four steps out once, correctly, in a
+          place future-ben will actually find beats reconstructing them from a
+          chat log a second time. */}
+      <Disclosure title="adding another operator" summary="4 steps · one-time per person">
+        <p>
+          this console has no sign-up. every operator is added by hand, in supabase, by
+          somebody who is already an admin. that is deliberate — a public site with a public
+          sign-up form for its own admin tool is a back door with a nicer name.
+        </p>
+
+        <ol className="ops-steps">
+          <li>
+            <b>create their login.</b> supabase dashboard → authentication → users → add user.
+            enter their email and a password, and tick <b>auto confirm user</b> — without that
+            box, supabase waits on a confirmation email that this project's auth settings may
+            not be sending.
+          </li>
+
+          <li>
+            <b>confirm the admin schema exists.</b> only needed once, ever, for the whole
+            project — skip this if you have already added an operator before. sql editor → new
+            query:
+            <pre>{'select proname from pg_proc where proname = \'is_arc_admin\';'}</pre>
+            one row back means it is already set up. nothing back means the migration has never
+            run — apply <code>supabase/migrations/0003_client_ids_and_ops.sql</code> first (the
+            whole file, run once) and then come back to this step.
+          </li>
+
+          <li>
+            <b>add them to <code>arc_admins</code>.</b> sql editor → new query, with their
+            actual email in place of the placeholder:
+            <pre>{`insert into public.arc_admins (user_id, email, label)
+select id, email, 'their name'
+  from auth.users
+ where email = 'them@example.com'
+on conflict (user_id) do nothing;`}</pre>
+          </li>
+
+          <li>
+            <b>send them the door and their password.</b>{' '}
+            <span className="mono">/ops</span> defaults to signing in as the primary operator,
+            so they tap <b>not you? sign in as someone else</b>, which reveals an email field —
+            their address, the password from step 1. same door, their own login.
+          </li>
+        </ol>
+      </Disclosure>
     </Panel>
   );
 }

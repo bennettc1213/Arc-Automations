@@ -10,3 +10,4 @@ src/portal/demo/demo-data.json
 
 # stray verification screenshots
 bisect-*.png
+supabase/.temp

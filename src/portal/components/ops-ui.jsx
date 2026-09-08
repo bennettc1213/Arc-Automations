@@ -232,6 +232,29 @@ export function Notice({ tone = 'warn', title, children }) {
   );
 }
 
+/**
+ * a closed-by-default explainer for a procedure nobody runs often enough to
+ * remember it — "add another operator" is the case this was built for, after
+ * onboarding the first one meant reconstructing the steps from a chat log.
+ *
+ * plain `<details>` rather than state: the browser already tracks open/closed,
+ * animates nothing that has to be undone, and survives a page reload with the
+ * section however it was left — which is exactly the right behaviour for a
+ * reference panel and not something worth a `useState` to reimplement.
+ */
+export function Disclosure({ title, summary, defaultOpen = false, children }) {
+  return (
+    <details className="ops-disclosure" open={defaultOpen || undefined}>
+      <summary className="ops-disclosure__head">
+        <Icon name="chevron" size={12} className="ops-disclosure__chev" />
+        <span className="ops-disclosure__title">{title}</span>
+        {summary && <span className="ops-disclosure__summary">{summary}</span>}
+      </summary>
+      <div className="ops-disclosure__body">{children}</div>
+    </details>
+  );
+}
+
 /* a labelled key/value, for the identity blocks that head every client page. */
 export function Fact({ label, children, note }) {
   return (

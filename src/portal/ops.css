@@ -514,3 +514,135 @@
 .ws-stat--fail .ws-stat__value {
   color: var(--fail);
 }
+
+/* ── disclosure: a reference section, closed by default ─── */
+
+.ops-disclosure {
+  border: 1px solid var(--line-strong);
+  background: var(--bg-2);
+}
+
+.ops-disclosure + .ops-disclosure {
+  border-top: 0;
+}
+
+.ops-disclosure__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+/* removes the browser's own marker so the chevron is the only disclosure cue —
+   two of them side by side is the kind of doubled affordance that makes a
+   control look broken rather than emphasised. */
+.ops-disclosure__head::-webkit-details-marker {
+  display: none;
+}
+.ops-disclosure__head::marker {
+  content: '';
+}
+
+.ops-disclosure__chev {
+  flex: none;
+  color: var(--faint);
+  transition: transform 0.2s var(--ease-out), color 0.2s var(--ease-out);
+}
+
+.ops-disclosure[open] .ops-disclosure__chev {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+
+.ops-disclosure__head:hover .ops-disclosure__chev {
+  color: var(--text);
+}
+
+.ops-disclosure__title {
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.ops-disclosure__summary {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.ops-disclosure__body {
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.ops-disclosure__body p {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.65;
+  max-width: 78ch;
+}
+
+.ops-disclosure__body p + p {
+  margin-top: 10px;
+}
+
+/* a numbered procedure inside a disclosure — the shape "add another operator"
+   actually needs: ordered, each step self-contained, sql steps set off in mono
+   so they read as something to copy rather than something to parse. */
+.ops-steps {
+  counter-reset: ops-step;
+  display: grid;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.ops-steps li {
+  counter-increment: ops-step;
+  position: relative;
+  padding-left: 30px;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.ops-steps li::before {
+  content: counter(ops-step);
+  position: absolute;
+  left: 0;
+  top: 0.05em;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  flex: none;
+}
+
+.ops-steps li b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.ops-steps pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text);
+  overflow-x: auto;
+  white-space: pre;
+}

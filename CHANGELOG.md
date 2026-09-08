@@ -7,6 +7,21 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-09-08
+
+### Added
+- "Adding another operator" — a closed-by-default reference panel on the
+  console's Supabase page (`Disclosure` in `ops-ui.jsx`), spelling out the
+  4-step procedure end to end: create their auth user, confirm migration 0003
+  is applied, add them to `arc_admins`, sign in as them at `/ops`.
+
+### Fixed
+- The `/ops` door authenticated against a fixed address (`site.opsEmail`) no
+  matter who was added to `arc_admins` — a second operator could be granted
+  access and still never get past the door. Added a "not you? sign in as
+  someone else" toggle that reveals an email field, so any admin can sign in
+  as themselves; the single-field fast path stays the default.
+
 ## [1.4.2] - 2026-09-08
 
 ### Changed
@@ -137,7 +152,8 @@ the portal workspace rearchitecture.
 - Initial commit: portfolio site deployed to GitHub Pages via Actions.
 
 [Unreleased]: https://github.com/bennettc1213/Arc-Automations/compare/21bb26b...HEAD
-[1.4.2]: https://github.com/bennettc1213/Arc-Automations/compare/d2db0cc...HEAD
+[1.4.3]: https://github.com/bennettc1213/Arc-Automations/compare/59f982c...HEAD
+[1.4.2]: https://github.com/bennettc1213/Arc-Automations/compare/d2db0cc...59f982c
 [1.4.1]: https://github.com/bennettc1213/Arc-Automations/compare/a3b23eb...d2db0cc
 [1.4.0]: https://github.com/bennettc1213/Arc-Automations/compare/21bb26b...HEAD
 [1.3.2]: https://github.com/bennettc1213/Arc-Automations/commit/21bb26b

@@ -18,13 +18,15 @@ import './PortalHome.css';
  * (lib/entrance.js) rather than a copy that will drift.
  *
  * what is different is who it is for and how you get in. no client ID here —
- * client IDs identify accounts, and there is no account on this side, only a
- * person. and only one of them, so the door is a single password field: the
- * address the password belongs to is a constant in site.js rather than a box,
- * because a form that asks a question it already knows the answer to is a form
- * you resent every morning.
+ * client IDs identify accounts, and there is no account on this side, only
+ * people. by default the door is a single password field: the address it
+ * checks against is a constant in site.js (the primary operator, opened
+ * several times a day), because a form that asks a question it already knows
+ * the answer to is a form you resent every morning. "not you? sign in as
+ * someone else" reveals the address field for anyone else in `arc_admins` —
+ * see OperatorAccount's "adding another operator" for how they get there.
  *
- * a one-click magic link stays as the fallback — it is how you get in before a
+ * a magic link stays as the fallback for both — it is how you get in before a
  * password exists and how you get back in having lost it. it comes back to
  * /auth/callback carrying a destination, which is why the operator lands in the
  * console rather than in a client dashboard they are not a member of.
@@ -70,16 +72,19 @@ export default function OpsHome() {
   const [password, setPassword] = useState('');
   const [send, setSend] = useState({ kind: 'idle' });
 
-  /* one field, because there is one operator. the address is a constant in
-     site.js rather than an input: supabase has to be told which account the
-     password belongs to, but there is only ever one answer here and asking for
-     it daily is a form asking a question it already knows.
+  /* defaults to the constant in site.js so the common case — you, signing in —
+     is one field. it costs nothing to publish that address: it is already in the
+     footer and in every mailto on the site, so it was never a second factor —
+     the password is the secret, and arc_admins plus row level security are what
+     make the console empty for anyone who gets past it.
 
-     it costs nothing to publish. that address is already in the footer and in
-     every mailto on the site, so it was never a second factor — the password is
-     the secret, and arc_admins plus row level security are what make the console
-     empty for anyone who gets past it. */
-  const email = site.opsEmail;
+     it is state rather than the constant itself because a second operator has
+     to be able to point this at their own address. the toggle below is what
+     reveals that field, and without it the "add another operator" instructions
+     on the supabase page would describe a person who can be added to
+     arc_admins and still can never get past this door. */
+  const [email, setEmail] = useState(site.opsEmail);
+  const [otherAccount, setOtherAccount] = useState(false);
 
   /* only decides which button is shown. it defaults to signed-out, because the
      failure that matters is sending somebody who cannot get in to a console that
@@ -217,15 +222,34 @@ export default function OpsHome() {
               </div>
             ) : (
               <form className="ph__signin" onSubmit={signIn}>
-                {/* one field. the account this password belongs to is a constant,
-                    so there is nothing else to ask. */}
+                {/* the address field only appears once somebody says they are not
+                    you — the common case stays one box. it exists at all because
+                    the console can have more than one operator (arc_admins is a
+                    table, not a single row) even though only one address is
+                    guessed by default. */}
+                {otherAccount && (
+                  <label className="pt-field" style={{ marginBottom: 12 }}>
+                    <span className="pt-field__label">email</span>
+                    <input
+                      className="pt-field__input"
+                      type="email"
+                      required
+                      autoFocus
+                      autoComplete="email"
+                      placeholder="you@arcautomations.com"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                    />
+                  </label>
+                )}
+
                 <label className="pt-field" style={{ marginBottom: 12 }}>
                   <span className="pt-field__label">password</span>
                   <input
                     className="pt-field__input"
                     type="password"
                     required
-                    autoFocus
+                    autoFocus={!otherAccount}
                     autoComplete="current-password"
                     placeholder="••••••••••••"
                     value={password}
@@ -239,11 +263,11 @@ export default function OpsHome() {
                   {send.kind === 'sending' ? 'signing in…' : 'sign in'}
                 </button>
 
-                {/* the recovery path, and now a one-click one: with the address
-                    already known there is no form to fill in, so this is a button
-                    rather than a second mode of the page. it is how you get in the
-                    first time and how you get back in having forgotten the
-                    password — not a courtesy. */}
+                {/* the recovery path, and now mostly a one-click one: with the
+                    address already known in the default case there is no form to
+                    fill in, so this stays a button rather than a second mode of
+                    the page. it is how you get in the first time and how you get
+                    back in having forgotten the password — not a courtesy. */}
                 <button
                   type="button"
                   className="ph__switch"
@@ -253,9 +277,21 @@ export default function OpsHome() {
                   forgot it? email me a sign-in link instead
                 </button>
 
+                <button
+                  type="button"
+                  className="ph__switch"
+                  onClick={() => {
+                    setOtherAccount((v) => !v);
+                    if (otherAccount) setEmail(site.opsEmail);
+                    setSend({ kind: 'idle' });
+                  }}
+                >
+                  {otherAccount ? 'sign in as the default operator instead' : 'not you? sign in as someone else'}
+                </button>
+
                 <p className="ph__note" style={{ marginTop: 14 }}>
-                  one operator, no sign-up. set or change the password from inside the console,
-                  under supabase.
+                  no sign-up. every operator is added by hand in supabase — set or change your
+                  password from inside the console, under supabase.
                 </p>
               </form>
             )}
