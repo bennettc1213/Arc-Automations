@@ -224,6 +224,31 @@
   margin-bottom: 8px;
 }
 
+/* the way back to the other sign-in method.
+   underlined mono rather than a second pill: two buttons of equal weight under
+   one form makes you read both to work out which is the one you wanted, and the
+   password path is the everyday one. */
+
+.ph__switch {
+  display: block;
+  margin-top: 14px;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  text-align: left;
+  border-bottom: 1px solid transparent;
+  transition: color 0.25s var(--ease-out), border-color 0.25s var(--ease-out);
+}
+
+.ph__switch:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 /* ── panels ──────────────────────────────────── */
 
 

@@ -7,6 +7,23 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-09-08
+
+### Added
+- Password sign-in for the operator console at `/ops` — email and password via
+  `signInWithPassword`, with the magic link kept as the first-time and
+  forgotten-password path.
+- "Your operator account" panel on the console's Supabase page, for setting
+  that password without touching the Supabase dashboard.
+
+### Security
+- The password is a real Supabase auth credential, set on the auth user and
+  hashed server-side. It is deliberately **not** in this repository: the site
+  is a static bundle served from a public repo, so a password compared in
+  front-end code would be a published one — and it would protect nothing
+  anyway, since `arc_admins` plus row level security are what actually empty
+  the console for a non-admin.
+
 ## [1.4.0] - 2026-09-08
 
 Client IDs replace email sign-in, and the operator console arrives alongside
@@ -110,6 +127,7 @@ the portal workspace rearchitecture.
 - Initial commit: portfolio site deployed to GitHub Pages via Actions.
 
 [Unreleased]: https://github.com/bennettc1213/Arc-Automations/compare/21bb26b...HEAD
+[1.4.1]: https://github.com/bennettc1213/Arc-Automations/compare/a3b23eb...HEAD
 [1.4.0]: https://github.com/bennettc1213/Arc-Automations/compare/21bb26b...HEAD
 [1.3.2]: https://github.com/bennettc1213/Arc-Automations/commit/21bb26b
 [1.3.1]: https://github.com/bennettc1213/Arc-Automations/compare/4ff072f...7437bb8

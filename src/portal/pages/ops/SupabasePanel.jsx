@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Icon from '../../components/Icon';
 import { Panel, Pill, StatCard } from '../../components/ui';
 import { ActionButton, CopyValue, Notice } from '../../components/ops-ui';
+import OperatorAccount from '../../components/OperatorAccount';
 import { dashboardUrl, probeSupabase, projectRef } from '../../lib/ops';
 import { functionUrl, isConfigured } from '../../lib/supabase';
 import { formatCount, formatStamp } from '../../lib/format';
@@ -35,7 +36,7 @@ const FUNCTION_NOTE = {
   ingest: 'the write path n8n posts events to',
 };
 
-export default function SupabasePanel({ totals }) {
+export default function SupabasePanel({ totals, email }) {
   const [probe, setProbe] = useState(null);
   const [error, setError] = useState(null);
 
@@ -215,6 +216,8 @@ export default function SupabasePanel({ totals }) {
           live feed is not a second, looser read path.
         </p>
       </Panel>
+
+      <OperatorAccount email={email} />
 
       <Panel title="open in supabase">
         <div className="ops-row">

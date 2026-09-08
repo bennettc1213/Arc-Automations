@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import GlowButton from '../../components/GlowButton';
 import ArcMark from '../../components/ArcMark';
 import AsciiField from '../components/AsciiField';
@@ -17,11 +17,12 @@ import './PortalHome.css';
  * like walking into the product you sell, and the entrance is shared code
  * (lib/entrance.js) rather than a copy that will drift.
  *
- * what is different is who it is for and how you get in. the console signs in with
- * an email magic link, not a client ID — client IDs identify accounts, and there is
- * no account here, only a person. the link comes back to /auth/callback carrying a
- * destination, which is why the operator lands in the console rather than in a
- * client dashboard they are not a member of.
+ * what is different is who it is for and how you get in. no client ID here —
+ * client IDs identify accounts, and there is no account on this side, only a
+ * person. so it is an email and a password, with a magic link as the fallback for
+ * the first sign-in and for a forgotten password. the link comes back to
+ * /auth/callback carrying a destination, which is why the operator lands in the
+ * console rather than in a client dashboard they are not a member of.
  */
 
 const PANELS = [
@@ -42,10 +43,31 @@ const PANELS = [
   },
 ];
 
+/**
+ * where the operator's password lives, since it is the question this file invites.
+ *
+ * not here. not anywhere in this repo. the site is a static bundle served from a
+ * public repository — every string in it is readable by anyone who opens the
+ * network tab, so a password compared in this file would be a published password,
+ * and one that protected nothing anyway: the real gate is `arc_admins` plus row
+ * level security in postgres, which is what makes the console empty for anyone
+ * who is not ben regardless of what this form decided.
+ *
+ * so the password is a real supabase auth credential. it is set on the auth user
+ * (console → supabase → your operator account), stored hashed by supabase, and
+ * checked server-side by signInWithPassword below. nothing about it ever enters
+ * the bundle.
+ */
 export default function OpsHome() {
   const { entered, flown, Tunnel, enter, finish } = useEntrance();
+  const navigate = useNavigate();
   const [session, setSession] = useState({ kind: 'unknown' });
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  /* password first, link second. the console is opened several times a day by one
+     person, and a magic link means leaving the tab, finding an email and coming
+     back — fine as a recovery path, wrong as the everyday one. */
+  const [mode, setMode] = useState('password');
   const [send, setSend] = useState({ kind: 'idle' });
 
   /* only decides which button is shown. it defaults to signed-out, because the
@@ -65,6 +87,35 @@ export default function OpsHome() {
       live = false;
     };
   }, []);
+
+  async function signIn(e) {
+    e.preventDefault();
+    if (!isConfigured) {
+      setSend({ kind: 'error', message: 'no supabase connection configured in this environment.' });
+      return;
+    }
+
+    setSend({ kind: 'sending' });
+
+    const { error } = await getSupabase().auth.signInWithPassword({ email, password });
+
+    if (error) {
+      /* supabase answers "invalid login credentials" for a wrong password and for
+         an address with no password set, which are different problems with
+         different fixes. the second is the likely one the first time this form is
+         used, so it is named rather than left as a shrug. */
+      const message = error.message.toLowerCase();
+      setSend({
+        kind: 'error',
+        message: message.includes('invalid login credentials')
+          ? 'that address and password do not match. if you have never set a password, use the email link and set one from inside the console.'
+          : message,
+      });
+      return;
+    }
+
+    navigate('/ops/console', { replace: true });
+  }
 
   async function requestLink(e) {
     e.preventDefault();
@@ -154,7 +205,10 @@ export default function OpsHome() {
                 </p>
               </div>
             ) : (
-              <form className="ph__signin" onSubmit={requestLink}>
+              <form
+                className="ph__signin"
+                onSubmit={mode === 'password' ? signIn : requestLink}
+              >
                 <label className="pt-field" style={{ marginBottom: 12 }}>
                   <span className="pt-field__label">operator email</span>
                   <input
@@ -168,15 +222,54 @@ export default function OpsHome() {
                   />
                 </label>
 
+                {mode === 'password' && (
+                  <label className="pt-field" style={{ marginBottom: 12 }}>
+                    <span className="pt-field__label">password</span>
+                    <input
+                      className="pt-field__input"
+                      type="password"
+                      required
+                      autoComplete="current-password"
+                      placeholder="••••••••••••"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                    />
+                  </label>
+                )}
+
                 {send.kind === 'error' && <p className="pt-auth__err">{send.message}</p>}
 
                 <button className="pt-btn" type="submit" disabled={send.kind === 'sending'}>
-                  {send.kind === 'sending' ? 'sending…' : 'email me a link'}
+                  {send.kind === 'sending'
+                    ? mode === 'password'
+                      ? 'signing in…'
+                      : 'sending…'
+                    : mode === 'password'
+                      ? 'sign in'
+                      : 'email me a link'}
+                </button>
+
+                {/* the fallback is a real one, not a courtesy: it is how you get in
+                    the first time, and how you get back in having forgotten the
+                    password. it stays a button rather than a link because it does
+                    not change the page. */}
+                <button
+                  type="button"
+                  className="ph__switch"
+                  onClick={() => {
+                    setMode((m) => (m === 'password' ? 'link' : 'password'));
+                    setSend({ kind: 'idle' });
+                  }}
+                >
+                  {mode === 'password'
+                    ? 'no password yet? email me a link instead'
+                    : 'sign in with a password instead'}
                 </button>
 
                 <p className="ph__note" style={{ marginTop: 14 }}>
                   the address has to already exist in auth and be listed in{' '}
-                  <span className="mono">arc_admins</span>. there is no sign-up here on purpose.
+                  <span className="mono">arc_admins</span>. there is no sign-up here on purpose —
+                  set the password from inside the console, under supabase.
                 </p>
               </form>
             )}
