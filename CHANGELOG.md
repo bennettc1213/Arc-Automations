@@ -7,6 +7,22 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-09-08
+
+### Security
+- Removed the magic-link fallback from `/ops`. It needed no password to fire —
+  any visitor could trigger a real sign-in email with no credentials at all —
+  and the "not you? sign in as someone else" toggle added in 1.4.2 made it
+  worse by pre-filling that action's target with the primary operator's real
+  address the instant the toggle was clicked, before any login. Both are gone:
+  the toggle now reveals a blank field, and there is no email-sending code path
+  left anywhere on the page.
+- A wrong password now shows one flat message ("that password is wrong.") and
+  stops — no navigation, no email, no further page. Recovering a forgotten or
+  never-set password happens directly in Supabase (authentication → users),
+  documented in the console's "adding another operator" panel and in
+  OperatorAccount's own copy.
+
 ## [1.4.3] - 2026-09-08
 
 ### Added
@@ -152,7 +168,8 @@ the portal workspace rearchitecture.
 - Initial commit: portfolio site deployed to GitHub Pages via Actions.
 
 [Unreleased]: https://github.com/bennettc1213/Arc-Automations/compare/21bb26b...HEAD
-[1.4.3]: https://github.com/bennettc1213/Arc-Automations/compare/59f982c...HEAD
+[1.4.4]: https://github.com/bennettc1213/Arc-Automations/compare/a3d6e43...HEAD
+[1.4.3]: https://github.com/bennettc1213/Arc-Automations/compare/59f982c...a3d6e43
 [1.4.2]: https://github.com/bennettc1213/Arc-Automations/compare/d2db0cc...59f982c
 [1.4.1]: https://github.com/bennettc1213/Arc-Automations/compare/a3b23eb...d2db0cc
 [1.4.0]: https://github.com/bennettc1213/Arc-Automations/compare/21bb26b...HEAD

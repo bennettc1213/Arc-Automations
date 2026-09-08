@@ -4,33 +4,9 @@ import GlowButton from '../../components/GlowButton';
 import ArcMark from '../../components/ArcMark';
 import AsciiField from '../components/AsciiField';
 import useEntrance from '../lib/entrance';
-import { rememberDestination } from '../lib/auth-next';
 import { getSupabase, isConfigured } from '../lib/supabase';
 import { site } from '../../data/site';
 import './PortalHome.css';
-
-/**
- * the front door of the ops console.
- *
- * the same door as /portal, deliberately: the same tunnel, the same reveal, the
- * same bar and the same panels. walking into your own console should feel exactly
- * like walking into the product you sell, and the entrance is shared code
- * (lib/entrance.js) rather than a copy that will drift.
- *
- * what is different is who it is for and how you get in. no client ID here —
- * client IDs identify accounts, and there is no account on this side, only
- * people. by default the door is a single password field: the address it
- * checks against is a constant in site.js (the primary operator, opened
- * several times a day), because a form that asks a question it already knows
- * the answer to is a form you resent every morning. "not you? sign in as
- * someone else" reveals the address field for anyone else in `arc_admins` —
- * see OperatorAccount's "adding another operator" for how they get there.
- *
- * a magic link stays as the fallback for both — it is how you get in before a
- * password exists and how you get back in having lost it. it comes back to
- * /auth/callback carrying a destination, which is why the operator lands in the
- * console rather than in a client dashboard they are not a member of.
- */
 
 const PANELS = [
   {
@@ -51,19 +27,31 @@ const PANELS = [
 ];
 
 /**
- * where the operator's password lives, since it is the question this file invites.
+ * the front door of the ops console.
  *
- * not here. not anywhere in this repo. the site is a static bundle served from a
- * public repository — every string in it is readable by anyone who opens the
- * network tab, so a password compared in this file would be a published password,
- * and one that protected nothing anyway: the real gate is `arc_admins` plus row
- * level security in postgres, which is what makes the console empty for anyone
- * who is not ben regardless of what this form decided.
+ * the same door as /portal, deliberately: the same tunnel, the same reveal, the
+ * same bar and the same panels. walking into your own console should feel exactly
+ * like walking into the product you sell, and the entrance is shared code
+ * (lib/entrance.js) rather than a copy that will drift.
  *
- * so the password is a real supabase auth credential. it is set on the auth user
- * (console → supabase → your operator account), stored hashed by supabase, and
- * checked server-side by signInWithPassword below. nothing about it ever enters
- * the bundle.
+ * what is different is who it is for and how you get in. no client ID here —
+ * client IDs identify accounts, and there is no account on this side, only
+ * people. by default the door is a single password field: the address it
+ * checks against is a constant in site.js (the primary operator, opened
+ * several times a day), because a form that asks a question it already knows
+ * the answer to is a form you resent every morning. "not you? sign in as
+ * someone else" reveals a blank address field for anyone else in `arc_admins`
+ * — see OperatorAccount's "adding another operator" for how they get there.
+ *
+ * deliberately no magic-link fallback on this page. that used to live here,
+ * and it was a real hole: a link request needs nothing but an address —
+ * nothing checks a password before sending one — so it was an unauthenticated
+ * "email the operator" button sitting on a public page, and the toggle above
+ * it pre-filled that address for anyone who clicked it, no login required.
+ * getting in for the first time or after a forgotten password now happens
+ * where the account itself lives: supabase → authentication → users → set the
+ * password directly. one more step for the person who is actually locked out,
+ * and zero surface for the visitor who is not.
  */
 export default function OpsHome() {
   const { entered, flown, Tunnel, enter, finish } = useEntrance();
@@ -80,11 +68,21 @@ export default function OpsHome() {
 
      it is state rather than the constant itself because a second operator has
      to be able to point this at their own address. the toggle below is what
-     reveals that field, and without it the "add another operator" instructions
-     on the supabase page would describe a person who can be added to
-     arc_admins and still can never get past this door. */
+     reveals that field — starting empty, never pre-filled with the primary
+     operator's address, because a blank box a visitor has to already know
+     something to fill in leaks nothing, and one that arrives pre-typed with a
+     real person's email does. */
   const [email, setEmail] = useState(site.opsEmail);
   const [otherAccount, setOtherAccount] = useState(false);
+
+  function toggleOtherAccount() {
+    setOtherAccount((value) => {
+      const next = !value;
+      setEmail(next ? '' : site.opsEmail);
+      return next;
+    });
+    setSend({ kind: 'idle' });
+  }
 
   /* only decides which button is shown. it defaults to signed-out, because the
      failure that matters is sending somebody who cannot get in to a console that
@@ -116,53 +114,18 @@ export default function OpsHome() {
     const { error } = await getSupabase().auth.signInWithPassword({ email, password });
 
     if (error) {
-      /* supabase answers "invalid login credentials" for a wrong password and for
-         an address with no password set, which are different problems with
-         different fixes. the second is the likely one the first time this form is
-         used, so it is named rather than left as a shrug. */
-      const message = error.message.toLowerCase();
-      setSend({
-        kind: 'error',
-        message: message.includes('invalid login credentials')
-          ? 'that address and password do not match. if you have never set a password, use the email link and set one from inside the console.'
-          : message,
-      });
+      /* every failure here reads as one flat sentence and stops. no navigation,
+         no email, no page past this one — a wrong guess gets told it is wrong
+         and nothing else happens, which is the entire point of a password gate.
+         supabase answers "invalid login credentials" both for a wrong password
+         and for an address with no password set at all; the visitor cannot tell
+         those apart from this message and should not be able to — distinguishing
+         them would tell an attacker which addresses are real accounts. */
+      setSend({ kind: 'error', message: 'that password is wrong.' });
       return;
     }
 
     navigate('/ops/console', { replace: true });
-  }
-
-  async function requestLink(e) {
-    e.preventDefault();
-    if (!isConfigured) {
-      setSend({ kind: 'error', message: 'no supabase connection configured in this environment.' });
-      return;
-    }
-
-    setSend({ kind: 'sending' });
-
-    /* two ways to carry the destination, because supabase can drop a query string
-       on the way through and a magic link routinely opens in a different tab. the
-       query param is the one that is read first; this is the belt. */
-    rememberDestination('/ops/console');
-
-    const { error } = await getSupabase().auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}auth/callback?next=/ops/console`,
-        /* the console has exactly one operator and he already exists. a form that
-           could provision an account would be a public sign-up page for the admin
-           tool, which is not a thing that should exist. */
-        shouldCreateUser: false,
-      },
-    });
-
-    if (error) {
-      setSend({ kind: 'error', message: error.message.toLowerCase() });
-      return;
-    }
-    setSend({ kind: 'sent' });
   }
 
   return (
@@ -212,21 +175,13 @@ export default function OpsHome() {
                   back to the site
                 </GlowButton>
               </div>
-            ) : send.kind === 'sent' ? (
-              <div className="ph__signin">
-                <p className="ph__signin-title">check your email</p>
-                <p className="ph__note">
-                  a sign-in link is on its way to <span className="mono">{email}</span>. it lands
-                  straight in the console and expires in one hour.
-                </p>
-              </div>
             ) : (
               <form className="ph__signin" onSubmit={signIn}>
                 {/* the address field only appears once somebody says they are not
-                    you — the common case stays one box. it exists at all because
-                    the console can have more than one operator (arc_admins is a
-                    table, not a single row) even though only one address is
-                    guessed by default. */}
+                    you — the common case stays one box. it starts empty rather
+                    than pre-filled: this page is public, and a field that
+                    arrives already carrying the primary operator's address is a
+                    leak the moment it renders, before anyone types anything. */}
                 {otherAccount && (
                   <label className="pt-field" style={{ marginBottom: 12 }}>
                     <span className="pt-field__label">email</span>
@@ -263,35 +218,13 @@ export default function OpsHome() {
                   {send.kind === 'sending' ? 'signing in…' : 'sign in'}
                 </button>
 
-                {/* the recovery path, and now mostly a one-click one: with the
-                    address already known in the default case there is no form to
-                    fill in, so this stays a button rather than a second mode of
-                    the page. it is how you get in the first time and how you get
-                    back in having forgotten the password — not a courtesy. */}
-                <button
-                  type="button"
-                  className="ph__switch"
-                  onClick={requestLink}
-                  disabled={send.kind === 'sending'}
-                >
-                  forgot it? email me a sign-in link instead
-                </button>
-
-                <button
-                  type="button"
-                  className="ph__switch"
-                  onClick={() => {
-                    setOtherAccount((v) => !v);
-                    if (otherAccount) setEmail(site.opsEmail);
-                    setSend({ kind: 'idle' });
-                  }}
-                >
+                <button type="button" className="ph__switch" onClick={toggleOtherAccount}>
                   {otherAccount ? 'sign in as the default operator instead' : 'not you? sign in as someone else'}
                 </button>
 
                 <p className="ph__note" style={{ marginTop: 14 }}>
-                  no sign-up. every operator is added by hand in supabase — set or change your
-                  password from inside the console, under supabase.
+                  no sign-up, no email link from this page. locked out? set or reset the password
+                  directly in supabase — authentication → users → the account.
                 </p>
               </form>
             )}

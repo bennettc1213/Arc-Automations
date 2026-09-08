@@ -18,9 +18,13 @@ import { getSupabase } from '../lib/supabase';
  * are cleared on success for the same reason: there is no version of "convenient"
  * that justifies leaving it sitting in component state.
  *
- * the confirm field is not ceremony. there is no password reset flow on this side
- * beyond the magic link, so a typo here means signing in by email and coming back
- * — recoverable, but only if you notice, and a mistyped password is invisible.
+ * the confirm field is not ceremony. there is no in-app password reset — the
+ * /ops door has no magic-link fallback, on purpose: a link request there needs
+ * nothing but an address to fire, no password check first, so it used to sit on
+ * a public page as an unauthenticated "email the operator" button. the recovery
+ * path now lives where the account itself lives, in supabase directly, which
+ * means a typo here that goes unnoticed is a trip to the dashboard to fix
+ * rather than an email away — worth catching with a second field.
  */
 
 /* supabase's own floor is six. twelve is this file's, because the address it
@@ -57,9 +61,9 @@ export default function OperatorAccount({ email }) {
       }
     >
       <p className="ops-muted">
-        set a password and you can sign in at <span className="mono">/ops</span> with your email
-        and password instead of waiting on a link. the magic link keeps working either way —
-        it is how you get back in if you forget this.
+        this is the password checked at <span className="mono">/ops</span>. forget it and there
+        is no link to fall back on from that page by design — reset it from{' '}
+        <span className="mono">supabase → authentication → users</span> instead.
       </p>
 
       <div className="ops-form" style={{ marginTop: 16 }}>
@@ -143,10 +147,17 @@ on conflict (user_id) do nothing;`}</pre>
           <li>
             <b>send them the door and their password.</b>{' '}
             <span className="mono">/ops</span> defaults to signing in as the primary operator,
-            so they tap <b>not you? sign in as someone else</b>, which reveals an email field —
-            their address, the password from step 1. same door, their own login.
+            so they tap <b>not you? sign in as someone else</b>, which reveals a blank email
+            field — never pre-filled with anyone's address — for them to enter their own, then
+            the password from step 1. same door, their own login.
           </li>
         </ol>
+
+        <p style={{ marginTop: 14 }}>
+          if someone forgets their password later, there is no link to send from{' '}
+          <span className="mono">/ops</span> — that page never emails anyone, on purpose. reset
+          it the same way you set it: supabase → authentication → users → their account.
+        </p>
       </Disclosure>
     </Panel>
   );
