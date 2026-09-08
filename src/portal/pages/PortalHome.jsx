@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import GlowButton from '../../components/GlowButton';
 import ArcMark from '../../components/ArcMark';
 import AsciiField from '../components/AsciiField';
+import useEntrance from '../lib/entrance';
 import { getSupabase, isConfigured } from '../lib/supabase';
 import { site } from '../../data/site';
 import './PortalHome.css';
@@ -15,14 +16,9 @@ import './PortalHome.css';
  * telling them what is on the other side. this page answers that first, and the
  * form is one click away for the people who already know.
  *
- * the entrance animation carries three.js, so it is fetched on demand rather
- * than bundled into a marketing site that will mostly never show it. if that
- * fetch fails or stalls, the page opens anyway — an animation is never allowed
- * to be the reason a client cannot reach their dashboard.
+ * the entrance itself lives in lib/entrance.js, shared with the ops console's
+ * door at /ops. both are the same transition because they are the same code.
  */
-
-/* guards the one-shot reload used to recover from a stale deploy */
-const RELOAD_KEY = 'arc.portal.chunkRetry';
 
 const PANELS = [
   {
@@ -42,115 +38,9 @@ const PANELS = [
   },
 ];
 
-/* the entrance plays on every arrival at /portal. it is short, it skips on a
-   click or a keypress, and it is the transition between the two halves of the
-   product — suppressing it after the first visit made the door only exist once. */
-function shouldSkipEntrance() {
-  if (typeof window === 'undefined') return true;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
 export default function PortalHome() {
-  /* two flags, not one. `entered` reveals the page; `flown` drops the tunnel
-     from the tree. they are separated by the length of the fade — collapsing
-     them would unmount the canvas on the same frame it commits to flying
-     through, and the transition would end in a hard cut. */
-  const [entered, setEntered] = useState(shouldSkipEntrance);
-  const [flown, setFlown] = useState(shouldSkipEntrance);
-  const [Tunnel, setTunnel] = useState(null);
+  const { entered, flown, Tunnel, enter, finish } = useEntrance();
   const [signedIn, setSignedIn] = useState(false);
-
-  const enter = useCallback(() => setEntered(true), []);
-
-  const finish = useCallback(() => setFlown(true), []);
-
-  /* fetched imperatively rather than through React.lazy so a failed chunk is a
-     branch we handle, not an unhandled rejection that takes the tree down. */
-  useEffect(() => {
-    if (flown) return undefined;
-    let live = true;
-    import('../components/HoleTunnel')
-      .then((mod) => live && setTunnel(() => mod.default))
-      .catch(() => {
-        if (!live) return;
-        /* a chunk that fails to load almost always means this tab is running
-           an index.html from an earlier deploy, naming asset files that no
-           longer exist — every build renames them. one reload picks up the
-           current build. the flag is what stops that becoming a loop when the
-           failure is something else, and sessionStorage is right for it
-           because the question is only ever "in this tab, already tried?". */
-        let retried = false;
-        try {
-          retried = window.sessionStorage.getItem(RELOAD_KEY) === '1';
-          window.sessionStorage.setItem(RELOAD_KEY, '1');
-        } catch {
-          /* storage unavailable: treat as already retried and open the door */
-          retried = true;
-        }
-        if (!retried) {
-          window.location.reload();
-          return;
-        }
-        enter();
-        finish();
-      });
-    return () => {
-      live = false;
-    };
-  }, [flown, enter, finish]);
-
-  /* a slow chunk must not become a locked door — but this only guards the wait
-     for the chunk. once the tunnel is actually on screen the timer is dropped:
-     from that point the visitor is in control and has a cue telling them so,
-     and a timeout would yank the entrance out from under someone who is still
-     reading it. */
-  useEffect(() => {
-    if (entered || Tunnel) return undefined;
-    const t = window.setTimeout(() => {
-      enter();
-      finish();
-    }, 8000);
-    return () => window.clearTimeout(t);
-  }, [entered, Tunnel, enter, finish]);
-
-  /* coming back with the browser's back button can restore this page from the
-     back/forward cache, which hands back the live DOM and never remounts the
-     component — so the entrance would be skipped precisely when someone is
-     re-entering the portal. a restore replays it. */
-  useEffect(() => {
-    const onShow = (e) => {
-      if (!e.persisted) return;
-      const skip = shouldSkipEntrance();
-      setTunnel(null);
-      setEntered(skip);
-      setFlown(skip);
-    };
-    window.addEventListener('pageshow', onShow);
-    return () => window.removeEventListener('pageshow', onShow);
-  }, []);
-
-  /* the last word on the overlay.
-     the tunnel is an opaque full-screen element and it is responsible for
-     asking to be removed. if it ever fails to — no WebGL, a lost context, a
-     frame loop that never gets a frame — it would sit on top of the page it
-     just revealed and the portal would look like a black screen. the reveal
-     itself is 560ms of wall clock, so anything still up at two seconds has
-     stopped being a transition. */
-  useEffect(() => {
-    if (!entered || flown) return undefined;
-    const t = window.setTimeout(finish, 2000);
-    return () => window.clearTimeout(t);
-  }, [entered, flown, finish]);
-
-  /* nothing behind the tunnel should scroll while it is still the whole screen. */
-  useEffect(() => {
-    if (entered) return undefined;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [entered]);
 
   /* only changes the label on the primary button. a wrong guess here sends a
      signed-in client to a login form, which is why it defaults to signed-out. */
@@ -221,7 +111,8 @@ export default function PortalHome() {
             </div>
 
             <p className="ph__note">
-              no password — we email you a link. access is set up by {site.brand}.
+              sign in with your client id — no password, no email to remember. access is set up by{' '}
+              {site.brand}.
             </p>
           </div>
         </section>
@@ -238,8 +129,8 @@ export default function PortalHome() {
 
         <footer className="ph__foot">
           <p>
-            address not recognised? it has not been linked yet —{' '}
-            <a href={`mailto:${site.email}`}>get in touch</a> and it will be.
+            lost your client id? it is on your welcome email —{' '}
+            <a href={`mailto:${site.email}`}>get in touch</a> and we will resend it.
           </p>
           <p className="ph__footmark">
             <ArcMark size={16} />

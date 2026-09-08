@@ -1,3 +1,5 @@
+import { Panel } from './ui';
+
 /**
  * leads per day, 30 days. hand-rolled svg.
  *
@@ -24,11 +26,7 @@ export default function LeadsChart({ data }) {
   const labelEvery = Math.ceil(data.length / 6);
 
   return (
-    <div className="pt-panel">
-      <div className="pt-panel__head">
-        <span className="pt-eyebrow">leads per day</span>
-        <span className="pt-panel__note">30d · peak {max}</span>
-      </div>
+    <Panel title="leads per day" note={`30d · peak ${max}`}>
 
       {/* no preserveAspectRatio="none" here: it would stretch the mono axis
           labels horizontally as the panel widens. the chart scales
@@ -52,9 +50,7 @@ export default function LeadsChart({ data }) {
                 width={barW}
                 height={h}
               >
-                <title>
-                  {d.label}: {d.leads} {d.leads === 1 ? 'lead' : 'leads'}
-                </title>
+                <title>{`${d.label}: ${d.leads} ${d.leads === 1 ? 'lead' : 'leads'}`}</title>
               </rect>
 
               {i % labelEvery === 0 && (
@@ -71,6 +67,6 @@ export default function LeadsChart({ data }) {
           );
         })}
       </svg>
-    </div>
+    </Panel>
   );
 }

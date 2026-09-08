@@ -1,0 +1,1746 @@
+/* ────────────────────────────────────────────────
+   workspace.css — the dashboard shell and its furniture
+
+   Layered on portal.css, which still owns the status band, the feed and the
+   auth surfaces. Nothing here invents a colour: every value resolves to a
+   token from base.css or to one of the three status colours portal.css
+   defines on `.portal`.
+
+   Two rules carried over, unchanged, because they are what makes the portal
+   readable rather than decorative:
+
+   1. Orange is interactive, or it is the client's own number. It never says
+      "healthy". Status colour is signal, not accent, and it is the only other
+      colour on the page.
+   2. Status is never colour alone. Every pill, cell and strip carries a glyph
+      or a written word, so it survives a colourblind read, a bad screen in
+      daylight, and the greyscale screenshot somebody pastes into an email.
+
+   A third, specific to this file: selectors that override portal.css are
+   written at higher specificity rather than relying on source order. App.jsx
+   imports portal.css after the route that pulls this in, so order would put
+   the two the wrong way round.
+   ──────────────────────────────────────────────── */
+
+.portal.ws {
+  --rail: 236px;
+  --rail-tight: 62px;
+  --top-h: 56px;
+  --pad: clamp(16px, 2vw, 28px);
+  --gap: clamp(16px, 1.8vw, 26px);
+
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
+  min-height: 100dvh;
+  background: var(--bg);
+}
+
+.portal.ws--tight {
+  --rail: var(--rail-tight);
+}
+
+.ws__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ws__page {
+  flex: 1;
+  padding: var(--pad);
+  padding-bottom: clamp(48px, 8vw, 96px);
+  display: grid;
+  gap: var(--gap);
+  align-content: start;
+  min-width: 0;
+}
+
+/* the drawer backdrop. present in the tree at every width so the transition has
+   something to animate; only laid out once the rail goes off-canvas. */
+.ws__scrim {
+  display: none;
+}
+
+/* ── rail ────────────────────────────────────── */
+
+.ws-rail {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: var(--bg-2);
+  z-index: 30;
+}
+
+.ws-rail__brand {
+  height: var(--top-h);
+  display: flex;
+  align-items: center;
+  padding-inline: 16px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+.ws--tight .ws-rail__brand {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.ws-rail__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.ws-rail__mark:hover {
+  translate: 1px 1px;
+}
+
+.ws-rail__mark b {
+  color: var(--accent);
+  font-weight: inherit;
+}
+
+.ws-rail__tenant {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 3px;
+  flex: none;
+}
+
+.ws-rail__tenant-name {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-rail__tenant-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+
+.ws-rail__scroll {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 10px 14px;
+}
+
+.ws--tight .ws-rail__scroll {
+  padding-inline: 8px;
+}
+
+.ws-nav__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--faint);
+  padding: 16px 10px 7px;
+}
+
+.ws-nav__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ws-nav__item:hover {
+  color: var(--text);
+  background: rgba(237, 237, 239, 0.035);
+  translate: 1px 1px;
+}
+
+.ws-nav__item.is-active {
+  color: var(--text);
+  background: var(--surface);
+}
+
+/* the active marker is the site's orange tick, not a filled pill. same device as
+   the eyebrow rule above every section heading on the marketing site. */
+.ws-nav__item.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+}
+
+.ws-nav__item .ws-icon {
+  color: var(--faint);
+  flex: none;
+}
+
+.ws-nav__item.is-active .ws-icon {
+  color: var(--accent);
+}
+
+.ws-nav__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-nav__count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.ws--tight .ws-nav__item {
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.ws-rail__foot {
+  flex: none;
+  border-top: 1px solid var(--line);
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.ws--tight .ws-rail__foot {
+  justify-items: center;
+  padding-inline: 8px;
+}
+
+.ws-rail__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+}
+
+.ws-rail__status--ok {
+  color: var(--ok);
+}
+.ws-rail__status--degraded {
+  color: var(--warn);
+}
+.ws-rail__status--failed {
+  color: var(--fail);
+}
+
+.ws-rail__collapse {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+
+.ws-rail__collapse:hover {
+  color: var(--accent);
+  translate: 1px 1px;
+}
+
+/* ── top bar ─────────────────────────────────── */
+
+.ws-top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: var(--top-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-inline: var(--pad);
+  border-bottom: 1px solid var(--line);
+  background: rgba(10, 10, 11, 0.86);
+  backdrop-filter: blur(8px);
+}
+
+.ws-top__menu {
+  display: none;
+  align-items: center;
+  color: var(--muted);
+}
+
+.ws-top__title {
+  min-width: 0;
+}
+
+.ws-top__title h1 {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.ws-top__title p {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-top__search {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1 1 auto;
+  max-width: 380px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ws-top__search:hover {
+  border-color: var(--accent);
+  color: var(--muted);
+}
+
+.ws-top__search span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-top__search kbd,
+.ws-cmd__field kbd {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  padding: 1px 5px;
+  flex: none;
+}
+
+.ws-top__window {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.ws-top__pop {
+  position: relative;
+  flex: none;
+}
+
+.ws-top__icon {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  color: var(--muted);
+}
+
+.ws-top__icon:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.ws-top__badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 15px;
+  height: 15px;
+  padding-inline: 3px;
+  display: grid;
+  place-items: center;
+  background: var(--fail);
+  color: #0a0a0b;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.ws-top__avatar {
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.ws-top__avatar:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── dropdown menus ──────────────────────────── */
+
+.ws-menu {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  width: 270px;
+  z-index: 40;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  padding: 10px;
+  display: grid;
+  gap: 2px;
+}
+
+.ws-menu--wide {
+  width: min(360px, calc(100vw - 32px));
+}
+
+.ws-menu__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--faint);
+  padding: 4px 8px 6px;
+}
+
+.ws-menu__id {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text);
+  padding: 0 8px 10px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+.ws-menu__link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: left;
+  width: 100%;
+}
+
+.ws-menu__link:hover {
+  color: var(--text);
+  background: rgba(237, 237, 239, 0.04);
+  translate: 1px 1px;
+}
+
+.ws-menu__link .ws-icon {
+  color: var(--faint);
+  flex: none;
+}
+
+.ws-menu__row {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ws-menu__row:last-of-type {
+  border-bottom: none;
+}
+
+.ws-menu__row > span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+
+.ws-menu__row--warn > span {
+  color: var(--warn);
+}
+
+.ws-menu__row p {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.ws-menu__row em {
+  display: block;
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--faint);
+  margin-top: 5px;
+}
+
+.ws-menu__empty,
+.ws-menu__foot {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  padding: 10px 8px 4px;
+  line-height: 1.5;
+}
+
+/* ── command palette ─────────────────────────── */
+
+.ws-cmd {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: min(14vh, 120px) 20px 20px;
+}
+
+.ws-cmd__scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 6, 7, 0.74);
+  backdrop-filter: blur(3px);
+}
+
+.ws-cmd__box {
+  position: relative;
+  width: min(660px, 100%);
+  max-height: min(560px, 72vh);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+
+.ws-cmd__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--line);
+  color: var(--faint);
+  flex: none;
+}
+
+.ws-cmd__field input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.ws-cmd__field input::placeholder {
+  color: var(--faint);
+}
+
+.ws-cmd__list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 0;
+}
+
+.ws-cmd__group-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--faint);
+  padding: 10px 15px 5px;
+}
+
+.ws-cmd__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 15px;
+  text-align: left;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ws-cmd__row .ws-icon {
+  color: var(--faint);
+  flex: none;
+}
+
+.ws-cmd__row.is-cursor {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.ws-cmd__row.is-cursor::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+}
+
+.ws-cmd__row.is-cursor .ws-icon {
+  color: var(--accent);
+}
+
+.ws-cmd__row-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-cmd__row-hint {
+  margin-left: auto;
+  padding-left: 14px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 55%;
+}
+
+.ws-cmd__empty {
+  padding: 26px 18px;
+  font-size: 12.5px;
+  color: var(--faint);
+  line-height: 1.6;
+}
+
+.ws-cmd__foot {
+  flex: none;
+  display: flex;
+  gap: 18px;
+  padding: 9px 15px;
+  border-top: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+/* ── layout blocks ───────────────────────────── */
+
+.ws-split {
+  display: grid;
+  gap: var(--gap);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+@media (min-width: 1320px) {
+  .ws-split {
+    grid-template-columns: minmax(0, 1fr) 358px;
+  }
+}
+
+.ws-col {
+  min-width: 0;
+  display: grid;
+  gap: var(--gap);
+}
+
+.ws-two {
+  display: grid;
+  gap: var(--gap);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 940px) {
+  .ws-two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* the feed follows you down a long page rather than scrolling out of the top of
+   the rail. it is the proof the pipeline is running, and proof that leaves the
+   screen stops being proof. */
+.ws .pt-feed {
+  position: sticky;
+  top: calc(var(--top-h) + var(--pad));
+  max-height: min(760px, calc(100dvh - var(--top-h) - var(--pad) * 2));
+}
+
+/* the rail is 358px wide and a five-step pipeline is not. without this the chain
+   runs off the right edge and the last step reads as a truncated word. */
+.ws .pt-steps {
+  flex-wrap: wrap;
+  row-gap: 7px;
+}
+
+/* the status band is a full-bleed strip in the single-column portal. inside the
+   workspace it is a panel like everything else. */
+.ws .pt-status {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.ws .pt-status__in {
+  padding: 15px 18px;
+  max-width: none;
+  margin: 0;
+}
+
+/* ── panels ──────────────────────────────────── */
+
+.ws-panel {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: var(--panel-pad);
+  min-width: 0;
+}
+
+.ws-panel--bare {
+  padding: 0;
+}
+
+.ws-panel__head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.ws-panel__head .pt-eyebrow {
+  font-weight: 400;
+}
+
+.ws-panel--bare .ws-panel__head {
+  margin: 0;
+  padding: var(--panel-pad);
+  border-bottom: 1px solid var(--line);
+}
+
+.ws-panel__note {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.ws-panel__actions {
+  margin-left: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.ws-panel__body {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.65;
+  max-width: 74ch;
+  margin-bottom: 16px;
+}
+
+.ws-panel__empty {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--faint);
+  padding: 10px 0;
+}
+
+.ws-note {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--faint);
+  line-height: 1.65;
+  max-width: 80ch;
+}
+
+.ws-note b {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.ws-note--loud {
+  color: var(--warn);
+}
+
+.ws-panel--bare .ws-note {
+  padding: 0 var(--panel-pad) var(--panel-pad);
+  margin-top: 14px;
+}
+
+/* ── stat cards ──────────────────────────────── */
+
+.ws-stats {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  grid-template-columns: repeat(auto-fit, minmax(216px, 1fr));
+}
+
+.ws-stats--three {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.ws-stat {
+  background: var(--surface);
+  padding: var(--panel-pad);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-height: 152px;
+  min-width: 0;
+}
+
+.ws-stat__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+
+.ws-stat__value {
+  font-family: var(--font-mono);
+  font-size: clamp(1.75rem, 2.7vw, 2.4rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--text);
+}
+
+/* a value that is a phrase rather than a figure. same card, quieter type, so
+   "59 minutes ago" does not wrap where "99.44%" does not. */
+.ws-stat--compact .ws-stat__value {
+  font-size: clamp(1.05rem, 1.5vw, 1.3rem);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+/* the client's own headline number is the one place orange is not interactive.
+   it is the figure they opened the portal to read, and the accent says so. */
+.ws-stat--lead .ws-stat__value {
+  color: var(--accent);
+}
+
+.ws-stat__sub {
+  margin-top: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  line-height: 1.5;
+}
+
+.ws-stat__sub a {
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.ws-stat__sub a:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.ws-spark {
+  width: 100%;
+  height: 30px;
+  margin-block: 2px 4px;
+}
+
+.ws-spark path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.25;
+  /* the viewBox is stretched to the card width, so without this the line would
+     be a different thickness horizontally than vertically. */
+  vector-effect: non-scaling-stroke;
+}
+
+/* ── delta ───────────────────────────────────── */
+
+.ws-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.ws-delta i {
+  font-style: normal;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.ws-delta em {
+  font-style: normal;
+  color: var(--faint);
+}
+
+.ws-delta--good {
+  color: var(--ok);
+}
+.ws-delta--bad {
+  color: var(--fail);
+}
+.ws-delta--flat,
+.ws-delta--none {
+  color: var(--faint);
+}
+
+/* ── pills ───────────────────────────────────── */
+
+.ws-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid;
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.ws-pill i {
+  font-style: normal;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.ws-pill--ok {
+  color: var(--ok);
+  border-color: rgba(47, 208, 122, 0.35);
+  background: var(--ok-dim);
+}
+
+.ws-pill--warn {
+  color: var(--warn);
+  border-color: rgba(255, 212, 0, 0.35);
+  background: var(--warn-dim);
+}
+
+.ws-pill--fail {
+  color: var(--fail);
+  border-color: rgba(255, 46, 99, 0.35);
+  background: var(--fail-dim);
+}
+
+.ws-pill--idle,
+.ws-pill--neutral {
+  color: var(--faint);
+  border-color: var(--line-strong);
+}
+
+/* ── toolbar, chips, inputs, buttons ─────────── */
+
+.ws-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.ws-panel--bare .ws-toolbar {
+  padding: 14px var(--panel-pad);
+  border-bottom: 1px solid var(--line);
+}
+
+.ws-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 220px;
+  max-width: 330px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-2);
+  color: var(--faint);
+}
+
+.ws-search:focus-within {
+  border-color: var(--accent);
+}
+
+.ws-search input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.ws-search input::placeholder {
+  color: var(--faint);
+}
+
+.ws-search button {
+  color: var(--faint);
+  display: flex;
+}
+
+.ws-search button:hover {
+  color: var(--accent);
+}
+
+.ws-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ws-chip {
+  border: 1px solid var(--line);
+  padding: 5px 9px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.ws-chip:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  color: var(--text);
+  translate: 1px 1px;
+}
+
+.ws-chip.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.ws-chip em {
+  font-style: normal;
+  color: var(--faint);
+  margin-left: 7px;
+}
+
+.ws-chip:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.ws-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+
+/* the native control brings rounded corners and a system caret with it, and this
+   page has neither anywhere else. the caret is redrawn as a chevron in the
+   background so the box stays square. */
+.ws-select select {
+  appearance: none;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--faint) 50%) calc(100% - 13px) 52% / 5px 5px
+      no-repeat,
+    linear-gradient(-45deg, transparent 50%, var(--faint) 50%) calc(100% - 9px) 52% / 5px 5px
+      no-repeat,
+    var(--bg-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 26px 5px 8px;
+}
+
+.ws-select select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.ws-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-strong);
+  padding: 7px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  background: none;
+}
+
+.ws-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  translate: 1px 1px;
+}
+
+.ws-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0a0a0b;
+}
+
+.ws-btn--primary:hover:not(:disabled) {
+  background: var(--accent-hot);
+  border-color: var(--accent-hot);
+  color: #0a0a0b;
+}
+
+.ws-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── tables ──────────────────────────────────── */
+
+.ws-tablewrap {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.ws-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ws-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  padding: 10px 14px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.ws-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  vertical-align: top;
+}
+
+.ws-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ws-table__row:hover td {
+  background: rgba(237, 237, 239, 0.022);
+}
+
+.ws-table__row.is-open td {
+  background: rgba(237, 237, 239, 0.03);
+}
+
+.ws-table--dense td {
+  padding: 8px 14px;
+}
+
+/* the element-plus-class selector for `th` above outranks a bare class, so the
+   header would sit left while its column sat right. */
+.ws-table__num,
+.ws-table th.ws-table__num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ws-table__strong {
+  display: block;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.ws-table__sub {
+  display: block;
+  font-size: 10.5px;
+  color: var(--faint);
+  margin-top: 3px;
+  line-height: 1.45;
+}
+
+.ws-table__wide {
+  min-width: 190px;
+  max-width: 360px;
+}
+
+.ws-table__chev {
+  width: 34px;
+  color: var(--faint);
+}
+
+.ws-table__chev .ws-icon {
+  transition: rotate 140ms var(--ease-out);
+}
+
+.is-open .ws-table__chev .ws-icon {
+  rotate: 90deg;
+  color: var(--accent);
+}
+
+.ws-table__detail td {
+  padding: 0;
+  background: var(--bg-2);
+}
+
+.ws-detail {
+  padding: 16px var(--panel-pad);
+}
+
+.ws-detail__steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
+}
+
+.ws-detail__step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.ws-detail__step.is-fail {
+  color: var(--fail);
+}
+
+.ws-detail__rule {
+  width: 20px;
+  height: 1px;
+  background: var(--line-strong);
+  margin-inline: 10px;
+  flex: none;
+}
+
+.ws-detail__dot {
+  width: 5px;
+  height: 5px;
+  background: var(--muted);
+  flex: none;
+}
+
+.ws-detail__step.is-fail .ws-detail__dot {
+  background: var(--fail);
+}
+
+.ws-detail__step-time {
+  color: var(--faint);
+}
+
+.ws-detail__fail {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--fail);
+}
+
+.ws-detail__fail b {
+  font-weight: 500;
+}
+
+.ws-detail__meta {
+  margin-top: 12px;
+  font-size: 10px;
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+
+/* ── reveal-more footer ──────────────────────── */
+
+.ws-more {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 16px var(--panel-pad);
+  border-top: 1px solid var(--line);
+}
+
+.ws-more .mono {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* ── empty state ─────────────────────────────── */
+
+.ws-empty {
+  border: 1px dashed var(--line-strong);
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 14px, rgba(237, 237, 239, 0.018) 14px 15px),
+    var(--bg-2);
+  padding: clamp(26px, 4vw, 48px);
+  text-align: center;
+}
+
+.ws-panel--bare .ws-empty {
+  margin: var(--panel-pad);
+}
+
+.ws-empty__title {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+}
+
+.ws-empty__body {
+  font-size: 12.5px;
+  color: var(--muted);
+  max-width: 56ch;
+  margin-inline: auto;
+  line-height: 1.6;
+}
+
+/* ── unit chart (lead sources) ───────────────── */
+
+.ws-units {
+  display: grid;
+  grid-template-columns: repeat(20, 1fr);
+  gap: 3px;
+  max-width: 460px;
+}
+
+.ws-units__cell {
+  aspect-ratio: 1;
+  display: block;
+  background: var(--accent);
+}
+
+/* three opacities of the one accent rather than three hues. inventing a blue to
+   label "web form" would break the site's one-accent rule for decoration. */
+.ws-units__cell--1 {
+  background: rgba(255, 77, 0, 0.52);
+}
+.ws-units__cell--2 {
+  background: rgba(255, 77, 0, 0.26);
+}
+.ws-units__cell--3 {
+  background: rgba(255, 77, 0, 0.13);
+}
+
+.ws-legend {
+  display: grid;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.ws-legend li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.ws-legend i {
+  width: 10px;
+  height: 10px;
+  aspect-ratio: auto;
+  flex: none;
+}
+
+.ws-legend__val {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* ── horizontal bars ─────────────────────────── */
+
+.ws-bars {
+  display: grid;
+  gap: 4px;
+}
+
+.ws-bars li {
+  display: grid;
+  grid-template-columns: minmax(90px, 132px) minmax(0, 1fr) 88px;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 12.5px;
+}
+
+.ws-bars__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-bars__track {
+  height: 8px;
+  background: rgba(237, 237, 239, 0.05);
+}
+
+.ws-bars__track i {
+  display: block;
+  height: 100%;
+  background: rgba(255, 77, 0, 0.55);
+}
+
+.ws-bars__val {
+  text-align: right;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* ── uptime strip ────────────────────────────── */
+
+.ws-strip {
+  display: flex;
+  gap: 3px;
+}
+
+.ws-strip__cell {
+  flex: 1 1 7px;
+  height: 38px;
+  min-width: 5px;
+  border-bottom: 2px solid var(--faint);
+  background: rgba(237, 237, 239, 0.05);
+}
+
+.ws-strip__cell--ok {
+  background: var(--ok-dim);
+  border-bottom-color: var(--ok);
+}
+
+.ws-strip__cell--failed {
+  background: var(--fail-dim);
+  border-bottom-color: var(--fail);
+}
+
+.ws-strip__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 16px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.ws-strip__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.ws-strip__legend i {
+  flex: 0 0 10px;
+  width: 10px;
+  height: 10px;
+  border-bottom-width: 2px;
+}
+
+.ws-strip__ends {
+  margin-left: auto;
+}
+
+/* ── incident timeline ───────────────────────── */
+
+.ws-timeline li {
+  padding: var(--panel-pad);
+  border-bottom: 1px solid var(--line);
+  border-left: 2px solid transparent;
+}
+
+.ws-timeline li:last-child {
+  border-bottom: none;
+}
+
+.ws-timeline li.is-open {
+  border-left-color: var(--fail);
+}
+
+.ws-timeline__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ws-timeline__type {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+.ws-timeline__span {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.ws-timeline__msg {
+  font-size: 13px;
+  color: var(--text);
+  margin: 12px 0 14px;
+  max-width: 84ch;
+  line-height: 1.55;
+}
+
+.ws-timeline__marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ws-timeline__marks em {
+  display: block;
+  font-style: normal;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  margin-bottom: 4px;
+}
+
+/* ── definition rows ─────────────────────────── */
+
+.ws-facts__row {
+  display: grid;
+  grid-template-columns: minmax(110px, 150px) minmax(0, 1fr);
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ws-facts__row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.ws-facts__row dt {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  padding-top: 2px;
+}
+
+.ws-facts__row dd {
+  font-size: 13px;
+  color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ws-facts__note {
+  display: block;
+  font-size: 11.5px;
+  color: var(--faint);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+
+/* ── simple lists ────────────────────────────── */
+
+.ws-list li {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.ws-list li:last-child {
+  border-bottom: none;
+}
+
+.ws-list__val {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* ── q&a ─────────────────────────────────────── */
+
+.ws-qa li {
+  padding: 17px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.ws-qa li:first-child {
+  padding-top: 0;
+}
+
+.ws-qa li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.ws-qa__q {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.ws-qa__a {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 7px 0 11px;
+  max-width: 80ch;
+  line-height: 1.6;
+}
+
+.ws-qa__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.ws-qa__link:hover {
+  translate: 1px 1px;
+}
+
+/* the hour chart's out-of-hours bars. the one place a bar is drawn in full
+   accent, because that share is the argument the page is making. */
+.pt-chart__bar--hot {
+  fill: var(--accent);
+}
+
+.pt-chart__bar--hot:hover {
+  fill: var(--accent-hot);
+}
+
+/* ── narrow screens ──────────────────────────── */
+
+@media (max-width: 1180px) {
+  .ws-top__window,
+  .ws-top__title p {
+    display: none;
+  }
+}
+
+@media (max-width: 1000px) {
+  .portal.ws {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* off-canvas rather than collapsed: a drawer of unlabelled glyphs is a puzzle,
+     so the phone gets the full-width labelled rail or nothing. */
+  .ws-rail {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 252px;
+    height: 100dvh;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 220ms var(--ease-out);
+  }
+
+  .ws--open .ws-rail {
+    transform: none;
+  }
+
+  .ws__scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(6, 6, 7, 0.6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms var(--ease-out);
+  }
+
+  .ws--open .ws__scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .ws-top__menu {
+    display: inline-flex;
+  }
+
+  .ws-top__search {
+    max-width: none;
+  }
+
+  /* collapsing is a desktop affordance — the rail is off-canvas here and a
+     collapsed drawer would be a column of unlabelled glyphs. a control that
+     visibly does nothing is worse than no control. */
+  .ws-rail__collapse {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .ws-top__search span {
+    display: none;
+  }
+
+  .ws-top__search {
+    flex: 0 0 auto;
+    max-width: 74px;
+  }
+
+  .ws-select {
+    margin-left: 0;
+  }
+
+  .ws-facts__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .ws-bars li {
+    grid-template-columns: minmax(0, 1fr) 84px;
+  }
+
+  .ws-bars__track {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-rail,
+  .ws__scrim,
+  .ws-table__chev .ws-icon {
+    transition: none;
+  }
+}

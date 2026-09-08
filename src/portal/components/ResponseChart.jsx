@@ -1,3 +1,5 @@
+import { Panel } from './ui';
+
 /**
  * response-time distribution. horizontal bars, because the labels ("0-10s",
  * "30-60s") are text and text wants a horizontal axis to sit on.
@@ -6,10 +8,14 @@
  * median with a fat 60s+ bucket is a different story from a good median with an
  * empty one, and an owner deserves to see which they have.
  */
-const W = 720;
-const ROW_H = 34;
-const LABEL_W = 78;
-const COUNT_W = 52;
+/* sized for a half-width panel rather than a full one. the svg scales
+   proportionally, so a 720-wide viewBox squeezed into a 400px column renders its
+   10px mono labels at five and a half pixels — legible in the design file and not
+   on the page. */
+const W = 440;
+const ROW_H = 30;
+const LABEL_W = 58;
+const COUNT_W = 86;
 
 export default function ResponseChart({ data }) {
   const total = data.reduce((sum, b) => sum + b.count, 0);
@@ -18,13 +24,7 @@ export default function ResponseChart({ data }) {
   const H = data.length * ROW_H;
 
   return (
-    <div className="pt-panel">
-      <div className="pt-panel__head">
-        <span className="pt-eyebrow">response time</span>
-        <span className="pt-panel__note">
-          {total === 0 ? 'no sends yet' : `${total} sends · 30d`}
-        </span>
-      </div>
+    <Panel title="response time" note={total === 0 ? 'no sends yet' : `${total} sends · 30d`}>
 
       <svg
         className="pt-chart"
@@ -50,9 +50,7 @@ export default function ResponseChart({ data }) {
                 width={w}
                 height={ROW_H - 16}
               >
-                <title>
-                  {bucket.label}: {bucket.count} ({pct}%)
-                </title>
+                <title>{`${bucket.label}: ${bucket.count} (${pct}%)`}</title>
               </rect>
 
               <text className="pt-chart__val" x={W - COUNT_W + 8} y={y + ROW_H / 2 + 3}>
@@ -62,6 +60,6 @@ export default function ResponseChart({ data }) {
           );
         })}
       </svg>
-    </div>
+    </Panel>
   );
 }

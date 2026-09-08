@@ -1,14 +1,19 @@
 /* derives every displayed number from the raw event log.
    one definition per metric, deliberately, so "leads this month" cannot come to mean two
    different things in two places. the credibility rule governs all of it: only numbers we
-   can prove. nothing here models, extrapolates, or attributes revenue. */
+   can prove. nothing here models, extrapolates, or attributes revenue.
+
+   this module holds the primitives. second-order derivations (threads, sources,
+   automations, reliability, month rollups) live in derive.js, and dashboard-data.js
+   assembles both into the shape the ui consumes — three modules pointing one direction, so
+   nothing in here has to know what a page looks like. */
 
 import { DateTime } from 'luxon';
 // explicit extension: this module is also imported by the node build script, and node esm
 // does not resolve extensionless paths the way vite does.
 import { CLIENT_VISIBLE_EVENT_TYPES } from './types.js';
 
-function percentile(sortedValues, p) {
+export function percentile(sortedValues, p) {
   if (sortedValues.length === 0) return null;
   const index = Math.min(
     sortedValues.length - 1,
@@ -17,25 +22,42 @@ function percentile(sortedValues, p) {
   return sortedValues[index];
 }
 
+export function utc(iso) {
+  return DateTime.fromISO(iso, { zone: 'utc' });
+}
+
 /* canaries traverse the same live pipeline and emit real-shaped rows, so they must never
    inflate a client-facing count. */
-function realLeads(events) {
+export function realLeads(events) {
   return events.filter((e) => e.eventType === 'lead_received' && !e.isCanary);
 }
 
-export function computeMetrics(events, timezone, now) {
-  const monthStart = now.startOf('month');
-  const thirtyDaysAgo = now.minus({ days: 30 });
+export function isClientVisible(event) {
+  return !event.isCanary && CLIENT_VISIBLE_EVENT_TYPES.includes(event.eventType);
+}
 
-  const leads = realLeads(events);
+/* the threads whose acknowledgement text actually left the building. computed over the
+   whole log rather than a window, because a call at 23:58 answered at 00:01 must not be
+   turned into an unanswered call by a window boundary. */
+export function answeredThreadIds(events) {
+  return new Set(
+    events
+      .filter((e) => e.eventType === 'sms_sent' && e.status === 'success' && !e.isCanary)
+      .map((e) => e.correlationId)
+      .filter(Boolean),
+  );
+}
 
-  const leadsThisMonth = leads.filter(
-    (e) => DateTime.fromISO(e.occurredAt, { zone: 'utc' }).setZone(timezone) >= monthStart,
-  ).length;
+/* every windowed figure in the portal comes through here, so a month rollup, a
+   period-over-period delta and the headline row cannot come to disagree about what
+   "median response" means. `from` is inclusive, `to` exclusive. */
+export function statsForRange(events, timezone, from, to) {
+  const inRange = (iso) => {
+    const at = utc(iso);
+    return at >= from && at < to;
+  };
 
-  const leadsLast30Days = leads.filter(
-    (e) => DateTime.fromISO(e.occurredAt, { zone: 'utc' }) >= thirtyDaysAgo,
-  ).length;
+  const leads = realLeads(events).filter((e) => inRange(e.occurredAt)).length;
 
   /* response time comes only from sends that succeeded. a failed send is not a fast
      response. median, not mean: one four-hour carrier delay destroys a mean, and a
@@ -47,45 +69,53 @@ export function computeMetrics(events, timezone, now) {
         !e.isCanary &&
         e.status === 'success' &&
         e.latencyMs !== null &&
-        DateTime.fromISO(e.occurredAt, { zone: 'utc' }) >= thirtyDaysAgo,
+        inRange(e.occurredAt),
     )
     .map((e) => e.latencyMs)
     .sort((a, b) => a - b);
 
   /* "answered", never "recovered": recovered implies the job came back, which cannot be
      proven without booking data the automation does not have. */
-  const successfulSmsThreads = new Set(
-    events
-      .filter((e) => e.eventType === 'sms_sent' && e.status === 'success' && !e.isCanary)
-      .map((e) => e.correlationId)
-      .filter(Boolean),
-  );
+  const answered = answeredThreadIds(events);
   const missedCallsAnswered = events.filter(
     (e) =>
       e.eventType === 'call_missed' &&
       !e.isCanary &&
       e.correlationId &&
-      successfulSmsThreads.has(e.correlationId) &&
-      DateTime.fromISO(e.occurredAt, { zone: 'utc' }) >= thirtyDaysAgo,
+      answered.has(e.correlationId) &&
+      inRange(e.occurredAt),
   ).length;
 
-  const canaryChecks = events.filter(
-    (e) =>
-      e.eventType === 'canary_check' &&
-      DateTime.fromISO(e.occurredAt, { zone: 'utc' }) >= thirtyDaysAgo,
-  );
-  const uptimePct =
-    canaryChecks.length === 0
-      ? null
-      : (canaryChecks.filter((c) => c.status === 'success').length / canaryChecks.length) * 100;
+  const checks = events.filter((e) => e.eventType === 'canary_check' && inRange(e.occurredAt));
+  const checksPassed = checks.filter((c) => c.status === 'success').length;
 
   return {
-    leadsThisMonth,
-    leadsLast30Days,
+    leads,
+    sends: latencies.length,
     medianResponseMs: percentile(latencies, 0.5),
     p90ResponseMs: percentile(latencies, 0.9),
     missedCallsAnswered,
-    uptimePct,
+    checks: checks.length,
+    checksFailed: checks.length - checksPassed,
+    uptimePct: checks.length === 0 ? null : (checksPassed / checks.length) * 100,
+  };
+}
+
+export function computeMetrics(events, timezone, now) {
+  /* `to` sits a hair past now rather than on it, so an event stamped this exact
+     millisecond is not dropped by the half-open range. */
+  const end = now.plus({ seconds: 1 });
+  const last30 = statsForRange(events, timezone, now.minus({ days: 30 }), end);
+  const thisMonth = statsForRange(events, timezone, now.startOf('month'), end);
+
+  return {
+    leadsThisMonth: thisMonth.leads,
+    leadsLast30Days: last30.leads,
+    medianResponseMs: last30.medianResponseMs,
+    p90ResponseMs: last30.p90ResponseMs,
+    missedCallsAnswered: last30.missedCallsAnswered,
+    uptimePct: last30.uptimePct,
+    sends: last30.sends,
   };
 }
 
@@ -96,9 +126,7 @@ export function computeLeadsPerDay(events, timezone, now, days = 30) {
   }
 
   for (const event of realLeads(events)) {
-    const key = DateTime.fromISO(event.occurredAt, { zone: 'utc' })
-      .setZone(timezone)
-      .toFormat('yyyy-MM-dd');
+    const key = utc(event.occurredAt).setZone(timezone).toFormat('yyyy-MM-dd');
     if (counts.has(key)) counts.set(key, counts.get(key) + 1);
   }
 
@@ -126,7 +154,7 @@ export function computeResponseBuckets(events, now, days = 30) {
       event.isCanary ||
       event.status !== 'success' ||
       event.latencyMs === null ||
-      DateTime.fromISO(event.occurredAt, { zone: 'utc' }) < cutoff
+      utc(event.occurredAt) < cutoff
     ) {
       continue;
     }
@@ -174,14 +202,14 @@ export function computeStatus(events) {
 
 /* a dashboard holding six hours of history looks broken rather than new. */
 export function isEarlyData(tenant, now) {
-  return now.diff(DateTime.fromISO(tenant.createdAt, { zone: 'utc' }), 'days').days < 7;
+  return now.diff(utc(tenant.createdAt), 'days').days < 7;
 }
 
 /* bounds what the feed renders. metrics are computed over the full window, but the feed
    shows a handful of threads and holding the entire log in feed state is wasted memory. */
 export function selectFeedEvents(events, threadLimit) {
   const visible = events
-    .filter((e) => !e.isCanary && CLIENT_VISIBLE_EVENT_TYPES.includes(e.eventType))
+    .filter(isClientVisible)
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 
   const keptThreads = new Set();
@@ -197,16 +225,4 @@ export function selectFeedEvents(events, threadLimit) {
   }
 
   return selected;
-}
-
-export function buildDashboardData(tenant, events, now = DateTime.now(), feedThreadLimit = 10) {
-  return {
-    tenant,
-    status: computeStatus(events),
-    metrics: computeMetrics(events, tenant.timezone, now),
-    leadsPerDay: computeLeadsPerDay(events, tenant.timezone, now),
-    responseBuckets: computeResponseBuckets(events, now),
-    feed: selectFeedEvents(events, feedThreadLimit),
-    isEarlyData: isEarlyData(tenant, now),
-  };
 }

@@ -6,9 +6,18 @@ import { createClient } from '@supabase/supabase-js';
    repo; it lives only in the ingest edge function's secrets. */
 
 const url = import.meta.env.VITE_SUPABASE_URL;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+/* exported because two paths call edge functions with a hand-rolled fetch rather
+   than functions.invoke: the sign-in box, which has to read a 404 from an
+   undeployed function differently from a 400 from a rejected client id, and the
+   ops console's health probe, whose entire job is the status code. */
+export const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const isConfigured = Boolean(url && anonKey);
+
+export function functionUrl(name) {
+  return `${String(url ?? '').replace(/\/+$/, '')}/functions/v1/${name}`;
+}
 
 let client = null;
 

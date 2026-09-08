@@ -1,0 +1,516 @@
+/* ────────────────────────────────────────────────
+   ops.css — the operator console
+
+   Layered on workspace.css, which owns the rail, the top bar, panels, tables,
+   pills and stats. The console renders inside that same shell, so this file adds
+   only what an operator surface needs and a client dashboard never did: fields
+   you can type into, values you can copy, and buttons that report back.
+
+   The two rules from portal.css still hold, and they hold harder here because
+   this is the page that decides what gets looked at first:
+
+   1. Orange is interactive, or it is a number that belongs to a client. It never
+      means "healthy". Status colour is signal, not accent.
+   2. Status is never colour alone. Every pill carries a glyph and a word.
+
+   A third, specific to this file: nothing on the console is styled to look more
+   alarming than it is. `onboarding` is not amber, an empty roster is not red, and
+   the only thing that gets the failure colour is something that has actually
+   failed.
+   ──────────────────────────────────────────────── */
+
+/* ── copy-a-value ────────────────────────────── */
+
+.ops-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.ops-copy__label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  flex: none;
+}
+
+.ops-copy__val {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 4px 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ops-copy__val--plain {
+  font-family: var(--font-sans, inherit);
+  letter-spacing: 0;
+}
+
+.ops-copy__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  background: none;
+  color: var(--faint);
+  transition: color 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
+}
+
+.ops-copy__btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  translate: 1px 1px;
+}
+
+/* ── buttons that do something ───────────────── */
+
+.ops-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ops-action .ws-btn {
+  gap: 8px;
+}
+
+.ops-action__msg {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  max-width: 46ch;
+}
+
+.ops-action__msg--ok {
+  color: var(--ok);
+}
+
+.ops-action__msg--fail {
+  color: var(--fail);
+}
+
+/* ── forms ───────────────────────────────────── */
+
+.ops-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: clamp(14px, 1.6vw, 20px);
+}
+
+.ops-form__row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.ops-field {
+  display: grid;
+  gap: 7px;
+  align-content: start;
+  min-width: 0;
+}
+
+.ops-field--wide {
+  grid-column: 1 / -1;
+}
+
+.ops-field__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+
+.ops-field__label i {
+  color: var(--accent);
+  font-style: normal;
+  margin-left: 3px;
+}
+
+.ops-field__hint {
+  font-size: 11.5px;
+  color: var(--faint);
+  line-height: 1.5;
+}
+
+.ops-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.ops-input::placeholder {
+  color: var(--faint);
+}
+
+.ops-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.ops-input--mono {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.ops-input--area {
+  resize: vertical;
+  min-height: 76px;
+  line-height: 1.55;
+}
+
+/* the native select arrow is the one control on the page drawn by the operating
+   system. squared off and given the same hairline as everything else. */
+.ops-input--select {
+  appearance: none;
+  padding-right: 34px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--faint) 50%),
+    linear-gradient(135deg, var(--faint) 50%, transparent 50%);
+  background-position: calc(100% - 17px) center, calc(100% - 12px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+/* ── notices ─────────────────────────────────── */
+
+.ops-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-2);
+}
+
+.ops-notice--warn {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line-strong));
+  background: var(--warn-dim);
+}
+
+.ops-notice--warn > .ws-icon {
+  color: var(--warn);
+}
+
+.ops-notice--fail {
+  border-color: color-mix(in srgb, var(--fail) 45%, var(--line-strong));
+  background: var(--fail-dim);
+}
+
+.ops-notice--fail > .ws-icon {
+  color: var(--fail);
+}
+
+.ops-notice > .ws-icon {
+  flex: none;
+  margin-top: 2px;
+}
+
+.ops-notice__title {
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.ops-notice__body {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-top: 6px;
+  max-width: 88ch;
+}
+
+.ops-notice__body code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 1px 6px;
+  overflow-wrap: anywhere;
+}
+
+.ops-notice__body a {
+  color: var(--accent);
+}
+
+/* ── the generated id, at the size you read it aloud from ── */
+
+.ops-idcard {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2vw, 26px);
+  flex-wrap: wrap;
+  padding: clamp(18px, 2.4vw, 28px);
+  border: 1px solid var(--line-strong);
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 14px, rgba(237, 237, 239, 0.018) 14px 15px),
+    var(--bg-2);
+}
+
+.ops-idcard__val {
+  font-family: var(--font-mono);
+  font-size: clamp(1.5rem, 4vw, 2.4rem);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.ops-idcard__meta {
+  display: grid;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.ops-idcard__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ── a secret shown exactly once ─────────────── */
+
+.ops-secret {
+  border: 1px solid var(--accent);
+  background: var(--accent-dim);
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.ops-secret__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
+
+.ops-secret__val {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  padding: 10px 12px;
+  overflow-wrap: anywhere;
+}
+
+.ops-secret__note {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+/* ── the client page's header ────────────────── */
+
+.ops-head {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(14px, 2vw, 24px);
+  flex-wrap: wrap;
+  padding-bottom: 4px;
+}
+
+.ops-head__main {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+}
+
+.ops-head__name {
+  font-size: clamp(1.3rem, 2.6vw, 1.9rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.ops-head__sub {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.ops-head__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.ops-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+.ops-back:hover {
+  color: var(--accent);
+  translate: -1px 0;
+}
+
+/* ── the supabase probe ──────────────────────── */
+
+.ops-probe {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.ops-probe__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px var(--panel-pad);
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.ops-probe__name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  min-width: 132px;
+}
+
+.ops-probe__detail {
+  color: var(--muted);
+  font-size: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ops-probe__val {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── roster rows ─────────────────────────────── */
+
+/* the client name column carries a name, a client id and a status, and it is the
+   column people scan. it gets the room. */
+.ops-client {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ops-client__name {
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-table__row:hover .ops-client__name {
+  color: var(--accent);
+}
+
+.ops-client__id {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+/* a row that needs looking at, marked on the left edge rather than by tinting the
+   whole row. a tinted row is unreadable and a coloured left rule is not. */
+.ws-table__row.ops-row--attention td:first-child {
+  box-shadow: inset 2px 0 0 var(--warn);
+}
+
+.ws-table__row.ops-row--down td:first-child {
+  box-shadow: inset 2px 0 0 var(--fail);
+}
+
+/* ── grids ───────────────────────────────────── */
+
+.ops-grid {
+  display: grid;
+  gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.ops-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.ops-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ops-muted {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+  max-width: 88ch;
+}
+
+.ops-inline-link {
+  color: var(--accent);
+}
+
+.ops-inline-link:hover {
+  translate: 1px 1px;
+}
+
+@media (max-width: 720px) {
+  .ops-head__actions,
+  .ops-idcard__actions {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* a stat whose number is itself the bad news. the only place on the console a
+   figure is drawn in the failure colour, and it is drawn there because a count of
+   broken pipelines reading like a count of leads is a readout that buries its
+   own headline. */
+.ws-stat--fail .ws-stat__value {
+  color: var(--fail);
+}

@@ -651,6 +651,27 @@
   outline: none;
 }
 
+/* the client id field. bigger and wider-tracked than a normal input because it
+   is the one thing on the page somebody is copying character by character off a
+   phone screen, and 12px mono at default tracking is where 0 and O stop being
+   distinguishable — which is also why the alphabet has neither. */
+.pt-field__input--id {
+  font-size: 17px;
+  letter-spacing: 0.14em;
+  text-align: center;
+  padding-block: 15px;
+}
+
+/* sits under the field and says what it is waiting for. a field that silently
+   accepts twenty characters and then rejects them has watched you make the
+   mistake and said nothing. */
+.pt-field__help {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  margin: -8px 0 18px;
+}
+
 .pt-btn {
   width: 100%;
   padding: 13px 18px;

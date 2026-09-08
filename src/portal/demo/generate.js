@@ -141,7 +141,10 @@ function makeEvent(rng, base) {
     tenantId: DEMO_TENANT.id,
     eventType: base.eventType,
     workflowId: base.workflowId ?? 'wf_speed_to_lead_v3',
-    executionId: `exec_${rng.int(100000, 999999)}`,
+    /* one execution id per workflow run, shared by every row that run wrote. the
+       automations page counts runs by distinct execution, so a workflow that writes three
+       rows per lead must not be reported as having run three times. */
+    executionId: base.executionId ?? `exec_${rng.int(100000, 999999)}`,
     correlationId: base.correlationId ?? null,
     status: base.status ?? 'success',
     payload: base.payload ?? {},
@@ -168,12 +171,22 @@ function generateLeadThread(rng, at, zone) {
   const phone = `+1614${rng.int(2000000, 9999999)}`;
   const lossType = rng.pick(LOSS_TYPES);
 
+  /* a lead is handled by two or three separate workflows, and each one gets a single
+     execution id shared by every row it wrote. this is what the automations page counts:
+     "speed to lead ran 214 times" has to mean 214 runs, not 214 database rows. */
+  const intakeWorkflow = fromMissedCall ? 'wf_missed_call_textback_v2' : 'wf_speed_to_lead_v3';
+  const intakeExec = `exec_${rng.int(100000, 999999)}`;
+  const routingExec = `exec_${rng.int(100000, 999999)}`;
+  const replyExec = `exec_${rng.int(100000, 999999)}`;
+
   if (fromMissedCall) {
     events.push(
       makeEvent(rng, {
         eventType: 'call_missed',
         occurredAt: at,
         correlationId,
+        workflowId: intakeWorkflow,
+        executionId: intakeExec,
         payload: { from: phone, caller, ring_seconds: rng.int(18, 34) },
       }),
     );
@@ -184,6 +197,8 @@ function generateLeadThread(rng, at, zone) {
       eventType: 'lead_received',
       occurredAt: at.plus({ seconds: fromMissedCall ? 1 : 0 }),
       correlationId,
+      workflowId: intakeWorkflow,
+      executionId: intakeExec,
       payload: { source, caller, phone, loss_type: lossType },
     }),
   );
@@ -195,6 +210,8 @@ function generateLeadThread(rng, at, zone) {
       eventType: 'sms_sent',
       occurredAt: at.plus({ milliseconds: latencyMs }),
       correlationId,
+      workflowId: intakeWorkflow,
+      executionId: intakeExec,
       status: smsFailed ? 'failure' : 'success',
       latencyMs: smsFailed ? null : latencyMs,
       payload: smsFailed
@@ -210,6 +227,8 @@ function generateLeadThread(rng, at, zone) {
       eventType: 'routed',
       occurredAt: at.plus({ milliseconds: latencyMs + rng.int(3000, 22000) }),
       correlationId,
+      workflowId: 'wf_oncall_routing_v1',
+      executionId: routingExec,
       payload: { tech: rng.pick(TECHS), loss_type: lossType },
     }),
   );
@@ -220,6 +239,8 @@ function generateLeadThread(rng, at, zone) {
         eventType: 'reply_received',
         occurredAt: at.plus({ minutes: rng.int(1, 47) }),
         correlationId,
+        workflowId: 'wf_reply_capture_v1',
+        executionId: replyExec,
         payload: {
           from: phone,
           body: rng.pick(['yes please call me', 'how soon can someone come out?', 'ok', 'calling now']),

@@ -204,7 +204,28 @@
   color: var(--faint);
 }
 
+
+/* ── the operator's sign-in, inline in the hero ──
+   the client door sends you to a form on its own page; the ops door does not,
+   because there is one operator and one address and a second page to hold a
+   single field would be a page that exists to be walked through. it is bounded
+   to the width of a button row so it reads as one of the actions rather than as
+   the page turning into a form. */
+
+.ph__signin {
+  max-width: 380px;
+  margin-bottom: 20px;
+}
+
+.ph__signin-title {
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+
 /* ── panels ──────────────────────────────────── */
+
 
 .ph__panels {
   position: relative;

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { scrollToId } from '../lib/SmoothScroll';
 import { openPilot } from '../lib/pilot';
 import { site } from '../data/site';
@@ -74,6 +75,18 @@ export default function Nav() {
         </nav>
 
         <div className="nav__actions">
+          {/* the operator console's door. deliberately not a GlowButton: those two
+              are the site's calls to action and this is a staff entrance for an
+              audience of one, so it is a small mono chip that sits quietly to the
+              left of them and does not compete. the page behind it is gated on
+              `arc_admins` in postgres, so a visitor clicking it learns nothing
+              except that it exists — which is the same thing a /login link tells
+              them. */}
+          <Link className="nav__ops" to="/ops" title="operator console">
+            <span className="nav__ops-dot" aria-hidden="true" />
+            ops
+          </Link>
+
           {/* the portal's front door, not the sign-in form. it explains what is
               behind the login before asking anyone to prove they belong there,
               and routes on to the dashboard or the form from its own page. */}

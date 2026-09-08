@@ -315,3 +315,11 @@ main,
     transition-duration: 0.01ms !important;
   }
 }
+
+/* the gap while a split route's chunk arrives. a full-height dark block rather
+   than nothing, so the page does not collapse to zero height and bounce the
+   scroll position on the way in. */
+.route-wait {
+  min-height: 100dvh;
+  background: var(--bg);
+}
