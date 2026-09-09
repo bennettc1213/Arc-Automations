@@ -4,6 +4,7 @@ import PortalShell from '../components/PortalShell';
 import Workspace from '../components/Workspace';
 import { getDashboardForUser } from '../lib/dashboard';
 import { getSupabase, isConfigured } from '../lib/supabase';
+import { site } from '../../data/site';
 
 /**
  * the signed-in dashboard.
@@ -107,7 +108,7 @@ export default function Portal() {
                 ) : (
                   'this account isn’t attached to a portal yet.'
                 )}{' '}
-                <a href="mailto:bennettch1213@gmail.com" style={{ color: 'var(--accent)' }}>
+                <a href={`mailto:${site.email}`} style={{ color: 'var(--accent)' }}>
                   get in touch
                 </a>{' '}
                 and it'll be linked.

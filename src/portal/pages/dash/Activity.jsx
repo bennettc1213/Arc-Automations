@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import EventFeed from '../../components/EventFeed';
+import EarlyData from '../../components/EarlyData';
 import { Empty, Panel, Pill } from '../../components/ui';
 import { formatCount, formatDuration, formatStamp } from '../../lib/format';
 
@@ -89,8 +90,21 @@ export default function Activity({ data, live }) {
             </div>
           </div>
 
-          {filtered.length === 0 ? (
-            <Empty title="no rows of that type in the window" />
+          {rows.length === 0 ? (
+            <EarlyData
+              createdAt={tenant.createdAt}
+              timezone={tenant.timezone}
+              title="nothing has run yet"
+            >
+              this is the raw log — every step of every lead, in order, with times. it stays
+              empty until the first lead arrives, and then it never forgets one. it is the page
+              to open when somebody says nobody called them back.
+            </EarlyData>
+          ) : filtered.length === 0 ? (
+            <Empty title="no rows of that type in the window">
+              the log holds {formatCount(rows.length)} rows. pick another event type, or
+              everything, to see them.
+            </Empty>
           ) : (
             <div className="ws-tablewrap">
               <table className="ws-table ws-table--dense">

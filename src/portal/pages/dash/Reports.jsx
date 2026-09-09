@@ -1,6 +1,8 @@
 import Icon from '../../components/Icon';
+import EarlyData from '../../components/EarlyData';
 import { Empty, Panel, StatCard } from '../../components/ui';
 import {
+  UPTIME_MEANING,
   formatCount,
   formatDuration,
   formatPct,
@@ -19,7 +21,7 @@ import {
  */
 
 export default function Reports({ data, onExport }) {
-  const { monthly, deltas, routing, metrics, threads, threadTotal } = data;
+  const { tenant, monthly, deltas, routing, metrics, threads, threadTotal } = data;
 
   return (
     <>
@@ -48,9 +50,16 @@ export default function Reports({ data, onExport }) {
 
       <Panel title="by month" note={`${monthly.length} months in the loaded window`} bare>
         {monthly.length === 0 ? (
-          <Empty title="not enough history yet">
-            month rollups appear once there is a full month of events behind them.
-          </Empty>
+          <EarlyData
+            createdAt={tenant.createdAt}
+            timezone={tenant.timezone}
+            title="not enough history to compare months yet"
+          >
+            this table fills in one row per month. the first appears as soon as there are
+            events behind it, marked in progress until the month closes. month-over-month
+            percentages are held back until there is a full previous month to measure
+            against, because a percentage against a half-empty period is worse than none.
+          </EarlyData>
         ) : (
           <div className="ws-tablewrap">
             <table className="ws-table">
@@ -85,6 +94,15 @@ export default function Reports({ data, onExport }) {
               </tbody>
             </table>
           </div>
+        )}
+
+        {monthly.length > 0 && (
+          <p className="ws-note">
+            &ldquo;uptime&rdquo; here is the end-to-end check, not the server: {UPTIME_MEANING}.
+            &ldquo;median response&rdquo; is the middle text — half went out faster, half slower.
+            we use the middle rather than the average because one four-hour carrier delay drags
+            an average somewhere no customer actually experienced.
+          </p>
         )}
 
         {!deltas.comparable && (

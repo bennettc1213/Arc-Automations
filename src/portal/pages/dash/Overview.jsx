@@ -7,7 +7,14 @@ import HourChart from '../../components/HourChart';
 import EventFeed from '../../components/EventFeed';
 import EarlyData from '../../components/EarlyData';
 import { Sparkline, StatCard } from '../../components/ui';
-import { formatCount, formatDuration, formatUptime } from '../../lib/format';
+import {
+  UPTIME_MEANING,
+  describeP90,
+  describeSends,
+  formatCount,
+  formatDuration,
+  formatUptime,
+} from '../../lib/format';
 
 /**
  * the page the portal opens on.
@@ -42,19 +49,22 @@ export default function Overview({ data, base, live }) {
     <>
       <StatusBar status={data.status} timezone={tenant.timezone} />
 
+      {/* order is the argument. the lead count is the number their crm already tells
+          them; missed calls answered is the number that maps to money, because every one
+          of them is a job that would have gone to voicemail and died there. so it goes
+          first and carries the hero tone. median response is second — it is the figure
+          the whole system exists to move. */}
       <div className="ws-stats">
         <StatCard
-          label={leadLabel}
-          value={leadValue}
+          label="missed calls answered"
+          value={metrics.missedCallsAnswered}
           animate
           format={formatCount}
-          delta={leadDelta}
-          deltaLabel={leadDeltaLabel}
-          sub="every one answered automatically"
+          delta={deltas.missedCallsAnswered}
+          deltaLabel="vs prev 30d"
+          sub="calls that rang out — every one got a text back instead of voicemail"
           tone="lead"
-        >
-          <Sparkline points={leadsPerDay.map((day) => day.leads)} />
-        </StatCard>
+        />
 
         <StatCard
           label="median response"
@@ -63,27 +73,29 @@ export default function Overview({ data, base, live }) {
           deltaLabel="vs prev 30d"
           sub={
             metrics.p90ResponseMs === null
-              ? 'no sends yet'
-              : `p90 ${formatDuration(metrics.p90ResponseMs)} · ${formatCount(metrics.sends)} sends`
+              ? 'no texts sent yet'
+              : `${describeP90(metrics.p90ResponseMs)} · ${describeSends(metrics.sends)}`
           }
         />
 
         <StatCard
-          label="missed calls answered"
-          value={metrics.missedCallsAnswered}
+          label={leadLabel}
+          value={leadValue}
           animate
           format={formatCount}
-          delta={deltas.missedCallsAnswered}
-          deltaLabel="vs prev 30d"
-          sub="text back, last 30 days"
-        />
+          delta={leadDelta}
+          deltaLabel={leadDeltaLabel}
+          sub="every one answered automatically"
+        >
+          <Sparkline points={leadsPerDay.map((day) => day.leads)} />
+        </StatCard>
 
         <StatCard
           label="pipeline uptime"
           value={formatUptime(metrics.uptimePct)}
           sub={
             <>
-              {formatCount(data.reliability.checks)} end-to-end checks ·{' '}
+              {UPTIME_MEANING}. {formatCount(data.reliability.checks)} checks ·{' '}
               <Link to={`${base}/reliability`}>see them</Link>
             </>
           }

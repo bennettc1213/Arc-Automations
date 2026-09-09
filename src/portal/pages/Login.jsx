@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import ArcMark from '../../components/ArcMark';
 import { anonKey, functionUrl, isConfigured } from '../lib/supabase';
 import { CLIENT_ID_EXAMPLE, formatClientIdInput, normaliseClientId } from '../lib/client-id';
+import { site } from '../../data/site';
 
 /**
  * sign in with a client ID.
@@ -103,7 +104,7 @@ export default function Login() {
           </p>
           <p className="pt-auth__fine">
             not the inbox you expected? that is the address we have for this account —{' '}
-            <a href="mailto:bennettch1213@gmail.com">tell us</a> and we will change it.
+            <a href={`mailto:${site.email}`}>tell us</a> and we will change it.
             <br />
             nothing arrived? check spam, then <Link to="/login">try again</Link>.
           </p>
@@ -160,7 +161,7 @@ export default function Login() {
 
         <p className="pt-auth__fine">
           lost the id? it is on your welcome email, and we can resend it —{' '}
-          <a href="mailto:bennettch1213@gmail.com">get in touch</a>.
+          <a href={`mailto:${site.email}`}>get in touch</a>.
           <br />
           want to see it first? <Link to="/demo">open the live demo</Link>.
         </p>

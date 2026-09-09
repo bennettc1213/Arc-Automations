@@ -31,6 +31,8 @@ export default function Workflows() {
         ))}
       </div>
 
+      {site.workflowsAlso && <p className="wf__also">{site.workflowsAlso}</p>}
+
       <div className="wf__stage">
         <div className="wf__panel" key={active.id}>
           <div className="wf__panelhead">
@@ -52,7 +54,7 @@ export default function Workflows() {
                 ))}
               </ul>
             )}
-            <button className="wf__cta" onClick={() => openPilot('marketing-automation')}>
+            <button className="wf__cta" onClick={() => openPilot()}>
               start a pilot <span aria-hidden="true">→</span>
             </button>
           </div>

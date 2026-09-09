@@ -75,6 +75,25 @@
   transform: rotate(0deg);
 }
 
+.acc__price {
+  padding: 0 8px 24px 80px;
+  margin-top: -6px;
+  color: var(--muted);
+  max-width: 62ch;
+  line-height: 1.65;
+  font-size: 0.95rem;
+}
+
+.acc__price::before {
+  content: '';
+  display: inline-block;
+  width: 18px;
+  height: 1px;
+  margin-right: 12px;
+  vertical-align: middle;
+  background: var(--accent);
+}
+
 .acc__body {
   overflow: hidden;
 }
@@ -90,7 +109,8 @@
   .acc__head {
     grid-template-columns: 40px minmax(0, 1fr) 30px;
   }
-  .acc__body p {
+  .acc__body p,
+  .acc__price {
     padding-left: 56px;
   }
 }

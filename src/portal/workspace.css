@@ -1197,8 +1197,56 @@
 
 .ws-table__chev {
   width: 34px;
+  /* was --faint, which is the colour this system uses for text nobody needs to
+     read. the only affordance on the row should not be painted in it. */
+  color: var(--muted);
+}
+/* ── P1E: make an expandable row look expandable ──────────────
+   the per-lead timeline behind these rows is the most persuasive thing in the
+   product, and until now the only sign it existed was a low-contrast chevron.
+   raised contrast, a real pointer, and a left accent rule that appears on hover
+   so the whole row reads as a control rather than a printed line. */
+
+.ws-table__row {
+  cursor: pointer;
+}
+
+.ws-table__row td:first-child {
+  position: relative;
+}
+
+.ws-table__row td:first-child::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  scale: 1 0;
+  transition: scale 160ms var(--ease-out);
+}
+
+.ws-table__row:hover td:first-child::before,
+.ws-table__row.is-open td:first-child::before {
+  scale: 1 1;
+}
+
+/* the hint above the table, shown until the reader has opened a row once. */
+.ws-tablehint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
   color: var(--faint);
 }
+
+.ws-tablehint__chev {
+  color: var(--accent);
+}
+
 
 .ws-table__chev .ws-icon {
   transition: rotate 140ms var(--ease-out);
@@ -1734,6 +1782,129 @@
   .ws-bars__track {
     grid-column: 1 / -1;
     order: 3;
+  }
+
+  /* ── P1B: tables become cards ────────────────────────────────
+     `overflow-x: auto` was the entire mobile strategy, and the leads table has
+     seven columns. leads is the page a contractor opens from a truck, so the
+     row is restacked into a card: who it was, what happened, how fast we
+     answered. no sideways scrolling, nothing hidden off-screen.
+     `display: block` on table parts drops the table semantics, so the header
+     row is hidden and each value carries its own label instead. */
+  .ws-tablewrap {
+    overflow-x: visible;
+  }
+
+  .ws-table,
+  .ws-table tbody,
+  .ws-table tr,
+  .ws-table td {
+    display: block;
+    width: auto;
+  }
+
+  .ws-table thead {
+    display: none;
+  }
+
+  .ws-table__row {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 10px;
+    row-gap: 6px;
+    padding: 14px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .ws-table__row td {
+    padding: 0;
+    border-bottom: none;
+    min-width: 0;
+  }
+
+  .ws-table__row td:empty {
+    display: none;
+  }
+
+  .ws-td--customer {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    padding-right: 32px !important;
+  }
+
+  .ws-td--source {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .ws-td--loss {
+    grid-column: 2 / -1;
+    grid-row: 2;
+  }
+
+  .ws-td--time {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    font-size: 11px;
+    color: var(--faint);
+  }
+
+  .ws-td--response {
+    grid-column: 1;
+    grid-row: 4;
+    text-align: left !important;
+  }
+
+  .ws-td--outcome {
+    grid-column: 2;
+    grid-row: 4;
+  }
+
+  .ws-td--tech {
+    grid-column: 3;
+    grid-row: 4;
+    text-align: right;
+  }
+
+  /* the column header is gone, so the value carries its own label. */
+  .ws-td--time[data-label]::before,
+  .ws-td--outcome[data-label]::before,
+  .ws-td--response[data-label]::before,
+  .ws-td--tech[data-label]::before {
+    content: attr(data-label) ' ';
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--faint);
+  }
+
+  .ws-table__chev {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: auto;
+  }
+
+  /* the detail row is a plain block once the table is unstacked. */
+  .ws-table__detail,
+  .ws-table__detail td {
+    display: block;
+  }
+
+  /* tables whose rows are not cards — the run log, the audit log — keep a
+     simpler two-column stack rather than the seven-field lead card. */
+  .ws-table--dense tr:not(.ws-table__row) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .ws-table--dense tr:not(.ws-table__row) td {
+    padding: 0;
+    border-bottom: none;
   }
 }
 

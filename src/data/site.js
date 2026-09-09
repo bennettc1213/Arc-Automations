@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────
 
 export const site = {
-  wordmark: 'ben',
+  wordmark: 'arc',
   brand: 'arc automations',
   email: 'bennettch1213@gmail.com', // swap for hello@arcautomations.com when the domain email exists
 
@@ -110,21 +110,32 @@ export const site = {
     },
   ],
 
-  // the index — hover-reveal grid. url: null renders the honest label instead of a fake link.
+  /* the index — hover-reveal grid. url: null renders the honest label instead of a fake
+     link, and that stays: never link to something that is not there.
+     five rows, not seven. two carry a not-yet-live label and no more, because a list where
+     four of seven say "soon" does not read as honest, it reads as "mostly hasn't
+     happened". `pale ember espresso` is gone entirely — a local-only coffee build means
+     nothing to a restoration contractor deciding whether to trust us with their phones. */
   workIndex: [
     { title: 'n8n speed-to-lead', year: '2026', kind: 'automation', url: null, urlLabel: 'in production · private', media: 'speed-to-lead-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
     { title: 'lead qualification agent', year: '2026', kind: 'ai agent', url: null, urlLabel: 'in production · private', media: 'lead-qualification-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
     { title: 'warranty expiration tracker', year: '2026', kind: 'automation', url: null, urlLabel: 'deployed · n8n cloud', media: 'warranty-tracker-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
     { title: 'rue noir coffee', year: '2026', kind: 'site', url: 'https://bennettc1213.github.io/rue-noir-coffee', urlLabel: 'live site', media: 'rue-noir-cover.jpg', mediaSpec: 'hero frame, 1920×1080' },
-    { title: 'pale ember espresso', year: '2026', kind: 'site', url: null, urlLabel: 'local build · deploy pending', media: 'pale-ember-cover.jpg', mediaSpec: 'hero frame, 1920×1080' },
-    { title: 'home-service crm', year: '2026', kind: 'app', url: null, urlLabel: 'design build · in production soon', media: 'crm-cover.jpg', mediaSpec: 'crm board, 1920×1080' },
     { title: 'missed-call text-back', year: '2026', kind: 'automation', url: null, urlLabel: 'design build · in production soon', media: 'missed-call-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
   ],
 
+  /* `core: true` is the audience filter, not a ranking. a restoration owner reading
+     "rapier" and "lenis" learns that somebody likes graphics libraries; reading "twilio"
+     and "gohighlevel" learns their phones will work. core shows by default, the rest sits
+     behind a toggle for the occasional technical reader. */
   toolkit: [
     { label: 'n8n', core: true },
     { label: 'claude code', core: true },
     { label: 'gohighlevel', core: true },
+    { label: 'twilio', core: true },
+    { label: 'webhooks', core: true },
+    { label: 'rest apis', core: true },
+    { label: 'rag', core: true },
     { label: 'javascript' },
     { label: 'node.js' },
     { label: 'react' },
@@ -135,14 +146,14 @@ export const site = {
     { label: 'lenis' },
     { label: 'framer motion' },
     { label: 'matter.js' },
-    { label: 'webhooks' },
-    { label: 'rest apis' },
-    { label: 'rag' },
-    { label: 'twilio' },
     { label: 'vite' },
   ],
 
-  // the workflows — every tab is an offering. each one answers "what do I get".
+  /* the workflows — every tab is an offering, and there are three of them on purpose.
+     an eleven-item menu from a solo operator reads as an agency that will take any job,
+     which is the exact opposite of the "one narrow offer, already in production" position
+     the rest of this site is built on. the other eight are shelved below rather than
+     deleted: each one comes back the day there is a case study behind it. */
   workflows: [
     {
       id: 'speed-to-lead',
@@ -153,12 +164,12 @@ export const site = {
       points: ['instant sms + call bridge', 'lead scoring before routing', 'loud failures — errors page us, not the contractor'],
     },
     {
-      id: 'warranty-tracker',
-      label: 'warranty expiration tracker',
-      tag: '( n8n · GHL · cron )',
+      id: 'missed-call-text-back',
+      label: 'missed-call text-back',
+      tag: '( n8n · twilio · GHL )',
       description:
-        'a nightly sweep finds warranties coming up on expiration, drafts the outreach, and queues the follow-up sequence — renewal work booked before the lapse, not a scramble after it.',
-      points: ['nightly cron over the customer list', 'drafts + queues the outreach', 'renewal work booked early'],
+        'the calls you miss while you are on a roof or under a house — answered in under a minute by a text with a booking link already in the thread. no lead goes to voicemail and dies there.',
+      points: ['every missed call texts back in under a minute', 'caller id, name, and intent, already parsed', 'one tap on the link becomes a booked job'],
     },
     {
       id: 'lead-qualification',
@@ -168,71 +179,88 @@ export const site = {
         'an n8n agent that works every inbound inquiry — asks the qualifying questions, scores intent against your service area and job types, and routes hot leads straight to your phone.',
       points: ['qualifies before you pick up', 'grounded in your services + coverage area', 'hot leads routed, tire-kickers handled politely'],
     },
-    {
-      id: 'workflow-automations',
-      label: 'workflow automations',
-      tag: '( n8n · custom )',
-      description:
-        'custom n8n workflows that wire your tools together and run the repetitive parts of your operation — on a schedule, a webhook, or an event.',
-      points: ['scheduled / webhook / event triggered', 'connects the tools you already use', 'error branches — failures page us, not you'],
-    },
-    {
-      id: 'ai-chat-bots',
-      label: 'ai chat & service bots',
-      tag: '( n8n · claude · openai )',
-      description:
-        'chat and voice bots that answer customer questions at 2am, qualify leads before they reach you, and hand off to a human the moment it matters.',
-      points: ['24/7 on every channel — web, sms, voice', 'answers grounded in your actual services', 'smooth handoff to a human'],
-    },
-    {
-      id: 'websites',
-      label: 'professional websites',
-      tag: '( react · design )',
-      description:
-        'fast, custom-built websites that make your business look like it has its act together — built to turn visitors into booked calls, not just to look pretty.',
-      points: ['custom design, no templates', 'built for speed + lead capture', 'wired into your crm from day one'],
-    },
-    {
-      id: 'crm-data',
-      label: 'crm & data integration',
-      tag: '( gohighlevel · api )',
-      description:
-        'your crm, jobber, servicetitan, or a google sheet your office manager loves — wired together so a lead that enters anywhere shows up everywhere. no double entry.',
-      points: ['gohighlevel, jobber, servicetitan + more', 'two-way sync, no double entry', 'one source of truth for your numbers'],
-    },
-    {
-      id: 'business-process',
-      label: 'business process automation',
-      tag: '( n8n · custom )',
-      description:
-        'back-office operations — invoicing, follow-ups, scheduling, reporting — automated end to end, so your team works the exceptions instead of the busywork.',
-      points: ['invoicing, scheduling, reporting', 'end-to-end, not point solutions', 'your team works the exceptions'],
-    },
-    {
-      id: 'marketing-automation',
-      label: 'marketing automation',
-      tag: '( email · sms )',
-      description:
-        'follow-up sequences, drip campaigns, and review engines that keep your name in front of the people who have already raised their hand.',
-      points: ['email + sms nurture sequences', 'review engines on autopilot', 'every campaign measured'],
-    },
-    {
-      id: 'ai-analytics',
-      label: 'ai-powered analytics',
-      tag: '( ai · dashboards )',
-      description:
-        'your numbers, explained. dashboards that show response time, booked rate, and where leads are leaking — with ai summaries instead of spreadsheets nobody opens.',
-      points: ['live dashboards, not static reports', 'ai-written summaries of the week', 'find the leak before it costs a job'],
-    },
-    {
-      id: 'custom-saas',
-      label: 'custom saas & portals',
-      tag: '( custom · saas )',
-      description:
-        'bespoke software built around exactly how you work — employee portals, client portals, internal tools, or a whole product for your market.',
-      points: ['employee + client portals', 'internal tools built to your process', 'from a single tool to a full product'],
-    },
   ],
+
+  /* the quiet line under the tabs. everything the three tabs do not cover, said once,
+     without giving it equal billing. */
+  workflowsAlso:
+    'we also build websites, crm and data integrations, warranty-renewal sweeps, and custom internal tools — usually for clients whose first pilot is already running.',
+
+  /* shelved offerings — real work, but not something to lead with until one of them has
+     a contractor's name and a number attached to it. uncomment to restore a tab.
+  //   {
+  //     id: 'warranty-tracker',
+  //     label: 'warranty expiration tracker',
+  //     tag: '( n8n · GHL · cron )',
+  //     description:
+  //       'a nightly sweep finds warranties coming up on expiration, drafts the outreach, and queues the follow-up sequence — renewal work booked before the lapse, not a scramble after it.',
+  //     points: ['nightly cron over the customer list', 'drafts + queues the outreach', 'renewal work booked early'],
+  //   },
+  //   {
+  //     id: 'workflow-automations',
+  //     label: 'workflow automations',
+  //     tag: '( n8n · custom )',
+  //     description:
+  //       'custom n8n workflows that wire your tools together and run the repetitive parts of your operation — on a schedule, a webhook, or an event.',
+  //     points: ['scheduled / webhook / event triggered', 'connects the tools you already use', 'error branches — failures page us, not you'],
+  //   },
+  //   {
+  //     id: 'ai-chat-bots',
+  //     label: 'ai chat & service bots',
+  //     tag: '( n8n · claude · openai )',
+  //     description:
+  //       'chat and voice bots that answer customer questions at 2am, qualify leads before they reach you, and hand off to a human the moment it matters.',
+  //     points: ['24/7 on every channel — web, sms, voice', 'answers grounded in your actual services', 'smooth handoff to a human'],
+  //   },
+  //   {
+  //     id: 'websites',
+  //     label: 'professional websites',
+  //     tag: '( react · design )',
+  //     description:
+  //       'fast, custom-built websites that make your business look like it has its act together — built to turn visitors into booked calls, not just to look pretty.',
+  //     points: ['custom design, no templates', 'built for speed + lead capture', 'wired into your crm from day one'],
+  //   },
+  //   {
+  //     id: 'crm-data',
+  //     label: 'crm & data integration',
+  //     tag: '( gohighlevel · api )',
+  //     description:
+  //       'your crm, jobber, servicetitan, or a google sheet your office manager loves — wired together so a lead that enters anywhere shows up everywhere. no double entry.',
+  //     points: ['gohighlevel, jobber, servicetitan + more', 'two-way sync, no double entry', 'one source of truth for your numbers'],
+  //   },
+  //   {
+  //     id: 'business-process',
+  //     label: 'business process automation',
+  //     tag: '( n8n · custom )',
+  //     description:
+  //       'back-office operations — invoicing, follow-ups, scheduling, reporting — automated end to end, so your team works the exceptions instead of the busywork.',
+  //     points: ['invoicing, scheduling, reporting', 'end-to-end, not point solutions', 'your team works the exceptions'],
+  //   },
+  //   {
+  //     id: 'marketing-automation',
+  //     label: 'marketing automation',
+  //     tag: '( email · sms )',
+  //     description:
+  //       'follow-up sequences, drip campaigns, and review engines that keep your name in front of the people who have already raised their hand.',
+  //     points: ['email + sms nurture sequences', 'review engines on autopilot', 'every campaign measured'],
+  //   },
+  //   {
+  //     id: 'ai-analytics',
+  //     label: 'ai-powered analytics',
+  //     tag: '( ai · dashboards )',
+  //     description:
+  //       'your numbers, explained. dashboards that show response time, booked rate, and where leads are leaking — with ai summaries instead of spreadsheets nobody opens.',
+  //     points: ['live dashboards, not static reports', 'ai-written summaries of the week', 'find the leak before it costs a job'],
+  //   },
+  //   {
+  //     id: 'custom-saas',
+  //     label: 'custom saas & portals',
+  //     tag: '( custom · saas )',
+  //     description:
+  //       'bespoke software built around exactly how you work — employee portals, client portals, internal tools, or a whole product for your market.',
+  //     points: ['employee + client portals', 'internal tools built to your process', 'from a single tool to a full product'],
+  //   },
+  */
 
   // start-a-pilot overlay — intake questions + booking config
   pilot: {
@@ -285,9 +313,19 @@ export const site = {
         ],
       },
     },
+    /* every completed intake POSTs here before the booking step — fire and
+       forget, and a failure never blocks the visitor from reaching the
+       calendar. this is the only thing standing between a filled-out form and
+       a lead you never learn about, so it matters more than the embed below.
+       paste the n8n production webhook URL. empty = nothing is captured, and
+       the overlay says so honestly rather than claiming a send it didn't make. */
+    captureUrl: '',
+
     booking: {
-      // pick 'calcom' or 'ghl' and paste the link; until then the flow
-      // falls back to a pre-filled email — never a dead end.
+      // pick 'calcom' or 'ghl' and paste the event link; buildEmbedSrc()
+      // prefills name, email, phone, and the intake answers for both.
+      // until a provider is set the flow lands on a pre-filled email — never
+      // a dead end, and never an apology for the booking not existing.
       provider: null,
       embedUrl: '',
     },
@@ -301,6 +339,7 @@ export const site = {
     {
       q: 'one pilot, one week',
       a: 'a single flow, live in production — usually speed-to-lead. wired to your gohighlevel, tested against real leads, measured against your old response time. small enough to trust, real enough to matter.',
+      price: 'flat $1,500 to build it — then $500/mo if it earns its keep. no retainer until the pilot is live and you have seen the numbers.',
     },
     {
       q: 'it plugs into what you already run',
@@ -320,10 +359,6 @@ export const site = {
     heading: 'your leads are waiting.',
     sub: 'most contractors respond in hours. yours will respond in seconds.',
     cta: 'start a pilot',
-    school: 'information systems (ai minor) — university of utah, fall 2026',
-    location: 'northern utah, mst',
-    // add real links as they exist: { label: 'youtube', url: 'https://…' }
-    links: [],
   },
 
   ticker: ['arc automations', 'northern utah', 'open for pilot builds', 'speed-to-lead < 60s', 'built by hand, not a template'],

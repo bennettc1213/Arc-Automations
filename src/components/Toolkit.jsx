@@ -1,19 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
-import Matter from 'matter-js';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { site } from '../data/site';
-import { useInView, useIsMobile, useReducedMotion } from '../lib/hooks';
+import { useInView, useIsMobile, useReducedMotion, useSaveData } from '../lib/hooks';
 import PixelGuy from './PixelGuy';
 import './Toolkit.css';
 
 /**
  * Drag-and-throw physics chips. Real matter.js bodies synced to DOM nodes so
- * the type stays crisp. Killed under 768px and for reduced motion — static
- * wrapped tags render instead.
+ * the type stays crisp. Killed under 768px, for reduced motion, and for data
+ * saver — static wrapped tags render instead.
+ *
+ * matter.js is a full 2D physics engine and it is here for a decorative effect,
+ * so it is deliberately NOT in the initial bundle. It is imported dynamically,
+ * and only once the section has actually been scrolled to on a device that will
+ * use it. A contractor on bad service in a truck downloads none of it.
+ *
+ * The chip list is split by audience rather than shown whole: the `core` entries
+ * are things a contractor could plausibly care about, and the rest of the stack
+ * is one click away for the occasional technical reader.
  */
 export default function Toolkit() {
   const isMobile = useIsMobile();
   const reduced = useReducedMotion();
-  const physics = !isMobile && !reduced;
+  const saveData = useSaveData();
+  const [showAll, setShowAll] = useState(false);
+  const physics = !isMobile && !reduced && !saveData;
+
+  const core = useMemo(() => site.toolkit.filter((t) => t.core), []);
+  const rest = useMemo(() => site.toolkit.filter((t) => !t.core), []);
+  const chips = showAll ? [...core, ...rest] : core;
 
   return (
     <section className="toolkit" id="toolkit" aria-label="toolkit">
@@ -25,15 +39,31 @@ export default function Toolkit() {
         </div>
       </div>
 
-      {physics ? <PhysicsPit key="physics" /> : <StaticChips key="static" />}
+      {/* remounting on toggle is deliberate: the pit builds its bodies once from
+          the chips it was handed, so the new ones have to fall in fresh. */}
+      {physics ? (
+        <PhysicsPit key={`physics-${showAll}`} chips={chips} />
+      ) : (
+        <StaticChips key={`static-${showAll}`} chips={chips} />
+      )}
+
+      <div className="wrap">
+        <button
+          className="toolkit__more mono"
+          onClick={() => setShowAll((v) => !v)}
+          aria-expanded={showAll}
+        >
+          {showAll ? '— hide the rest of the stack' : `+ the rest of the stack (${rest.length})`}
+        </button>
+      </div>
     </section>
   );
 }
 
-function StaticChips() {
+function StaticChips({ chips }) {
   return (
     <div className="toolkit__static wrap">
-      {site.toolkit.map((t) => (
+      {chips.map((t) => (
         <span key={t.label} className={`chip ${t.core ? 'chip--core' : ''}`}>
           {t.label}
         </span>
@@ -43,7 +73,7 @@ function StaticChips() {
   );
 }
 
-function PhysicsPit() {
+function PhysicsPit({ chips }) {
   const pitRef = useRef(null);
   const chipRefs = useRef([]);
   const inView = useInView(pitRef, '-60px');
@@ -58,97 +88,28 @@ function PhysicsPit() {
 
   useEffect(() => {
     if (!dropped) return undefined;
-    const pit = pitRef.current;
-    const { Engine, Bodies, Composite, Mouse, MouseConstraint, Runner, Body } = Matter;
 
-    const W = pit.clientWidth;
-    const H = pit.clientHeight;
+    /* the engine is fetched here, not at module scope. `cancelled` guards the case
+       where the component unmounts before the chunk lands, so we never build a
+       world into a dead DOM or leak a runner nothing will ever stop. */
+    let cancelled = false;
+    let teardown = null;
 
-    const engine = Engine.create({ enableSleeping: true });
-    engine.gravity.y = 1.1;
-
-    const wall = { isStatic: true, render: { visible: false } };
-    const bounds = [
-      Bodies.rectangle(W / 2, H + 50, W + 200, 100, wall), // floor
-      Bodies.rectangle(-50, H / 2, 100, H * 4, wall), // left
-      Bodies.rectangle(W + 50, H / 2, 100, H * 4, wall), // right
-      Bodies.rectangle(W / 2, -H * 1.6, W + 200, 100, wall), // high ceiling — throws stay in
-    ];
-    Composite.add(engine.world, bounds);
-
-    const chips = chipRefs.current.filter(Boolean);
-    const bodies = chips.map((el, i) => {
-      const w = el.offsetWidth;
-      const h = el.offsetHeight;
-      const x = 60 + Math.random() * Math.max(W - 120, 60);
-      const y = -60 - i * 46 - Math.random() * 90;
-      const body = Bodies.rectangle(x, y, w, h, {
-        chamfer: { radius: h / 2 },
-        restitution: 0.45,
-        friction: 0.12,
-        frictionAir: 0.012,
-        angle: (Math.random() - 0.5) * 0.6,
-      });
-      return body;
+    import('matter-js').then(({ default: Matter }) => {
+      if (cancelled || !pitRef.current) return;
+      teardown = buildWorld(Matter, pitRef.current, chipRefs.current.filter(Boolean), worldRef);
     });
-    Composite.add(engine.world, bodies);
-
-    const mouse = Mouse.create(pit);
-    const mouseConstraint = MouseConstraint.create(engine, {
-      mouse,
-      constraint: { stiffness: 0.18, render: { visible: false } },
-    });
-    Composite.add(engine.world, mouseConstraint);
-
-    // matter's mouse eats the wheel — give scrolling back to the page
-    mouse.element.removeEventListener('wheel', mouse.mousewheel);
-    mouse.element.removeEventListener('DOMMouseScroll', mouse.mousewheel);
-
-    // wake bodies on grab so sleeping piles respond
-    Matter.Events.on(mouseConstraint, 'startdrag', (e) => Matter.Sleeping.set(e.body, false));
-
-    const runner = Runner.create();
-    Runner.run(runner, engine);
-
-    let raf;
-    const sync = () => {
-      for (let i = 0; i < bodies.length; i++) {
-        const b = bodies[i];
-        const el = chips[i];
-        el.style.transform = `translate(${b.position.x - el.offsetWidth / 2}px, ${
-          b.position.y - el.offsetHeight / 2
-        }px) rotate(${b.angle}rad)`;
-      }
-      raf = requestAnimationFrame(sync);
-    };
-    raf = requestAnimationFrame(sync);
-
-    // nudge everything on resize instead of rebuilding
-    const onResize = () => {
-      const nw = pit.clientWidth;
-      Body.setPosition(bounds[2], { x: nw + 50, y: H / 2 });
-      Body.setPosition(bounds[0], { x: nw / 2, y: H + 50 });
-      bodies.forEach((b) => {
-        if (b.position.x > nw - 30) Body.setPosition(b, { x: nw - 60, y: b.position.y });
-        Matter.Sleeping.set(b, false);
-      });
-    };
-    window.addEventListener('resize', onResize);
-
-    worldRef.current = { engine, runner };
 
     return () => {
-      window.removeEventListener('resize', onResize);
-      cancelAnimationFrame(raf);
-      Runner.stop(runner);
-      Engine.clear(engine);
-      worldRef.current = null;
+      cancelled = true;
+      teardown?.();
+      teardown = null;
     };
   }, [dropped]);
 
   return (
     <div className="toolkit__pit" ref={pitRef}>
-      {site.toolkit.map((t, i) => (
+      {chips.map((t, i) => (
         <span
           key={t.label}
           ref={(el) => (chipRefs.current[i] = el)}
@@ -161,7 +122,7 @@ function PhysicsPit() {
       ))}
       {/* the mark falls in with his tools — grab him, throw him, he blinks */}
       <span
-        ref={(el) => (chipRefs.current[site.toolkit.length] = el)}
+        ref={(el) => (chipRefs.current[chips.length] = el)}
         className={`pitguy ${dropped ? 'is-live' : ''}`}
       >
         <PixelGuy size={38} />
@@ -169,4 +130,92 @@ function PhysicsPit() {
       <span className="toolkit__floorline" aria-hidden="true" />
     </div>
   );
+}
+
+/* the physics itself, unchanged, lifted out of the effect so the dynamic import
+   above reads as one statement. returns its own teardown. */
+function buildWorld(Matter, pit, chips, worldRef) {
+  const { Engine, Bodies, Composite, Mouse, MouseConstraint, Runner, Body } = Matter;
+
+  const W = pit.clientWidth;
+  const H = pit.clientHeight;
+
+  const engine = Engine.create({ enableSleeping: true });
+  engine.gravity.y = 1.1;
+
+  const wall = { isStatic: true, render: { visible: false } };
+  const bounds = [
+    Bodies.rectangle(W / 2, H + 50, W + 200, 100, wall), // floor
+    Bodies.rectangle(-50, H / 2, 100, H * 4, wall), // left
+    Bodies.rectangle(W + 50, H / 2, 100, H * 4, wall), // right
+    Bodies.rectangle(W / 2, -H * 1.6, W + 200, 100, wall), // high ceiling — throws stay in
+  ];
+  Composite.add(engine.world, bounds);
+
+  const bodies = chips.map((el, i) => {
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const x = 60 + Math.random() * Math.max(W - 120, 60);
+    const y = -60 - i * 46 - Math.random() * 90;
+    return Bodies.rectangle(x, y, w, h, {
+      chamfer: { radius: h / 2 },
+      restitution: 0.45,
+      friction: 0.12,
+      frictionAir: 0.012,
+      angle: (Math.random() - 0.5) * 0.6,
+    });
+  });
+  Composite.add(engine.world, bodies);
+
+  const mouse = Mouse.create(pit);
+  const mouseConstraint = MouseConstraint.create(engine, {
+    mouse,
+    constraint: { stiffness: 0.18, render: { visible: false } },
+  });
+  Composite.add(engine.world, mouseConstraint);
+
+  // matter's mouse eats the wheel — give scrolling back to the page
+  mouse.element.removeEventListener('wheel', mouse.mousewheel);
+  mouse.element.removeEventListener('DOMMouseScroll', mouse.mousewheel);
+
+  // wake bodies on grab so sleeping piles respond
+  Matter.Events.on(mouseConstraint, 'startdrag', (e) => Matter.Sleeping.set(e.body, false));
+
+  const runner = Runner.create();
+  Runner.run(runner, engine);
+
+  let raf;
+  const sync = () => {
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      const el = chips[i];
+      el.style.transform = `translate(${b.position.x - el.offsetWidth / 2}px, ${
+        b.position.y - el.offsetHeight / 2
+      }px) rotate(${b.angle}rad)`;
+    }
+    raf = requestAnimationFrame(sync);
+  };
+  raf = requestAnimationFrame(sync);
+
+  // nudge everything on resize instead of rebuilding
+  const onResize = () => {
+    const nw = pit.clientWidth;
+    Body.setPosition(bounds[2], { x: nw + 50, y: H / 2 });
+    Body.setPosition(bounds[0], { x: nw / 2, y: H + 50 });
+    bodies.forEach((b) => {
+      if (b.position.x > nw - 30) Body.setPosition(b, { x: nw - 60, y: b.position.y });
+      Matter.Sleeping.set(b, false);
+    });
+  };
+  window.addEventListener('resize', onResize);
+
+  worldRef.current = { engine, runner };
+
+  return () => {
+    window.removeEventListener('resize', onResize);
+    cancelAnimationFrame(raf);
+    Runner.stop(runner);
+    Engine.clear(engine);
+    worldRef.current = null;
+  };
 }

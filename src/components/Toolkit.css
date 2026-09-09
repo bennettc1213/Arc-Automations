@@ -71,6 +71,21 @@
   opacity: 1;
 }
 
+/* the toggle sits under the pit and reads as a quiet aside, not a second cta. */
+.toolkit__more {
+  margin-top: 22px;
+  padding: 8px 0;
+  font-size: 12px;
+  color: var(--faint);
+  border-bottom: 1px solid transparent;
+  transition: color 0.25s, border-color 0.25s;
+}
+
+.toolkit__more:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 .toolkit__static {
   display: flex;
   flex-wrap: wrap;

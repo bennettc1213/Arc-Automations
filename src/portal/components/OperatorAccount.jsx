@@ -159,6 +159,71 @@ on conflict (user_id) do nothing;`}</pre>
           it the same way you set it: supabase → authentication → users → their account.
         </p>
       </Disclosure>
+
+      {/* the order in here is the whole content. doing these four steps in the
+          wrong order locks the only operator out of the only console, and the
+          recovery is a supabase dashboard session nobody wants to run under
+          pressure. written down because it is the kind of change that looks like
+          editing one string. */}
+      <Disclosure
+        title="changing the operator email"
+        summary="order matters — the wrong order locks you out"
+      >
+        <p>
+          <code>site.opsEmail</code> in <code>src/data/site.js</code> is not display text. it
+          is the account <code>signInWithPassword</code> authenticates against on this page.
+          changing that string without first creating the matching supabase auth user does not
+          change who you sign in as — it points the door at an account that does not exist, and
+          there is no way back in from the browser.
+        </p>
+
+        <p>
+          it is also not a secret, and tightening it is not a security measure: the same
+          address is printed in every <span className="mono">mailto</span> on the public site.
+          what guards this console is the password plus <code>arc_admins</code> plus row level
+          security. the reason to move off a gmail address is that a client reads it in the
+          footer and downgrades you, not that it is exposed.
+        </p>
+
+        <ol className="ops-steps">
+          <li>
+            <b>register the domain mailbox first.</b> it has to be able to receive mail before
+            anything else happens — supabase sends to it, and clients will reply to it.
+          </li>
+
+          <li>
+            <b>create the auth user for the new address.</b> authentication → users → add
+            user, with <b>auto confirm user</b> ticked. give it a password you have written
+            down. this does not affect the old account.
+          </li>
+
+          <li>
+            <b>add it to <code>arc_admins</code>.</b> the same insert as step 3 above, with the
+            new address. until this row exists the new account can sign in and will be refused
+            by <code>is_arc_admin()</code>, which is the correct behaviour and a confusing way
+            to discover you skipped a step.
+          </li>
+
+          <li>
+            <b>prove it works before changing any code.</b> on this page, use{' '}
+            <b>not you? sign in as someone else</b>, enter the new address and its password,
+            and confirm the console loads with the roster totals filled in. this is the step
+            that makes the change safe: at this point both accounts work.
+          </li>
+
+          <li>
+            <b>only now edit <code>site.js</code>.</b> set <code>opsEmail</code> to the new
+            address, and <code>email</code> too if the public contact address is moving with
+            it. deploy. the old account still exists and still works, so a mistake here is
+            recoverable rather than terminal.
+          </li>
+        </ol>
+
+        <p style={{ marginTop: 14 }}>
+          leave the old auth user in place for a while. deleting it the same day removes the
+          only route back if something about the new address turns out to be wrong.
+        </p>
+      </Disclosure>
     </Panel>
   );
 }

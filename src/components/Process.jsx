@@ -28,6 +28,9 @@ export default function Process() {
                   <i />
                 </span>
               </button>
+              {/* deliberately outside the accordion: a price you have to click
+                  to find is the same as no price. */}
+              {item.price && <p className="acc__price">{item.price}</p>}
               <AnimatePresence initial={false}>
                 {isOpen && (
                   <motion.div

@@ -222,6 +222,26 @@
   color: var(--fail);
 }
 
+/* the confirmation tone. an action that changed something on a client's page
+   should say so, and reusing the warn colour for "it worked" is how an operator
+   learns to stop reading the colour. */
+.ops-notice--ok {
+  border-color: color-mix(in srgb, var(--ok) 45%, var(--line-strong));
+  background: var(--ok-dim);
+}
+
+.ops-notice--ok > .ws-icon {
+  color: var(--ok);
+}
+
+/* acknowledge / resolve, sitting under the incident they act on. */
+.ops-rowactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .ops-notice > .ws-icon {
   flex: none;
   margin-top: 2px;

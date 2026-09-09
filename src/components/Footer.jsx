@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import Marquee from './Marquee';
 import PixelGuy, { PixelWalker } from './PixelGuy';
 import { openPilot } from '../lib/pilot';
@@ -39,19 +40,14 @@ export default function Footer() {
         </button>
       </div>
 
-      <div className="footer__meta wrap mono">
-        <span>
-          {site.wordmark}
-          <span className="footer__star">*</span> — {site.brand}
-        </span>
-        <span>{site.footer.school}</span>
-        <span>{site.footer.location}</span>
-        {site.footer.links.map((l) => (
-          <a key={l.label} href={l.url} target="_blank" rel="noreferrer">
-            {l.label} ↗
-          </a>
-        ))}
-        <span>© {new Date().getFullYear()} {site.brand}</span>
+      {/* the operator console's door, moved off the primary nav. the page behind it
+          is gated on `arc_admins` and rls, so this is about what a customer should
+          have to look at, not about hiding anything. */}
+      <div className="footer__util wrap">
+        <Link className="footer__ops" to="/ops" title="operator console">
+          <span className="footer__ops-dot" aria-hidden="true" />
+          ops
+        </Link>
       </div>
 
       {/* persistent ticker — live clock rides along, pixel guy walks the line */}

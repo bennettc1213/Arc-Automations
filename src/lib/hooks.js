@@ -37,6 +37,19 @@ export function useInView(ref, rootMargin = '0px') {
   return inView;
 }
 
+/** true when the browser is asking us to send less: data saver, or a connection
+    slow enough that a decorative physics engine is an insult. read once — it is a
+    device setting, not something that changes mid-scroll. */
+export function useSaveData() {
+  const [save] = useState(() => {
+    if (typeof navigator === 'undefined') return false;
+    const c = navigator.connection;
+    if (!c) return false;
+    return Boolean(c.saveData) || /^(slow-2g|2g)$/.test(c.effectiveType ?? '');
+  });
+  return save;
+}
+
 /** interval that automatically pauses when `active` is false */
 export function useLoop(callback, delay, active) {
   const saved = useRef(callback);

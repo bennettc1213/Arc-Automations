@@ -49,25 +49,44 @@
   background: var(--accent-hot);
 }
 
-.footer__meta {
+.footer__guy {
+  margin-block: 4px 2px;
+}
+
+.footer__util {
   display: flex;
-  flex-wrap: wrap;
-  gap: 14px 36px;
-  padding-block: 26px;
-  border-top: 1px solid var(--line);
+  justify-content: flex-end;
+  padding-bottom: 18px;
+}
+
+.footer__ops {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  line-height: 1;
   color: var(--faint);
+  transition: color 0.25s var(--ease-out);
 }
 
-.footer__star {
-  color: var(--accent);
-}
-
-.footer__meta a:hover {
+.footer__ops:hover,
+.footer__ops:focus-visible {
   color: var(--text);
 }
 
-.footer__guy {
-  margin-block: 4px 2px;
+.footer__ops-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--faint);
+  flex: none;
+  transition: background 0.25s var(--ease-out);
+}
+
+.footer__ops:hover .footer__ops-dot {
+  background: var(--accent);
 }
 
 .footer__tickerwrap {

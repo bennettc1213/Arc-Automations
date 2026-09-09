@@ -72,6 +72,9 @@ export function toConnection(row) {
     endpoint: row.endpoint,
     status: row.status,
     workflowId: row.workflow_id,
+    /* the backstop and ceiling for the staleness check. null until migration
+       0004 is applied, and connectionLiveness treats null as the old 48. */
+    expectedQuietHours: row.expected_quiet_hours ?? null,
     notes: row.notes,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -448,6 +451,7 @@ export async function saveConnection(connection) {
     endpoint: connection.endpoint || null,
     status: connection.status,
     workflow_id: connection.workflowId || null,
+    expected_quiet_hours: connection.expectedQuietHours || null,
     notes: connection.notes || null,
     updated_at: new Date().toISOString(),
   };
@@ -480,14 +484,47 @@ export function workflowActivity(events) {
 
   for (const event of events) {
     if (!event.workflowId) continue;
-    const row = activity.get(event.workflowId) ?? { runs: 0, failed: 0, lastAt: null };
+    const row = activity.get(event.workflowId) ?? {
+      runs: 0,
+      failed: 0,
+      lastAt: null,
+      /* every timestamp this workflow wrote, kept only long enough to derive the
+         gap distribution below and then dropped. it never leaves this module. */
+      stamps: [],
+    };
     row.runs += 1;
     if (event.status === 'failure') row.failed += 1;
     if (row.lastAt === null || event.occurredAt > row.lastAt) row.lastAt = event.occurredAt;
+    row.stamps.push(event.occurredAt);
     activity.set(event.workflowId, row);
   }
 
+  /* collapse the stamps into the one number the liveness check needs: how long
+     this workflow's own longest ordinary quiet stretch is. p90 rather than the
+     maximum, so a single freak gap — a deploy, a holiday — does not permanently
+     raise the bar and blind the check. */
+  for (const row of activity.values()) {
+    row.typicalQuietHours = p90GapHours(row.stamps);
+    delete row.stamps;
+  }
+
   return activity;
+}
+
+function p90GapHours(stamps) {
+  if (!stamps || stamps.length < 8) return null; // too few to describe a cadence
+  const sorted = stamps.slice().sort();
+  const gaps = [];
+  for (let i = 1; i < sorted.length; i++) {
+    gaps.push(
+      DateTime.fromISO(sorted[i], { zone: 'utc' }).diff(
+        DateTime.fromISO(sorted[i - 1], { zone: 'utc' }),
+        'hours',
+      ).hours,
+    );
+  }
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.min(gaps.length - 1, Math.ceil(0.9 * gaps.length) - 1)] ?? null;
 }
 
 /**
@@ -501,6 +538,10 @@ export function workflowActivity(events) {
  * a connection with no workflow_id cannot be matched to events at all, and says
  * so rather than borrowing the tenant's overall activity and calling it proof.
  */
+/* however chatty a workflow is, nothing is called stale before this. a canary on a
+   five-minute cadence would otherwise flag on a twenty-minute blip. */
+const MIN_STALE_HOURS = 6;
+
 export function connectionLiveness(connection, activity, now = DateTime.now()) {
   if (!connection.workflowId) {
     return { state: 'unmatched', lastAt: null, runs: 0, failed: 0, label: 'no workflow id' };
@@ -513,22 +554,43 @@ export function connectionLiveness(connection, activity, now = DateTime.now()) {
 
   const hours = now.diff(DateTime.fromISO(row.lastAt, { zone: 'utc' }), 'hours').hours;
 
-  /* 48 hours, not 24: a plumbing contractor's speed-to-lead workflow can
-     legitimately go a quiet weekend without firing, and a console that cried
-     "down" every monday morning would be one Ben stops reading. */
-  const state = hours > 48 ? 'stale' : row.failed > 0 ? 'flaky' : 'live';
+  /* the threshold is the client's own normal, not a constant.
+     a flat 48 hours was wrong in both directions at once. for a plumbing
+     contractor whose speed-to-lead can genuinely sleep through a quiet weekend,
+     24 would cry "down" every monday morning — and a console that does that is
+     one Ben stops reading. but restoration is 24/7 emergency work: a shop taking
+     four leads a day that goes silent gets found on day three, and those are
+     exactly the jobs that pay.
+     so: flag at twice this workflow's own p90 quiet stretch. a workflow that
+     normally rests ten hours overnight is stale at twenty; one that legitimately
+     rests two days is not. `expected_quiet_hours` on the connection is the
+     backstop, used while there is too little history to describe a cadence, and
+     the ceiling, so a per-client override always wins. */
+  const declared = connection.expectedQuietHours ?? 48;
+  const threshold =
+    row.typicalQuietHours === null
+      ? declared
+      : Math.min(declared, Math.max(MIN_STALE_HOURS, row.typicalQuietHours * 2));
+
+  const state = hours > threshold ? 'stale' : row.failed > 0 ? 'flaky' : 'live';
 
   return {
     state,
     lastAt: row.lastAt,
     runs: row.runs,
     failed: row.failed,
+    thresholdHours: threshold,
+    typicalQuietHours: row.typicalQuietHours,
+    /* below a day, say it in hours. "quiet 1d" for something nineteen hours late
+       on a six-hour cadence understates it and reads as rounding. */
     label:
       state === 'live'
         ? 'live'
         : state === 'flaky'
           ? `${row.failed} failed`
-          : `quiet ${Math.max(1, Math.round(hours / 24))}d`,
+          : hours < 48
+            ? `quiet ${Math.max(1, Math.round(hours))}h`
+            : `quiet ${Math.round(hours / 24)}d`,
   };
 }
 
@@ -572,29 +634,68 @@ async function callFunction(name, body, accessToken) {
  * auth.users and nothing holding an anon key ever should.
  */
 export async function linkClientAccount(tenantId, email) {
-  const supabase = getSupabase();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  return callFunction(
-    'ops',
-    { action: 'link-client', tenant_id: tenantId, email },
-    session?.access_token,
-  );
+  return callOps({ action: 'link-client', tenant_id: tenantId, email });
 }
 
 export async function unlinkClientAccount(tenantId, email) {
+  return callOps({ action: 'unlink-client', tenant_id: tenantId, email });
+}
+
+/* ── alerts ────────────────────────────────────────────────────
+   every one of these goes through the `ops` edge function rather than straight at
+   the table, even acknowledge and resolve — which an admin policy would happily
+   allow from the browser. the reason is the audit row: routing the write through
+   the function is what makes "who resolved this" a fact the system records
+   rather than a thing somebody remembers. */
+
+async function callOps(body) {
   const supabase = getSupabase();
   const {
     data: { session },
   } = await supabase.auth.getSession();
+  return callFunction('ops', body, session?.access_token);
+}
 
-  return callFunction(
-    'ops',
-    { action: 'unlink-client', tenant_id: tenantId, email },
-    session?.access_token,
-  );
+export async function raiseAlert({ tenantId, checkType, severity, message }) {
+  return callOps({
+    action: 'raise-alert',
+    tenant_id: tenantId,
+    check_type: checkType,
+    severity,
+    message,
+  });
+}
+
+export async function acknowledgeAlert(alertId) {
+  return callOps({ action: 'acknowledge-alert', alert_id: alertId });
+}
+
+export async function resolveAlert(alertId) {
+  return callOps({ action: 'resolve-alert', alert_id: alertId });
+}
+
+/* ── the audit log ─────────────────────────────────────────────
+   read-only from here. the insert side lives in the edge functions and there is
+   no update or delete policy on the table at all, so this is the whole client
+   surface. */
+export async function fetchAdminActions(limit = 200) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('admin_actions')
+    .select('*')
+    .order('occurred_at', { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    actorUserId: row.actor_user_id,
+    action: row.action,
+    targetType: row.target_type,
+    targetId: row.target_id,
+    metadata: row.metadata ?? {},
+    occurredAt: row.occurred_at,
+  }));
 }
 
 /* ── the supabase panel ────────────────────────────────────── */

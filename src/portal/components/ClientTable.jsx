@@ -79,36 +79,36 @@ export default function ClientTable({ clients, base, dense = false, emptyTitle, 
                 style={{ cursor: 'pointer' }}
                 title={attention?.why}
               >
-                <td>
+                <td className="ws-td--customer">
                   <span className="ops-client">
                     <span className="ops-client__name">{tenant.name}</span>
                     <span className="ops-client__id">{tenant.clientId ?? 'no client id'}</span>
                   </span>
                 </td>
 
-                <td>
+                <td className="ws-td--source">
                   <TenantStatus status={tenant.status} />
                 </td>
 
-                <td>
+                <td className="ws-td--loss">
                   <PipelineStatus status={data.status} />
                 </td>
 
-                <td className="ws-table__num ws-table__strong">
+                <td className="ws-table__num ws-table__strong ws-td--response" data-label="leads 30d">
                   {formatCount(data.metrics.leadsLast30Days)}
                 </td>
 
-                <td className="ws-table__num">
+                <td className="ws-table__num ws-td--outcome" data-label="median">
                   {data.metrics.medianResponseMs === null
                     ? '—'
                     : formatDuration(data.metrics.medianResponseMs)}
                 </td>
 
-                <td className="ws-table__sub">
+                <td className="ws-table__sub ws-td--time" data-label="last event">
                   {client.lastEventAt ? formatRelative(client.lastEventAt, tenant.timezone) : 'never'}
                 </td>
 
-                <td className="ws-table__num">
+                <td className="ws-table__num ws-td--tech" data-label="wired">
                   {client.connections.length === 0 ? '—' : `${live}/${client.connections.length}`}
                 </td>
 

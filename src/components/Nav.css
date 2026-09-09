@@ -62,47 +62,6 @@
   gap: clamp(14px, 2vw, 22px);
 }
 
-/* the operator console's chip.
-   smaller than either pill, unlit, and set in mono so it reads as an instrument
-   label rather than an invitation. it is the one control in the nav that is not
-   addressed to a visitor, and it should look like it. the dot is the only accent
-   on it: enough to find at a glance when you are the person looking for it,
-   quiet enough to skip over when you are not. */
-
-.nav__ops {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 11px;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  line-height: 1;
-  color: var(--faint);
-  transition: color 0.25s var(--ease-out), border-color 0.25s var(--ease-out);
-}
-
-.nav__ops:hover,
-.nav__ops:focus-visible {
-  color: var(--text);
-  border-color: var(--accent);
-}
-
-.nav__ops-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--faint);
-  flex: none;
-  transition: background 0.25s var(--ease-out);
-}
-
-.nav__ops:hover .nav__ops-dot {
-  background: var(--accent);
-}
-
 /* both buttons live in GlowButton.css. the weighting between them is the
    `variant` prop: "start a pilot" is primary because it is the conversion the
    site is built around, and portal is ghost because it is for people who are
@@ -123,20 +82,5 @@
 @media (max-width: 768px) {
   .nav__links {
     display: none;
-  }
-
-  /* the label goes, the chip stays. at this width the two pills already fill the
-     row, and a third word pushes the wordmark off the screen — but removing the
-     control entirely would mean the console is unreachable from a phone, which is
-     exactly where it gets checked. */
-  .nav__ops {
-    padding: 7px;
-    gap: 0;
-    font-size: 0;
-  }
-
-  .nav__ops-dot {
-    width: 7px;
-    height: 7px;
   }
 }

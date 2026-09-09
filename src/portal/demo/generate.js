@@ -99,25 +99,62 @@ export const DEMO_INCIDENTS = [
   },
 ];
 
-function isIncidentActive(at, incident, zone) {
-  const start = DateTime.now()
+function incidentStart(incident, now, zone) {
+  return now
     .setZone(zone)
     .minus({ days: incident.daysAgo })
     .startOf('day')
     .plus({ hours: incident.startHour });
+}
+
+function isIncidentActive(at, incident, now, zone) {
+  const start = incidentStart(incident, now, zone);
   return at >= start && at < start.plus({ hours: incident.durationHours });
 }
 
-function activeIncident(at, zone) {
-  return DEMO_INCIDENTS.find((i) => isIncidentActive(at, i, zone)) ?? null;
+function activeIncident(at, now, zone) {
+  return DEMO_INCIDENTS.find((i) => isIncidentActive(at, i, now, zone)) ?? null;
+}
+
+/* the demo is a sales asset, and a sales asset that opens with a red minus sign argues
+   against itself. a flat generator does not solve that: over thirty days against the
+   thirty before it, ordinary variance lands negative about half the time, and it rebuilds
+   nightly, so "about half the time" means a prospect eventually opens it on a bad day.
+   so the volume carries a deliberate, gentle upward drift across the ninety days.
+   this is not a hockey stick and must not become one — a restoration contractor knows
+   what their own volume looks like, and a demo showing 4x growth in a quarter reads as
+   fabricated faster than a declining one reads as failing. the lift below works out to
+   roughly a fifth more volume in the trailing month than the month before it, which is
+   what wiring up intake actually does to a shop that was letting calls ring out. */
+const TREND_LIFT = 0.26;
+
+/* what share of a day's leads came in as a missed call rather than a form fill.
+   this is applied as a share of each day's volume, NOT as a per-lead coin flip, and the
+   difference matters more than it looks. at ~250 leads a month a coin flip has a standard
+   deviation of about eight calls, which manufactures ten-percent month-over-month swings
+   in "missed calls answered" — the headline figure on the overview — that say nothing
+   about the business. a shop's channel mix is genuinely stable; the noise was an artefact
+   of how it was modelled, not a fact being modelled. */
+const MISSED_CALL_SHARE = 0.44;
+
+function trendFactor(dayOffset, historyDays) {
+  const recency = 1 - dayOffset / historyDays; // 0 = oldest day, 1 = today
+  return 1 - TREND_LIFT / 2 + TREND_LIFT * recency;
 }
 
 /* weekdays carry more form traffic; weekends still produce emergencies, which is the
-   nature of the category. */
-function leadsForDay(day, rng) {
+   nature of the category — and for restoration specifically the weekend is not quiet, it
+   is when a pipe bursts in an empty building. the weekend floor is 3 rather than 2 for a
+   concrete reason: at 2/day, roughly half of which are missed calls, the missed-call
+   text-back workflow genuinely goes 26+ hours without firing on a saturday and the
+   automations page badges it `quiet`. that badge is correct behaviour reporting a
+   generator that was understating weekend emergencies. */
+function leadsForDay(day, rng, trend = 1) {
   const isWeekend = day.weekday === 6 || day.weekday === 7;
-  const base = isWeekend ? rng.int(2, 5) : rng.int(4, 9);
-  return rng.chance(0.06) ? base + rng.int(4, 9) : base;
+  const base = isWeekend ? rng.int(4, 8) : rng.int(5, 10);
+  // same draw order as before the trend existed, so the stream stays comparable
+  const spike = rng.chance(0.06) ? rng.int(4, 9) : 0;
+  return Math.max(1, Math.round((base + spike) * trend));
 }
 
 /* bimodal: a business-hours bulge for form fills, plus a genuine overnight tail, because a
@@ -155,12 +192,11 @@ function makeEvent(rng, base) {
   };
 }
 
-function generateLeadThread(rng, at, zone) {
+function generateLeadThread(rng, at, now, zone, fromMissedCall) {
   const events = [];
   const correlationId = rng.uuid();
-  const incident = activeIncident(at, zone);
+  const incident = activeIncident(at, now, zone);
 
-  const fromMissedCall = rng.chance(0.44);
   const source = fromMissedCall ? 'missed_call' : rng.chance(0.85) ? 'web_form' : 'gbp_message';
 
   /* during the form-schema incident, web form submissions never arrive. this is the
@@ -233,7 +269,11 @@ function generateLeadThread(rng, at, zone) {
     }),
   );
 
-  if (rng.chance(0.38)) {
+  /* somebody who rang and got a text back is mid-problem and answers; somebody who
+     filled in a form for a quote often does not. the split is not decoration — it is what
+     keeps reply capture firing every day at weekend volumes instead of going 26 hours
+     quiet on a sunday morning. */
+  if (rng.chance(fromMissedCall ? 0.58 : 0.34)) {
     events.push(
       makeEvent(rng, {
         eventType: 'reply_received',
@@ -254,8 +294,8 @@ function generateLeadThread(rng, at, zone) {
 
 /* hourly canary: expectation written first, verified independently after. a canary that
    checks its own output proves nothing. */
-function generateCanaryPair(rng, at, zone) {
-  const incident = activeIncident(at, zone);
+function generateCanaryPair(rng, at, now, zone) {
+  const incident = activeIncident(at, now, zone);
   const correlationId = rng.uuid();
   const passed = !incident;
 
@@ -287,38 +327,40 @@ function generateCanaryPair(rng, at, zone) {
   ];
 }
 
-export function generateDemoData(seed = 20260828) {
+/* `at` is injectable so the generator can be exercised against an arbitrary date. it
+   defaults to now, which is what the build script and every real run use. */
+export function generateDemoData(seed = 20260828, at = DateTime.now()) {
   const rng = makeRng(seed);
   const zone = DEMO_TENANT.timezone;
-  const now = DateTime.now().setZone(zone);
+  const now = at.setZone(zone);
   const events = [];
 
   for (let dayOffset = DEMO_HISTORY_DAYS; dayOffset >= 0; dayOffset--) {
     const day = now.minus({ days: dayOffset }).startOf('day');
-    const count = leadsForDay(day, rng);
+    const count = leadsForDay(day, rng, trendFactor(dayOffset, DEMO_HISTORY_DAYS));
+
+    const missedCalls = Math.round(count * MISSED_CALL_SHARE);
 
     for (let i = 0; i < count; i++) {
-      const at = day.plus({
+      const when = day.plus({
         hours: hourForLead(rng),
         minutes: rng.int(0, 59),
         seconds: rng.int(0, 59),
       });
-      if (at > now) continue;
-      events.push(...generateLeadThread(rng, at, zone));
+      if (when > now) continue;
+      // each lead still draws its own hour, so the split carries no time-of-day pattern
+      events.push(...generateLeadThread(rng, when, now, zone, i < missedCalls));
     }
   }
 
   for (let hourOffset = DEMO_HISTORY_DAYS * 24; hourOffset >= 0; hourOffset--) {
-    const at = now.minus({ hours: hourOffset }).startOf('hour').plus({ minutes: 7 });
-    if (at > now) continue;
-    events.push(...generateCanaryPair(rng, at, zone));
+    const when = now.minus({ hours: hourOffset }).startOf('hour').plus({ minutes: 7 });
+    if (when > now) continue;
+    events.push(...generateCanaryPair(rng, when, now, zone));
   }
 
   const alerts = DEMO_INCIDENTS.map((incident) => {
-    const start = now
-      .minus({ days: incident.daysAgo })
-      .startOf('day')
-      .plus({ hours: incident.startHour });
+    const start = incidentStart(incident, now, zone);
     const detectedAt = start.plus({ minutes: rng.int(4, 18) });
     return {
       id: rng.uuid(),

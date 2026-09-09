@@ -11,3 +11,12 @@ src/portal/demo/demo-data.json
 # stray verification screenshots
 bisect-*.png
 supabase/.temp
+
+# working docs that map the auth surface and its known gaps. this repo is
+# public: PORTAL_CONTEXT.md is a full threat model of /ops and the client-id
+# login, and ARC_FIX_CHECKLIST.md enumerates what is unfixed. neither holds a
+# credential, and both are exactly what you would want if you were probing the
+# console. keep them local, or move them somewhere private — do not commit them
+# here without deciding to.
+PORTAL_CONTEXT.md
+ARC_FIX_CHECKLIST.md

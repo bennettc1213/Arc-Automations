@@ -61,6 +61,32 @@ export function formatSignedPct(pct, digits = 1) {
   return `${sign}${Math.abs(pct).toFixed(digits)}%`;
 }
 
+/* ── statistics, said the way the person paying for this would say them ──
+   "p90 31.1s" is precise, correct, and means nothing to a restoration owner. it is also
+   the number that answers their actual question — not "how fast usually", but "how slow
+   does it get". the fix is to write the sentence instead of the notation. the underlying
+   figure is unchanged; only the words around it are different.
+   these live here, not in a page, because two pages writing the same statistic two ways
+   is the same failure as two pages computing it two ways. */
+
+export function describeP90(ms) {
+  if (ms === null || ms === undefined || Number.isNaN(ms)) return null;
+  return `9 in 10 answered within ${formatDuration(ms)}`;
+}
+
+/* a "send" is a row in our event log. a "text" is the thing that arrived on a
+   customer's phone. they are the same number and only one of them is a word. */
+export function describeSends(n) {
+  if (n === null || n === undefined || Number.isNaN(n)) return '—';
+  if (n === 0) return 'no texts sent yet';
+  return `${formatCount(n)} ${n === 1 ? 'text' : 'texts'} sent`;
+}
+
+/* the term stays — "pipeline uptime" is what it is called and a client will hear us say
+   it — but it never appears without the sentence that says what it measures. */
+export const UPTIME_MEANING =
+  'not “the server is up” — a lead sent right now would have been answered';
+
 /* phone numbers arrive from carriers in e.164 and are unreadable in it. anything that is
    not a plain us number is returned untouched rather than mangled into a shape it isn't. */
 export function formatPhone(raw) {

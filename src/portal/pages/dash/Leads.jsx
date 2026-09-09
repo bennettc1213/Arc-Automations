@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Icon from '../../components/Icon';
+import EarlyData from '../../components/EarlyData';
 import { Empty, Panel, Pill } from '../../components/ui';
 import { useReducedMotion } from '../../../lib/hooks';
 import { downloadCsv, threadsToCsv } from '../../lib/csv';
@@ -221,12 +222,36 @@ export default function Leads({ data }) {
         </label>
       </div>
 
-      {rows.length === 0 ? (
+      {threads.length === 0 ? (
+        /* no leads at all is a different fact from no leads matching, and telling
+           somebody to widen their filters when there is nothing behind them reads
+           as the page blaming them for its own emptiness. */
+        <EarlyData
+          createdAt={tenant.createdAt}
+          timezone={tenant.timezone}
+          title="no leads yet"
+        >
+          the pipeline is live and watching. the first lead through your web form, your google
+          business profile, or a call that rings out will appear here within seconds of it
+          happening — with the exact time we texted them back.
+        </EarlyData>
+      ) : rows.length === 0 ? (
         <Empty title="nothing matches those filters">
           the window holds {formatCount(threads.length)} leads. clear the search or widen the
           filters to see them.
         </Empty>
       ) : (
+        <>
+        {/* the expansion is the best thing on this page and nobody finds it from a
+            chevron alone. the hint retires itself the moment a row has been opened —
+            a permanent instruction is a permanent admission the ui did not explain
+            itself. */}
+        {!openId && (
+          <p className="ws-tablehint">
+            <Icon name="chevron" size={11} className="ws-tablehint__chev" />
+            open any row to see the exact timeline — call, text, routed, replied, to the second
+          </p>
+        )}
         <div className="ws-tablewrap">
           <table className="ws-table">
             <thead>
@@ -253,18 +278,20 @@ export default function Leads({ data }) {
                     data-thread={thread.id}
                     onClick={() => toggleRow(thread.id)}
                   >
-                    <td className="mono">{formatStamp(thread.startedAt, tenant.timezone)}</td>
-                    <td>
+                    <td className="mono ws-td--time">
+                      {formatStamp(thread.startedAt, tenant.timezone)}
+                    </td>
+                    <td className="ws-td--customer">
                       <span className="ws-table__strong">{thread.name ?? 'unknown caller'}</span>
                       <span className="ws-table__sub mono">{formatPhone(thread.phone)}</span>
                     </td>
-                    <td>{thread.sourceLabel}</td>
-                    <td className="ws-table__wide">{thread.lossType ?? '—'}</td>
-                    <td className="ws-table__num mono">
+                    <td className="ws-td--source">{thread.sourceLabel}</td>
+                    <td className="ws-table__wide ws-td--loss">{thread.lossType ?? '—'}</td>
+                    <td className="ws-table__num mono ws-td--response" data-label="answered in">
                       {thread.failed ? '—' : formatDuration(thread.latencyMs)}
                     </td>
-                    <td>{thread.tech ?? '—'}</td>
-                    <td>
+                    <td className="ws-td--tech" data-label="routed to">{thread.tech ?? '—'}</td>
+                    <td className="ws-td--outcome">
                       <Pill tone={STATE_TONE[thread.state] ?? 'neutral'}>{thread.state}</Pill>
                     </td>
                     <td className="ws-table__chev">
@@ -316,6 +343,7 @@ export default function Leads({ data }) {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {rows.length > visible.length && (

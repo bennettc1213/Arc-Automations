@@ -10,6 +10,8 @@ import ClientDetail from '../pages/ops/ClientDetail';
 import NewClient from '../pages/ops/NewClient';
 import Identity from '../pages/ops/Identity';
 import Servers from '../pages/ops/Servers';
+import Alerts from '../pages/ops/Alerts';
+import AuditLog from '../pages/ops/AuditLog';
 import SupabasePanel from '../pages/ops/SupabasePanel';
 import OpsActivity from '../pages/ops/OpsActivity';
 import { OPS_NAV_GROUPS, OPS_NAV_ITEMS } from '../lib/ops-nav';
@@ -222,6 +224,8 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, banne
             <Route path="clients/:tenantId" element={<ClientDetail {...ctx} />} />
             <Route path="activity" element={<OpsActivity {...ctx} />} />
             <Route path="servers" element={<Servers {...ctx} />} />
+            <Route path="alerts" element={<Alerts {...ctx} />} />
+            <Route path="audit" element={<AuditLog {...ctx} />} />
             <Route path="supabase" element={<SupabasePanel {...ctx} />} />
             <Route path="identity" element={<Identity {...ctx} />} />
             <Route path="*" element={<Roster {...ctx} />} />

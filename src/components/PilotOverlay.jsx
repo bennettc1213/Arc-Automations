@@ -37,6 +37,25 @@ function buildMailto(answers, contact, pilotLabel, questions, fields) {
   )}&body=${encodeURIComponent(body)}`;
 }
 
+/* POST the completed intake somewhere durable before the visitor ever reaches
+   the booking step. fire and forget on purpose: a capture that fails must not
+   stand between a contractor and the calendar. `keepalive` so the request still
+   goes out if they close the tab the instant they hit the button.
+   resolves true only on a real 2xx — the caller uses that to decide whether it
+   is allowed to tell the visitor we have their details. */
+function sendCapture(payload) {
+  const url = site.pilot.captureUrl;
+  if (!url) return Promise.resolve(false);
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  })
+    .then((r) => r.ok)
+    .catch(() => false);
+}
+
 function buildEmbedSrc(booking, answers, contact, questions) {
   const notes = questions.map((q) => `${q.key}: ${answers[q.key]}`).join(' | ');
   if (booking.provider === 'calcom') {
@@ -82,6 +101,9 @@ export default function PilotOverlay() {
   const [contact, setContact] = useState({});
   const [errors, setErrors] = useState({});
   const [booked, setBooked] = useState(false);
+  // 'idle' until the POST resolves; 'sent' only on a confirmed 2xx, so the
+  // copy never claims a delivery that did not happen.
+  const [capture, setCapture] = useState('idle');
   const panelRef = useRef(null);
   const restoreFocus = useRef(null);
 
@@ -111,6 +133,7 @@ export default function PilotOverlay() {
         setContact({});
         setErrors({});
         setBooked(false);
+        setCapture('idle');
         setOpen(true);
         lenisRef.current?.stop();
         document.documentElement.style.overflow = 'hidden';
@@ -166,7 +189,18 @@ export default function PilotOverlay() {
     e.preventDefault();
     const errs = validateContact(contact);
     setErrors(errs);
-    if (Object.keys(errs).length === 0) setStep(bookingStep);
+    if (Object.keys(errs).length > 0) return;
+
+    sendCapture({
+      pilot: pilotLabel,
+      answers,
+      contact,
+      page: window.location.href,
+      submittedAt: new Date().toISOString(),
+    }).then((ok) => setCapture(ok ? 'sent' : 'failed'));
+
+    // advance immediately — the visitor never waits on the network
+    setStep(bookingStep);
   };
 
   return (
@@ -269,11 +303,23 @@ export default function PilotOverlay() {
                   calendar not loading? email us instead →
                 </a>
               </>
+            ) : capture === 'sent' ? (
+              <div className="pilot__nofall">
+                <PixelGuy size={56} autoHop />
+                <p className="pilot__nofall-copy">
+                  got it — your answers are with us and your phone is in the queue.
+                  you’ll hear from ben today, not next week.
+                </p>
+                <button className="pilot__next" onClick={close}>
+                  done
+                </button>
+                <p className="pilot__tz mono">same-day reply, mountain time</p>
+              </div>
             ) : (
               <div className="pilot__nofall">
                 <p className="pilot__nofall-copy">
-                  direct booking is being wired up. your answers are packed into an
-                  email — one tap and they’re in our inbox.
+                  one tap sends your answers straight to us — trade, volume, and
+                  what’s eating your week, already written out.
                 </p>
                 <a
                   className="pilot__next"

@@ -8,11 +8,22 @@
 
 /* ── pixel-block tabs ────────────────────────── */
 
+/* three columns because there are three offerings. an auto-fit track would leave
+   a ragged empty cell the moment the count is not a multiple of the column count. */
 .wf__tabs {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+  margin-bottom: 18px;
+}
+
+/* everything the three tabs do not cover, said once and sized like a footnote. */
+.wf__also {
   margin-bottom: 26px;
+  max-width: 74ch;
+  color: var(--faint);
+  font-size: 0.9rem;
+  line-height: 1.6;
 }
 
 .wf__tab {
@@ -178,6 +189,11 @@
 @media (max-width: 900px) {
   .wf__tabs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* three tabs over two columns leaves one on its own row — let it span, rather
+     than sit half-width next to a hole. */
+  .wf__tab:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
   .wf__stage {
     min-height: 0;

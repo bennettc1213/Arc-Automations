@@ -3,6 +3,13 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  # the demo data is generated at BUILD time against DateTime.now(), so a repo
+  # that sits still for a week publishes a demo that looks abandoned: "last
+  # check 6 days ago", every automation badged quiet, every trend negative.
+  # rebuilding nightly is what keeps the sales asset current. 09:00 UTC is
+  # ~03:00 mountain — well clear of a working day.
+  schedule:
+    - cron: '0 9 * * *'
   workflow_dispatch:
 
 permissions:

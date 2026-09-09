@@ -1,3 +1,4 @@
+import EarlyData from '../../components/EarlyData';
 import { Empty, Panel, Pill, StatCard } from '../../components/ui';
 import { formatCount, formatDuration, formatPct, formatRelative, formatStamp } from '../../lib/format';
 
@@ -122,10 +123,15 @@ export default function Automations({ data }) {
 
       <Panel title="running for you" note={`${formatCount(client.length)} workflows`} bare>
         {client.length === 0 ? (
-          <Empty title="nothing has run yet">
-            automations appear here the first time they fire, not the day they are switched on.
-            a list of things we promised to build is not a list of things that are working.
-          </Empty>
+          <EarlyData
+            createdAt={tenant.createdAt}
+            timezone={tenant.timezone}
+            title="nothing has run yet"
+          >
+            automations appear here the first time they actually fire, not the day they are
+            switched on — a list of things we promised to build is not a list of things that
+            are working. every figure on this page is counted from real runs.
+          </EarlyData>
         ) : (
           <AutomationTable rows={client} timezone={tenant.timezone} />
         )}
