@@ -7,6 +7,15 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-09-11
+
+### Changed
+- "What we build with" shows all 18 tools again instead of the 7 core ones
+  behind a "the rest of the stack" toggle. The toggle is gone. Core tools (n8n,
+  Claude Code, GoHighLevel, Twilio, webhooks, REST APIs, RAG) keep the accent
+  style so they still stand out. matter.js still loads lazily, so the 1.5.0
+  bundle saving is unaffected.
+
 ## [1.5.1] - 2026-09-11
 
 ### Changed

@@ -124,10 +124,8 @@ export const site = {
     { title: 'missed-call text-back', year: '2026', kind: 'automation', url: null, urlLabel: 'design build · in production soon', media: 'missed-call-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
   ],
 
-  /* `core: true` is the audience filter, not a ranking. a restoration owner reading
-     "rapier" and "lenis" learns that somebody likes graphics libraries; reading "twilio"
-     and "gohighlevel" learns their phones will work. core shows by default, the rest sits
-     behind a toggle for the occasional technical reader. */
+  /* every chip renders; `core: true` gets the accent style so the tools a contractor
+     cares about stand out from the rest of the stack. */
   toolkit: [
     { label: 'n8n', core: true },
     { label: 'claude code', core: true },

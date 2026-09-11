@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { site } from '../data/site';
 import { useInView, useIsMobile, useReducedMotion, useSaveData } from '../lib/hooks';
 import PixelGuy from './PixelGuy';
@@ -14,20 +14,15 @@ import './Toolkit.css';
  * and only once the section has actually been scrolled to on a device that will
  * use it. A contractor on bad service in a truck downloads none of it.
  *
- * The chip list is split by audience rather than shown whole: the `core` entries
- * are things a contractor could plausibly care about, and the rest of the stack
- * is one click away for the occasional technical reader.
+ * Every chip shows. `core` entries are drawn in the accent style so the ones a
+ * contractor cares about still stand out from the rest of the stack.
  */
 export default function Toolkit() {
   const isMobile = useIsMobile();
   const reduced = useReducedMotion();
   const saveData = useSaveData();
-  const [showAll, setShowAll] = useState(false);
   const physics = !isMobile && !reduced && !saveData;
-
-  const core = useMemo(() => site.toolkit.filter((t) => t.core), []);
-  const rest = useMemo(() => site.toolkit.filter((t) => !t.core), []);
-  const chips = showAll ? [...core, ...rest] : core;
+  const chips = site.toolkit;
 
   return (
     <section className="toolkit" id="toolkit" aria-label="toolkit">
@@ -39,23 +34,7 @@ export default function Toolkit() {
         </div>
       </div>
 
-      {/* remounting on toggle is deliberate: the pit builds its bodies once from
-          the chips it was handed, so the new ones have to fall in fresh. */}
-      {physics ? (
-        <PhysicsPit key={`physics-${showAll}`} chips={chips} />
-      ) : (
-        <StaticChips key={`static-${showAll}`} chips={chips} />
-      )}
-
-      <div className="wrap">
-        <button
-          className="toolkit__more mono"
-          onClick={() => setShowAll((v) => !v)}
-          aria-expanded={showAll}
-        >
-          {showAll ? '— hide the rest of the stack' : `+ the rest of the stack (${rest.length})`}
-        </button>
-      </div>
+      {physics ? <PhysicsPit key="physics" chips={chips} /> : <StaticChips key="static" chips={chips} />}
     </section>
   );
 }
