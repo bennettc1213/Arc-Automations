@@ -17,13 +17,33 @@
   margin-bottom: 18px;
 }
 
-/* everything the three tabs do not cover, said once and sized like a footnote. */
-.wf__also {
+/* the toggle for the rest of the menu. quiet on purpose — it is for the reader
+   who wants more, not a second call to action competing with the tabs. */
+.wf__more {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 26px;
-  max-width: 74ch;
-  color: var(--faint);
-  font-size: 0.9rem;
-  line-height: 1.6;
+  padding: 8px 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border-bottom: 1px solid transparent;
+  transition: color 0.25s, border-color 0.25s;
+}
+
+.wf__more:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.wf__more-chev {
+  display: inline-block;
+  transition: rotate 0.25s;
+}
+
+.wf__more.is-open .wf__more-chev {
+  rotate: 180deg;
 }
 
 .wf__tab {
@@ -190,8 +210,8 @@
   .wf__tabs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  /* three tabs over two columns leaves one on its own row — let it span, rather
-     than sit half-width next to a hole. */
+  /* an odd tab count over two columns leaves one on its own row — let it span,
+     rather than sit half-width next to a hole. */
   .wf__tab:last-child:nth-child(odd) {
     grid-column: 1 / -1;
   }

@@ -181,86 +181,83 @@ export const site = {
     },
   ],
 
-  /* the quiet line under the tabs. everything the three tabs do not cover, said once,
-     without giving it equal billing. */
-  workflowsAlso:
-    'we also build websites, crm and data integrations, warranty-renewal sweeps, and custom internal tools — usually for clients whose first pilot is already running.',
-
-  /* shelved offerings — real work, but not something to lead with until one of them has
-     a contractor's name and a number attached to it. uncomment to restore a tab.
-  //   {
-  //     id: 'warranty-tracker',
-  //     label: 'warranty expiration tracker',
-  //     tag: '( n8n · GHL · cron )',
-  //     description:
-  //       'a nightly sweep finds warranties coming up on expiration, drafts the outreach, and queues the follow-up sequence — renewal work booked before the lapse, not a scramble after it.',
-  //     points: ['nightly cron over the customer list', 'drafts + queues the outreach', 'renewal work booked early'],
-  //   },
-  //   {
-  //     id: 'workflow-automations',
-  //     label: 'workflow automations',
-  //     tag: '( n8n · custom )',
-  //     description:
-  //       'custom n8n workflows that wire your tools together and run the repetitive parts of your operation — on a schedule, a webhook, or an event.',
-  //     points: ['scheduled / webhook / event triggered', 'connects the tools you already use', 'error branches — failures page us, not you'],
-  //   },
-  //   {
-  //     id: 'ai-chat-bots',
-  //     label: 'ai chat & service bots',
-  //     tag: '( n8n · claude · openai )',
-  //     description:
-  //       'chat and voice bots that answer customer questions at 2am, qualify leads before they reach you, and hand off to a human the moment it matters.',
-  //     points: ['24/7 on every channel — web, sms, voice', 'answers grounded in your actual services', 'smooth handoff to a human'],
-  //   },
-  //   {
-  //     id: 'websites',
-  //     label: 'professional websites',
-  //     tag: '( react · design )',
-  //     description:
-  //       'fast, custom-built websites that make your business look like it has its act together — built to turn visitors into booked calls, not just to look pretty.',
-  //     points: ['custom design, no templates', 'built for speed + lead capture', 'wired into your crm from day one'],
-  //   },
-  //   {
-  //     id: 'crm-data',
-  //     label: 'crm & data integration',
-  //     tag: '( gohighlevel · api )',
-  //     description:
-  //       'your crm, jobber, servicetitan, or a google sheet your office manager loves — wired together so a lead that enters anywhere shows up everywhere. no double entry.',
-  //     points: ['gohighlevel, jobber, servicetitan + more', 'two-way sync, no double entry', 'one source of truth for your numbers'],
-  //   },
-  //   {
-  //     id: 'business-process',
-  //     label: 'business process automation',
-  //     tag: '( n8n · custom )',
-  //     description:
-  //       'back-office operations — invoicing, follow-ups, scheduling, reporting — automated end to end, so your team works the exceptions instead of the busywork.',
-  //     points: ['invoicing, scheduling, reporting', 'end-to-end, not point solutions', 'your team works the exceptions'],
-  //   },
-  //   {
-  //     id: 'marketing-automation',
-  //     label: 'marketing automation',
-  //     tag: '( email · sms )',
-  //     description:
-  //       'follow-up sequences, drip campaigns, and review engines that keep your name in front of the people who have already raised their hand.',
-  //     points: ['email + sms nurture sequences', 'review engines on autopilot', 'every campaign measured'],
-  //   },
-  //   {
-  //     id: 'ai-analytics',
-  //     label: 'ai-powered analytics',
-  //     tag: '( ai · dashboards )',
-  //     description:
-  //       'your numbers, explained. dashboards that show response time, booked rate, and where leads are leaking — with ai summaries instead of spreadsheets nobody opens.',
-  //     points: ['live dashboards, not static reports', 'ai-written summaries of the week', 'find the leak before it costs a job'],
-  //   },
-  //   {
-  //     id: 'custom-saas',
-  //     label: 'custom saas & portals',
-  //     tag: '( custom · saas )',
-  //     description:
-  //       'bespoke software built around exactly how you work — employee portals, client portals, internal tools, or a whole product for your market.',
-  //     points: ['employee + client portals', 'internal tools built to your process', 'from a single tool to a full product'],
-  //   },
-  */
+  /* everything else we build. hidden behind a toggle under the three tabs above,
+     not deleted: the three lead because they are the narrow, provable offer, and
+     these are one click away for anyone who wants the rest of the menu. */
+  workflowsMore: [
+    {
+      id: 'warranty-tracker',
+      label: 'warranty expiration tracker',
+      tag: '( n8n · GHL · cron )',
+      description:
+        'a nightly sweep finds warranties coming up on expiration, drafts the outreach, and queues the follow-up sequence — renewal work booked before the lapse, not a scramble after it.',
+      points: ['nightly cron over the customer list', 'drafts + queues the outreach', 'renewal work booked early'],
+    },
+    {
+      id: 'workflow-automations',
+      label: 'workflow automations',
+      tag: '( n8n · custom )',
+      description:
+        'custom n8n workflows that wire your tools together and run the repetitive parts of your operation — on a schedule, a webhook, or an event.',
+      points: ['scheduled / webhook / event triggered', 'connects the tools you already use', 'error branches — failures page us, not you'],
+    },
+    {
+      id: 'ai-chat-bots',
+      label: 'ai chat & service bots',
+      tag: '( n8n · claude · openai )',
+      description:
+        'chat and voice bots that answer customer questions at 2am, qualify leads before they reach you, and hand off to a human the moment it matters.',
+      points: ['24/7 on every channel — web, sms, voice', 'answers grounded in your actual services', 'smooth handoff to a human'],
+    },
+    {
+      id: 'websites',
+      label: 'professional websites',
+      tag: '( react · design )',
+      description:
+        'fast, custom-built websites that make your business look like it has its act together — built to turn visitors into booked calls, not just to look pretty.',
+      points: ['custom design, no templates', 'built for speed + lead capture', 'wired into your crm from day one'],
+    },
+    {
+      id: 'crm-data',
+      label: 'crm & data integration',
+      tag: '( gohighlevel · api )',
+      description:
+        'your crm, jobber, servicetitan, or a google sheet your office manager loves — wired together so a lead that enters anywhere shows up everywhere. no double entry.',
+      points: ['gohighlevel, jobber, servicetitan + more', 'two-way sync, no double entry', 'one source of truth for your numbers'],
+    },
+    {
+      id: 'business-process',
+      label: 'business process automation',
+      tag: '( n8n · custom )',
+      description:
+        'back-office operations — invoicing, follow-ups, scheduling, reporting — automated end to end, so your team works the exceptions instead of the busywork.',
+      points: ['invoicing, scheduling, reporting', 'end-to-end, not point solutions', 'your team works the exceptions'],
+    },
+    {
+      id: 'marketing-automation',
+      label: 'marketing automation',
+      tag: '( email · sms )',
+      description:
+        'follow-up sequences, drip campaigns, and review engines that keep your name in front of the people who have already raised their hand.',
+      points: ['email + sms nurture sequences', 'review engines on autopilot', 'every campaign measured'],
+    },
+    {
+      id: 'ai-analytics',
+      label: 'ai-powered analytics',
+      tag: '( ai · dashboards )',
+      description:
+        'your numbers, explained. dashboards that show response time, booked rate, and where leads are leaking — with ai summaries instead of spreadsheets nobody opens.',
+      points: ['live dashboards, not static reports', 'ai-written summaries of the week', 'find the leak before it costs a job'],
+    },
+    {
+      id: 'custom-saas',
+      label: 'custom saas & portals',
+      tag: '( custom · saas )',
+      description:
+        'bespoke software built around exactly how you work — employee portals, client portals, internal tools, or a whole product for your market.',
+      points: ['employee + client portals', 'internal tools built to your process', 'from a single tool to a full product'],
+    },
+  ],
 
   // start-a-pilot overlay — intake questions + booking config
   pilot: {

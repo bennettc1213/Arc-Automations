@@ -4,11 +4,24 @@ import { openPilot } from '../lib/pilot';
 import TickOnChange from './TickOnChange';
 import './Workflows.css';
 
-const TABS = site.workflows.map((w, i) => ({ ...w, index: i + 1 }));
+/* the three core offers always show; the rest of the menu sits behind one toggle
+   so it is there for anyone who wants it without diluting the pitch. */
+const CORE = site.workflows;
+const MORE = site.workflowsMore ?? [];
+const ALL = [...CORE, ...MORE];
 
 export default function Workflows() {
   const [tab, setTab] = useState(0);
-  const active = TABS[tab];
+  const [showMore, setShowMore] = useState(false);
+  const TABS = showMore ? ALL : CORE;
+  const active = ALL[tab];
+
+  const toggleMore = () => {
+    // collapsing while an extra tab is selected would leave the panel showing a
+    // tab that is no longer on screen — fall back to the first one.
+    if (showMore && tab >= CORE.length) setTab(0);
+    setShowMore((v) => !v);
+  };
 
   return (
     <section className="workflows wrap" id="workflows" aria-label="what we build">
@@ -31,7 +44,17 @@ export default function Workflows() {
         ))}
       </div>
 
-      {site.workflowsAlso && <p className="wf__also">{site.workflowsAlso}</p>}
+      {MORE.length > 0 && (
+        <button
+          type="button"
+          className={`wf__more mono ${showMore ? 'is-open' : ''}`}
+          onClick={toggleMore}
+          aria-expanded={showMore}
+        >
+          {showMore ? 'show fewer' : `see ${MORE.length} more services`}
+          <span className="wf__more-chev" aria-hidden="true">▾</span>
+        </button>
+      )}
 
       <div className="wf__stage">
         <div className="wf__panel" key={active.id}>
@@ -54,7 +77,12 @@ export default function Workflows() {
                 ))}
               </ul>
             )}
-            <button className="wf__cta" onClick={() => openPilot()}>
+            {/* a tab with its own intake (marketing automation) opens that one;
+                everything else gets the generic trade/pain/volume intake. */}
+            <button
+              className="wf__cta"
+              onClick={() => openPilot(site.pilot.presets?.[active.id] ? active.id : undefined)}
+            >
               start a pilot <span aria-hidden="true">→</span>
             </button>
           </div>

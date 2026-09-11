@@ -7,6 +7,19 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-09-11
+
+### Changed
+- The nine services cut from "what we build" in 1.5.0 are back, behind a
+  "see 9 more services" toggle under the three core tabs, so the full menu is
+  one click away. Warranty tracker, workflow automations, AI chat bots, websites,
+  CRM & data, business process, marketing automation, AI analytics and custom
+  SaaS render as normal selectable tabs when it's open. They moved from
+  commented-out blocks in `site.js` to a live `site.workflowsMore` array. The
+  one-line "we also build..." footnote is gone, since the toggle does its job.
+- The workflows CTA opens a tab's own intake when it has one (marketing
+  automation), and the generic trade/pain/volume intake otherwise.
+
 ## [1.5.0] - 2026-09-09
 
 Phase 1 of the honesty pass (`ARC_FIX_CHECKLIST.md`): the marketing site, the
