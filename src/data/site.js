@@ -321,8 +321,8 @@ export const site = {
       // prefills name, email, phone, and the intake answers for both.
       // until a provider is set the flow lands on a pre-filled email — never
       // a dead end, and never an apology for the booking not existing.
-      provider: null,
-      embedUrl: '',
+      provider: 'calcom',
+      embedUrl: 'https://cal.com/ben-c-745ymo/arc-meeting',
     },
   },
 

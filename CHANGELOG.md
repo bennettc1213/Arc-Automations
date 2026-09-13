@@ -7,6 +7,15 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-09-13
+
+### Added
+- **Booking is wired up (part of S3/pilot flow).** `pilot.booking` now points at
+  a real Cal.com event (`provider: 'calcom'`, `embedUrl` set). A completed pilot
+  intake now lands on an actual calendar, prefilled with the visitor's name,
+  email, and answers, instead of the "pick a provider" placeholder. This was the
+  last gap between a filled-out pilot form and a booked call.
+
 ## [1.5.3] - 2026-09-13
 
 ### Added
