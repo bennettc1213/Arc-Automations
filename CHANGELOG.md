@@ -7,6 +7,24 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-09-13
+
+### Added
+- **The pilot form now actually captures leads.** `pilot.captureUrl` was empty
+  since 1.5.0, so every completed intake was thrown away. It now points at a
+  live n8n webhook (`arc-pilot-intake`) that emails the full submission --
+  trade, pain, volume, name, business, email, phone, page and timestamp --
+  the moment someone finishes the form. Built and verified end to end: a test
+  payload matching the site's exact shape returned HTTP 200 and all three
+  workflow nodes reported success.
+
+### Security
+- Gitignored `n8n.env`. A file holding a live n8n API key had been dropped into
+  `src/portal/n8n.env/` inside this **public** repo. It was still untracked so
+  nothing leaked, but a single `git add -A` would have published a credential
+  granting full control of the n8n account. Ignored now -- though it should be
+  moved out of the repo entirely, and the key rotated if there is any doubt.
+
 ## [1.5.2] - 2026-09-11
 
 ### Changed

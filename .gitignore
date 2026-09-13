@@ -20,3 +20,10 @@ supabase/.temp
 # here without deciding to.
 PORTAL_CONTEXT.md
 ARC_FIX_CHECKLIST.md
+
+# n8n credentials dropped into the repo by mistake. the repo is PUBLIC and this
+# file holds a live n8n API key, which grants full control of the n8n account.
+# ignored so no `git add -A` can ever publish it. better still: move it out of
+# the repo entirely.
+n8n.env
+**/n8n.env/

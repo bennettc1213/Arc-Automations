@@ -314,7 +314,7 @@ export const site = {
        a lead you never learn about, so it matters more than the embed below.
        paste the n8n production webhook URL. empty = nothing is captured, and
        the overlay says so honestly rather than claiming a send it didn't make. */
-    captureUrl: '',
+    captureUrl: 'https://benchu33.app.n8n.cloud/webhook/arc-pilot-intake',
 
     booking: {
       // pick 'calcom' or 'ghl' and paste the event link; buildEmbedSrc()
