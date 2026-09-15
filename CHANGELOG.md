@@ -7,6 +7,53 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-14
+
+### Added
+- **The portal's wordmark is made of sand.** The character field behind both
+  front doors (`/portal` and `/ops`) still says "arc automations" and still
+  bulges away from the cursor, but the wordmark is now a few thousand
+  independent grains with a life of their own:
+  - **it pours in.** The letters assemble out of a wave of falling digits,
+    staggered left-to-right across the field, each grain flipping from a number
+    to its letter on the frame it lands. Held back until the entrance tunnel
+    has actually cleared -- an arrival played under an opaque overlay is an
+    arrival nobody sees.
+  - **it comes apart.** Running the cursor over the letters breaks the bonds it
+    passes through. Loose grains take a kick, fall under gravity, bounce off
+    the walls, and pile into a drift along the bottom of the hero that slumps
+    when it gets too steep. The drift is kickable too. The old membrane push
+    survives as the outer ring of the same model: drift near the letters and
+    they bulge, cross them and they break.
+  - **it gathers itself back up.** Thirty seconds after the last bond breaks,
+    everything still loose is thrown back to its slot in a second wave and the
+    wordmark reassembles exactly -- the return is a timed flight, not a spring,
+    so every grain lands *on* its cell rather than asymptotically near it.
+
+  The simulation is a new module, `src/portal/lib/sand.js`, with no DOM and no
+  React in it. `AsciiField.jsx` keeps what is actually about characters -- the
+  glyphs, the palette, and the starfield "room" the wordmark stands in. The two
+  meet only through an occupancy grid, which is what now lets the room show
+  through the holes as the letters are eroded away.
+
+### Fixed
+- The field read its pointer position straight from `clientY`, ignoring that
+  the canvas starts below the page's own header, so every interaction was off
+  by the height of the bar. It reads the canvas rect now. Invisible when the
+  whole wordmark answered to a soft falloff; not invisible now that a radius
+  decides what comes apart.
+- `AsciiField` rebuilt its entire grid on every `ResizeObserver` callback, even
+  when the cell count had not changed. The entrance toggles `body` overflow,
+  which moves the scrollbar, which fired one halfway through the arrival; a
+  phone's address bar does the same thing on scroll. It now rebuilds only when
+  the grid actually changes.
+
+### Changed
+- On coarse pointers the field pours and stands but no longer erodes. A scroll
+  gesture arrives as a `pointermove` across the hero and used to tear the
+  wordmark down on the way past -- leaving sand with no visible cause, since
+  the mobile scrim covers the wordmark almost entirely anyway.
+
 ## [1.5.4] - 2026-09-13
 
 ### Added

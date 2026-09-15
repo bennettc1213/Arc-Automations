@@ -147,7 +147,7 @@ export default function OpsHome() {
         </header>
 
         <section className="ph__hero">
-          <AsciiField />
+          <AsciiField armed={entered} />
 
           <div className="ph__heroin">
             <ArcMark className="ph__crest" size={58} />
