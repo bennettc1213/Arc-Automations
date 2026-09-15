@@ -7,6 +7,23 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-09-15
+
+### Changed
+- **The wordmark comes back a lot sooner after it is broken.** The quiet time
+  before the field gathers itself up was thirty seconds, which was long enough
+  that a visitor who brushed past the letters got a pile of sand and a page
+  that looked broken -- nothing on screen says the state is temporary, so the
+  only way to learn it recovers was to wait half a minute and find out. Six
+  seconds now. The gather itself is tightened to match (the wave crosses in
+  620ms rather than 900ms, and the flight home is shorter), so it still reads
+  as a wave sweeping the field rather than a snap.
+
+  End to end, from the cursor leaving the letters to the wordmark standing
+  again: ~7.4s, down from ~32.5s. The clock still restarts on every bond that
+  breaks, so this is never a countdown anybody is fighting -- it only begins
+  once they have stopped.
+
 ## [1.6.0] - 2026-09-14
 
 ### Added

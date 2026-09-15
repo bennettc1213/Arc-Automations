@@ -108,13 +108,20 @@ const SLUMP_SCAN = 64;
    a face just as steep, and neither rule is wrong on its own terms. */
 const SLUMP_BIAS = 1;
 
-/* ── going home ─────────────────────────────────────────────────── */
-const RECALL_MS = 30000; /* quiet time before the field gathers itself back up */
-const SWEEP_MS = 900; /* the wave crosses the field in this long */
-const FALL_MS = 240; /* ...tilted by height, so it reads as a diagonal */
-const JITTER_MS = 420; /* per-grain scatter, so the wave has a soft edge */
-const FLIGHT_MS = 560; /* base flight time */
-const FLIGHT_SPAN = 420; /* ...plus this much, scaled by distance travelled */
+/* ── going home ───────────────────────────────────────────────────
+   the quiet time is the whole feel of the thing. too long and the wordmark is
+   simply missing: a visitor who brushes past the letters gets a pile of sand
+   and a page that appears to have broken, because nothing on screen suggests
+   the state is temporary. short enough to read as recovery rather than damage
+   is the target, and the clock restarts on every bond that breaks, so this is
+   never a countdown anybody is fighting — it only begins once they have
+   stopped. */
+const RECALL_MS = 6000; /* quiet time before the field gathers itself back up */
+const SWEEP_MS = 620; /* the wave crosses the field in this long */
+const FALL_MS = 190; /* ...tilted by height, so it reads as a diagonal */
+const JITTER_MS = 300; /* per-grain scatter, so the wave has a soft edge */
+const FLIGHT_MS = 470; /* base flight time */
+const FLIGHT_SPAN = 320; /* ...plus this much, scaled by distance travelled */
 const THROW = 0.35; /* arc height as a fraction of the climb */
 const THROW_MAX = 16; /* ...capped, in cells */
 
