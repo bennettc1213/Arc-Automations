@@ -7,6 +7,29 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.10.5] - 2026-09-16
+
+### Changed
+- **The headline is big again.** 1.10.4 fixed the words breaking apart but
+  sized the type at 11% of its column, which put it at 50-63px -- a third of
+  the 156px billboard it was before the split. It is now as large as the
+  column allows with "we don't just" still on one line: that line measures
+  5.762em in Space Grotesk at weight 600 with this letter-spacing, read off
+  the font file's advance widths rather than estimated, so `16cqw` fills 92%
+  of the column. 122px on a 1920px screen, 82px at 1440.
+- **The copy column grows faster to make room** --
+  `clamp(380px, 60% - 280px, 760px)` -- and the hero now uses the full
+  viewport width up to 2200px rather than sitting in a centred 1560px box, so
+  most of that room comes out of the side margins rather than the film. The
+  film is unchanged at 1180px (675px), about 9% narrower at 1440-1920px, and
+  at its full 1160px on wider screens.
+- **The location chip is back** where the column fits the button row, and
+  wraps under the buttons where it does not.
+
+### Removed
+- `overflow-wrap: anywhere` on the headline. It is what split "don't" and
+  "templates." mid-letter. An overflowing line now breaks at a space.
+
 ## [1.10.4] - 2026-09-16
 
 ### Fixed
