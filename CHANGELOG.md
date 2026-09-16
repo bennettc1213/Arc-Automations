@@ -7,6 +7,20 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-09-15
+
+### Fixed
+- **Leaving the portal no longer flashes the homepage before the veil covers
+  it.** The canvas that draws the crossing was created and given its first
+  frame inside an ordinary effect, which runs after the browser has already
+  painted. Going into the portal that gap was hidden behind the door's own
+  `opacity: 0` starting state, but coming back out to the site the marketing
+  page is already fully rendered underneath a veil that is transparent by
+  design -- so for one frame the home page showed through an overlay that
+  hadn't drawn anything onto it yet. Moved to a layout effect, which runs
+  before paint, so the canvas's first frame (already fully covering the
+  screen) is there from the moment the veil is visible at all.
+
 ## [1.10.0] - 2026-09-15
 
 ### Added

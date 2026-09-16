@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import './SlideVeil.css';
 
 /**
@@ -99,7 +99,17 @@ export default function SlideVeil({ reverse = false, onReveal, onDone }) {
      be a bug, not a feature. */
   const dirRef = useRef(reverse ? -1 : 1);
 
-  useEffect(() => {
+  /* layout effect, not the usual effect. this host is transparent by design —
+     the canvas is cleared behind the seam so the real page shows through the
+     hole, not a copy of it — which means there is nothing else standing in for
+     the veil before its first frame lands. going into the portal that gap is
+     covered by the door's own opacity:0 starting state, but coming back out to
+     the site there is no such cover: the page is already fully painted, and an
+     ordinary effect fires after the browser has shown that first commit. a
+     layout effect runs the canvas creation and its first synchronous draw
+     before paint, so the home page never gets a free frame to flash through an
+     empty overlay. */
+  useLayoutEffect(() => {
     const host = hostRef.current;
     if (!host) return undefined;
     const dir = dirRef.current;
