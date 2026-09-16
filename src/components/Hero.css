@@ -10,6 +10,16 @@
   width: 100%;
 }
 
+/* on a wide monitor 1560px stops being the headline's width and starts being
+   the whole hero's — the extra room past it is exactly where the film wants
+   to go. widening the cap here rather than the grid means the copy column
+   does not have to shrink to make space; the film just gets more of it. */
+@media (min-width: 1680px) {
+  .hero {
+    max-width: 1760px;
+  }
+}
+
 /* his floor line — the quiet strip between nav and headline */
 .hero__roam {
   position: absolute;
@@ -40,7 +50,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 1000px;
+  max-width: 1160px;
   width: 100%;
 }
 
@@ -60,8 +70,8 @@
   }
 
   .hero__grid {
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-    gap: clamp(32px, 3.6vw, 72px);
+    grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
+    gap: clamp(28px, 3.2vw, 64px);
     align-items: center;
   }
 
@@ -73,11 +83,19 @@
     justify-self: end;
   }
 
+  /* the copy column is the one that shrank to send the film further right, so
+     it gets a floor: a title that gives up more than this starts wrapping
+     "we don't just" onto a third line, which is a worse trade than the film
+     sitting a little further from centre than it otherwise would. */
+  .hero__copy {
+    max-width: 30ch;
+  }
+
   /* the headline gives up its billboard scale to make room. eleven-and-a-half vw
      across half a screen is a word per line — and the film taking the larger half
-     costs it a little more. */
+     costs it more still. */
   .hero__title {
-    font-size: clamp(2.9rem, 4.9vw, 5.8rem);
+    font-size: clamp(2.6rem, 4.3vw, 5.2rem);
   }
 
   /* the sub and the buttons stop competing for one line once the column is half
@@ -89,13 +107,27 @@
   }
 
   .hero__sub {
-    max-width: 40ch;
+    max-width: 30ch;
+  }
+
+  /* two buttons and a location chip fit on one line in a 46ch column; they do
+     not fit in a 30ch one. rather than let them spill past the column into the
+     film, they wrap — and the chip drops, the same trade the phone layout
+     below already makes once the row is this tight. */
+  .hero__row {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  .hero__loc {
+    display: none;
   }
 
   /* he keeps to the copy column — the window card is opaque, and a pixel guy who
-     walks behind it has simply disappeared. */
+     walks behind it has simply disappeared. the column shrank, so his floor
+     does too. */
   .hero__roam {
-    right: 54%;
+    right: 62%;
   }
 }
 

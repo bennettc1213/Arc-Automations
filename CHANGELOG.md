@@ -7,6 +7,24 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.10.2] - 2026-09-15
+
+### Changed
+- **The hero's film sits further right, and bigger.** The two-column split
+  above 1180px was `0.9fr`/`1.1fr`; it is `0.72fr`/`1.28fr` now, so the film's
+  column -- and the card pinned to the end of it -- claims noticeably more of
+  the row. Its own max-width grew with it, `1000px` to `1160px`. On monitors
+  wide enough to spare it (1680px+), the hero's overall cap grew too, from
+  `1560px` to `1760px`, so the extra room comes from space that was previously
+  just margin rather than from squeezing the copy column further than it
+  needs to shrink.
+
+  The copy column paid for some of this: the headline's clamp came down again
+  (`5.8rem` max to `5.2rem`), and the sub and copy column both capped at 30ch
+  instead of 40-46ch. At that width the button row and the location chip no
+  longer fit on one line, so the row wraps and the chip drops -- the same trade
+  the phone layout already makes once things get this tight.
+
 ## [1.10.1] - 2026-09-15
 
 ### Fixed
