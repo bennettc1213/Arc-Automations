@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DateTime } from 'luxon';
 import { Empty, Panel, Pill, StatCard } from '../../components/ui';
-import { Field, Notice } from '../../components/ops-ui';
+import { Field, Notice, SelectInput, TextArea } from '../../components/ops-ui';
 import { acknowledgeAlert, raiseAlert, resolveAlert } from '../../lib/ops';
 import { formatCount, formatSpan, formatStamp } from '../../lib/format';
 
@@ -126,39 +126,38 @@ export default function Alerts({ clients, base, reload }) {
         {error && <Notice tone="fail" title="that did not work">{error}</Notice>}
         {done && <Notice tone="ok" title={done} />}
 
+        {/* the console's own inputs, not bare elements. these four were the only
+            fields in the console without them, so the browser drew its default
+            white box in the middle of a dark panel. */}
         <div className="ops-form">
           <Field label="client" required>
-            <select value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
-              <option value="">choose a client…</option>
-              {clients.map((client) => (
-                <option key={client.tenant.id} value={client.tenant.id}>
-                  {client.tenant.name}
-                </option>
-              ))}
-            </select>
+            <SelectInput
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+              options={[
+                { value: '', label: 'choose a client…' },
+                ...clients.map((client) => ({ value: client.tenant.id, label: client.tenant.name })),
+              ]}
+            />
           </Field>
 
           <Field
             label="check type"
             hint={CHECK_TYPES.find((c) => c.key === checkType)?.blurb}
           >
-            <select value={checkType} onChange={(e) => setCheckType(e.target.value)}>
-              {CHECK_TYPES.map((c) => (
-                <option key={c.key} value={c.key}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
+            <SelectInput
+              value={checkType}
+              onChange={(e) => setCheckType(e.target.value)}
+              options={CHECK_TYPES.map((c) => ({ value: c.key, label: c.label }))}
+            />
           </Field>
 
           <Field label="severity">
-            <select value={severity} onChange={(e) => setSeverity(e.target.value)}>
-              {SEVERITIES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+            <SelectInput
+              value={severity}
+              onChange={(e) => setSeverity(e.target.value)}
+              options={SEVERITIES.map((s) => ({ value: s, label: s }))}
+            />
           </Field>
 
           <Field
@@ -167,8 +166,8 @@ export default function Alerts({ clients, base, reload }) {
             wide
             required
           >
-            <textarea
-              rows={3}
+            <TextArea
+              rows={4}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="canary: sms send failed 3 consecutive checks. twilio a2p campaign registration lapsed."
@@ -179,6 +178,7 @@ export default function Alerts({ clients, base, reload }) {
         <button
           type="button"
           className="ws-btn ws-btn--primary"
+          style={{ marginTop: 16 }}
           disabled={!canRaise || busy !== null}
           onClick={() =>
             run('raised', async () => {

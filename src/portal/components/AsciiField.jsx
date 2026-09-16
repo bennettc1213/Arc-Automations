@@ -107,9 +107,8 @@ function hash(x, y) {
 
 /**
  * `armed` holds the arrival until the caller says the field is actually on
- * screen. both doors that mount this one slide a full-screen veil off it first,
- * and a pour played under an opaque overlay is an entrance the visitor never
- * gets. defaults to true so the component still works on its own.
+ * screen. the portal's door slides a full-screen veil off it first, and a pour
+ * played under an opaque overlay is an entrance the visitor never gets. defaults to true so the component still works on its own.
  */
 export default function AsciiField({ armed = true }) {
   const canvasRef = useRef(null);

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
-import { Panel, StatCard, Sparkline, Empty } from '../../components/ui';
-import { Notice } from '../../components/ops-ui';
+import { Panel, Pill, StatCard, Sparkline, Empty } from '../../components/ui';
+import { Disclosure, Help, Notice } from '../../components/ops-ui';
 import ClientTable, { attentionFor } from '../../components/ClientTable';
 import Icon from '../../components/Icon';
 import { formatCount, formatDuration, formatRelative } from '../../lib/format';
@@ -18,10 +18,12 @@ import { formatCount, formatDuration, formatRelative } from '../../lib/format';
  * different numbers, and printing the first while implying the second is the exact
  * species of quiet wrongness this product exists to rule out.
  */
-export default function Roster({ clients, totals, base }) {
+export default function Roster({ clients, totals, base, probe }) {
   const flagged = clients
     .map((client) => ({ client, attention: attentionFor(client) }))
     .filter((row) => row.attention);
+
+  const checking = probe?.kind === 'checking' && !probe?.result;
 
   /* leads per day across the book, summed day by day. the per-client series are
      already aligned to the same thirty buckets, so this is a real sum rather than
@@ -62,6 +64,16 @@ export default function Roster({ clients, totals, base }) {
         </Panel>
       )}
 
+      {probe?.kind === 'error' && !probe.result && (
+        <Notice tone="warn" title="the live pipeline check could not run">
+          <p>
+            {probe.error}. until it can, the pipeline column is judged from the event log and
+            tokens the console already holds — it cannot see whether a workflow is switched on in
+            n8n.
+          </p>
+        </Notice>
+      )}
+
       {clients.length === 0 && (
         <Notice tone="warn" title="no clients in the database yet">
           <p>
@@ -83,7 +95,7 @@ export default function Roster({ clients, totals, base }) {
           animate
           sub={`${totals.active} active · ${totals.onboarding} onboarding${
             totals.paused ? ` · ${totals.paused} paused` : ''
-          }`}
+          }${totals.archived ? ` · ${totals.archived} past` : ''}`}
         />
 
         <StatCard
@@ -98,21 +110,46 @@ export default function Roster({ clients, totals, base }) {
         </StatCard>
 
         <StatCard
-          label="median of medians"
+          label={
+            <>
+              typical reply time
+              <Help>
+                each active client&rsquo;s median reply, and then the middle one of those. it
+                describes the middle client, not the middle lead.
+              </Help>
+            </>
+          }
           value={totals.medianOfMedians === null ? '—' : formatDuration(totals.medianOfMedians)}
           compact
-          sub="the middle active client's median reply — not the middle lead's"
+          sub="median of medians, across active clients"
         />
 
         <StatCard
-          label="pipelines down"
-          value={totals.degraded}
-          animate
-          tone={totals.degraded > 0 ? 'fail' : undefined}
+          label={
+            <>
+              pipelines connected
+              <Help>
+                how many clients passed the live check just now. hover the pipeline pill on any
+                row below for what failed.
+              </Help>
+            </>
+          }
+          value={checking ? '…' : `${totals.connected} / ${totals.clients - totals.unwired}`}
+          compact
+          tone={totals.disconnected > 0 ? 'fail' : undefined}
           sub={
-            totals.openIncidents > 0
-              ? `${formatCount(totals.openIncidents)} open incident${totals.openIncidents === 1 ? '' : 's'}`
-              : 'no open incidents'
+            checking
+              ? 'asking ingest and n8n…'
+              : [
+                  totals.disconnected ? `${totals.disconnected} not connected` : null,
+                  totals.partial ? `${totals.partial} partly` : null,
+                  totals.unwired ? `${totals.unwired} not set up` : null,
+                  totals.openIncidents
+                    ? `${formatCount(totals.openIncidents)} open incident${totals.openIncidents === 1 ? '' : 's'}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || 'every wired client is connected'
           }
         />
       </div>
@@ -129,6 +166,44 @@ export default function Roster({ clients, totals, base }) {
           }
         >
           <ClientTable clients={clients} base={base} dense />
+
+          <Disclosure title="how to read the pipeline column" summary="what each word means">
+            <ul className="ops-legend">
+              <li>
+                <span>
+                  <Pill tone="ok">connected</Pill>
+                </span>
+                every check passed just now: ingest is up, n8n is using the client&rsquo;s token,
+                events are arriving as often as they normally do, and their workflows are on.
+              </li>
+              <li>
+                <span>
+                  <Pill tone="warn">partly connected</Pill>
+                </span>
+                still sending, but something is off — a workflow&rsquo;s last run failed, one of
+                several workflows is switched off, or the token has not been used lately.
+              </li>
+              <li>
+                <span>
+                  <Pill tone="fail">not connected</Pill>
+                </span>
+                nothing can be getting through: no usable token, no events for longer than this
+                client is ever normally quiet, every workflow off, or the end-to-end check failing.
+              </li>
+              <li>
+                <span>
+                  <Pill tone="idle">not set up</Pill>
+                </span>
+                no token, no connection and no event yet — a client still being onboarded. not a
+                fault.
+              </li>
+            </ul>
+            <p>
+              the <b>account</b> column is different: it is the status you set by hand, and it
+              never checks anything. a client can be <i>active</i> and <i>not connected</i> at the
+              same time — that row is the one to open.
+            </p>
+          </Disclosure>
         </Panel>
 
         <Panel title="busiest, 30d" note="by leads received">

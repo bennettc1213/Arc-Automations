@@ -16,12 +16,14 @@ import { formatCount, formatDuration } from '../../lib/format';
  * would be a second definition of attention, and they would diverge.
  */
 
+/* archived is not a filter here: a deboarded client is off the books and lives
+   on the past clients page, so this list is only ever the clients we still
+   serve. */
 const STATUSES = [
   { key: 'all', label: 'all' },
   { key: 'active', label: 'active' },
   { key: 'onboarding', label: 'onboarding' },
   { key: 'paused', label: 'paused' },
-  { key: 'archived', label: 'archived' },
 ];
 
 const SORTS = {
@@ -44,7 +46,30 @@ const SORTS = {
   },
 };
 
-export default function Clients({ clients, base }) {
+/* column objects, the shape lib/csv.js takes. the export used to pass bare
+   header strings and row arrays, which toCsv cannot read — the button produced a
+   file of empty cells. */
+const EXPORT_COLUMNS = [
+  { label: 'client id', value: (client) => client.tenant.clientId },
+  { label: 'name', value: (client) => client.tenant.name },
+  { label: 'company', value: (client) => client.tenant.company },
+  { label: 'account status', value: (client) => client.tenant.status },
+  { label: 'pipeline', value: (client) => client.pipeline?.word },
+  { label: 'pipeline detail', value: (client) => client.pipeline?.summary },
+  { label: 'timezone', value: (client) => client.tenant.timezone },
+  { label: 'leads 30d', value: (client) => client.data.metrics.leadsLast30Days },
+  {
+    label: 'median reply',
+    value: (client) =>
+      client.data.metrics.medianResponseMs === null ? '' : formatDuration(client.data.metrics.medianResponseMs),
+  },
+  { label: 'sign-in address', value: (client) => client.tenant.loginEmail },
+  { label: 'contact', value: (client) => client.tenant.contactName },
+  { label: 'phone', value: (client) => client.tenant.contactPhone },
+  { label: 'created', value: (client) => client.tenant.createdAt },
+];
+
+export default function Clients({ clients, pastClients = [], base }) {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all');
   const [onlyFlagged, setOnlyFlagged] = useState(false);
@@ -77,41 +102,7 @@ export default function Clients({ clients, base }) {
      export that quietly ignored the filters above it would hand over a spreadsheet
      that did not match the table it was clicked from. */
   function exportRows() {
-    downloadCsv(
-      `arc-clients-${new Date().toISOString().slice(0, 10)}.csv`,
-      toCsv(
-        [
-          'client id',
-          'name',
-          'company',
-          'status',
-          'pipeline',
-          'timezone',
-          'leads 30d',
-          'median reply',
-          'sign-in address',
-          'contact',
-          'phone',
-          'created',
-        ],
-        rows.map((client) => [
-          client.tenant.clientId ?? '',
-          client.tenant.name,
-          client.tenant.company ?? '',
-          client.tenant.status,
-          client.data.status.status,
-          client.tenant.timezone,
-          client.data.metrics.leadsLast30Days,
-          client.data.metrics.medianResponseMs === null
-            ? ''
-            : formatDuration(client.data.metrics.medianResponseMs),
-          client.tenant.loginEmail ?? '',
-          client.tenant.contactName ?? '',
-          client.tenant.contactPhone ?? '',
-          client.tenant.createdAt,
-        ]),
-      ),
-    );
+    downloadCsv(`arc-clients-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(EXPORT_COLUMNS, rows));
   }
 
   return (
@@ -189,6 +180,13 @@ export default function Clients({ clients, base }) {
             ))}
           </select>
         </label>
+
+        {pastClients.length > 0 && (
+          <Link className="ws-chip" to={`${base}/past-clients`} title="clients who have been deboarded">
+            <Icon name="archive" size={14} />
+            past clients <em>{pastClients.length}</em>
+          </Link>
+        )}
       </div>
 
       <ClientTable

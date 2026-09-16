@@ -3,15 +3,17 @@ import { Link, useParams } from 'react-router-dom';
 import { DateTime } from 'luxon';
 import Icon from '../../components/Icon';
 import EventFeed from '../../components/EventFeed';
-import { Empty, Panel, Sparkline, StatCard } from '../../components/ui';
+import { Empty, Panel, Pill, Sparkline, StatCard } from '../../components/ui';
 import {
   ActionButton,
+  CheckList,
   CopyValue,
   Fact,
   Field,
+  Help,
   LivenessPill,
   Notice,
-  PipelineStatus,
+  PipelinePill,
   SelectInput,
   TenantStatus,
   TextArea,
@@ -22,15 +24,19 @@ import ServicesPanel from '../../components/ServicesPanel';
 import ReportDialog from '../../components/ReportDialog';
 import {
   CONNECTION_KINDS,
+  DEBOARD_REASONS,
   connectionLiveness,
+  deboardClient,
   deleteConnection,
   linkClientAccount,
   listTokens,
   mintToken,
   reissueClientId,
+  restoreClient,
   revokeToken,
   updateClient,
 } from '../../lib/ops';
+import { formatMoney, integrationFor } from '../../lib/integrations';
 import { functionUrl } from '../../lib/supabase';
 import { site } from '../../../data/site';
 import {
@@ -54,11 +60,20 @@ import {
  * answer worth having in a conversation with them.
  */
 
+/* no "archived" here. picking it from a dropdown used to archive a client while
+   leaving their tokens valid and their login attached — a past client whose n8n
+   could still write events. taking someone out of the system is the deboard panel
+   at the foot of this page, which does all of it at once. */
 const STATUS_OPTIONS = [
   { value: 'onboarding', label: 'onboarding' },
   { value: 'active', label: 'active' },
   { value: 'paused', label: 'paused' },
-  { value: 'archived', label: 'archived' },
+];
+
+const RESTORE_OPTIONS = [
+  { value: 'paused', label: 'restore as paused' },
+  { value: 'onboarding', label: 'restore as onboarding' },
+  { value: 'active', label: 'restore as active' },
 ];
 
 const FEED_THREADS = 12;
@@ -89,9 +104,9 @@ function seedForm(tenant) {
  * and it is one line rather than an effect that re-seeds on some changes and not
  * others.
  */
-export default function ClientDetail({ clients, base, reload }) {
+export default function ClientDetail({ allClients, base, reload, probe, runProbe }) {
   const { tenantId } = useParams();
-  const client = clients.find((entry) => entry.tenant.id === tenantId);
+  const client = allClients.find((entry) => entry.tenant.id === tenantId);
 
   if (!client) {
     return (
@@ -105,11 +120,25 @@ export default function ClientDetail({ clients, base, reload }) {
     );
   }
 
-  return <ClientBody key={client.tenant.id} client={client} base={base} reload={reload} />;
+  return (
+    <ClientBody
+      key={client.tenant.id}
+      client={client}
+      base={base}
+      reload={reload}
+      probe={probe}
+      runProbe={runProbe}
+    />
+  );
 }
 
-function ClientBody({ client, base, reload }) {
+function ClientBody({ client, base, reload, probe, runProbe }) {
   const { tenant, data } = client;
+  const archived = tenant.status === 'archived';
+  /* what the deboard just did, kept here rather than in the panel that did it:
+     the panel disappears the moment the reload says this client is archived. */
+  const [deboarded, setDeboarded] = useState(null);
+  const [restoreTo, setRestoreTo] = useState('paused');
 
   const [form, setForm] = useState(() => seedForm(tenant));
   const [tokens, setTokens] = useState(null);
@@ -171,8 +200,14 @@ function ClientBody({ client, base, reload }) {
           <h2 className="ops-head__name">{tenant.name}</h2>
 
           <div className="ops-head__sub">
-            <TenantStatus status={tenant.status} />
-            <PipelineStatus status={data.status} />
+            {archived ? (
+              <Pill tone="idle">past client</Pill>
+            ) : (
+              <>
+                <TenantStatus status={tenant.status} />
+                <PipelinePill verdict={client.pipeline} />
+              </>
+            )}
             <span className="mono" style={{ color: 'var(--faint)' }}>
               {tenant.timezone}
             </span>
@@ -188,7 +223,7 @@ function ClientBody({ client, base, reload }) {
             generate report
           </button>
 
-          {tenant.loginEmail && (
+          {tenant.loginEmail && !archived && (
             <a
               className="ws-btn"
               href={`mailto:${tenant.loginEmail}?subject=${encodeURIComponent(
@@ -204,7 +239,134 @@ function ClientBody({ client, base, reload }) {
 
       {reporting && <ReportDialog client={client} onClose={() => setReporting(false)} />}
 
-      {!tenant.loginEmail && (
+      {archived && (
+        <div className="ops-archived">
+          <div className="ops-archived__text">
+            <p className="ops-archived__title">
+              <Icon name="archive" size={18} />
+              past client
+            </p>
+            <p className="ops-archived__body">
+              {tenant.archivedAt
+                ? `deboarded ${formatStamp(tenant.archivedAt, tenant.timezone)}`
+                : 'archived before deboarding was recorded'}
+              {' · '}
+              {tenant.archiveReason ?? 'no reason recorded'}
+              {tenant.archiveNote ? ` — ${tenant.archiveNote}` : ''}. their tokens are revoked,
+              nobody can sign in to this account and nothing it was wired to is marked connected.
+              every event is kept, so the numbers below and any report are still their real
+              history.
+            </p>
+          </div>
+
+          <div className="ops-archived__actions">
+            <SelectInput
+              options={RESTORE_OPTIONS}
+              value={restoreTo}
+              onChange={(event) => setRestoreTo(event.target.value)}
+              aria-label="status to restore to"
+            />
+            <ActionButton
+              icon="refresh"
+              confirm={`bring ${tenant.name} back onto the books as ${restoreTo}? their old tokens stay revoked and nobody regains access until you mint a token and link the account again.`}
+              onRun={async () => {
+                const result = await restoreClient(tenant.id, restoreTo);
+                setDeboarded(null);
+                await reload();
+                return `restored as ${result.status} — mint a token and link the account to reconnect them`;
+              }}
+            >
+              restore
+            </ActionButton>
+            <Link className="ws-btn" to={`${base}/past-clients`}>
+              <Icon name="archive" size={13} />
+              all past clients
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {deboarded && (
+        <Notice tone="ok" title={`${tenant.name} is now a past client`}>
+          <p>
+            {formatCount(deboarded.tokens_revoked)} token{deboarded.tokens_revoked === 1 ? '' : 's'}{' '}
+            revoked · {formatCount(deboarded.members_removed)} login
+            {deboarded.members_removed === 1 ? '' : 's'} removed from the account
+            {deboarded.logins_deleted ? ` (${deboarded.logins_deleted} deleted from auth)` : ''} ·{' '}
+            {formatCount(deboarded.connections_retired)} connection
+            {deboarded.connections_retired === 1 ? '' : 's'} retired
+            {deboarded.logged === false ? ' · the audit write failed' : ''}.
+          </p>
+          {deboarded.logins_kept?.length > 0 && (
+            <p>
+              kept {deboarded.logins_kept.length} login
+              {deboarded.logins_kept.length === 1 ? '' : 's'}:{' '}
+              {deboarded.logins_kept.map((login) => login.why).join('; ')}.
+            </p>
+          )}
+        </Notice>
+      )}
+
+      {!archived && client.pipeline && (
+        <Panel
+          title="pipeline — live check"
+          note={
+            client.pipeline.evidence === 'live'
+              ? `checked ${formatStamp(probe.result.checked_at, DateTime.local().zoneName)}`
+              : client.pipeline.evidence === 'events'
+                ? 'from the event log'
+                : 'checking…'
+          }
+          actions={
+            <button
+              type="button"
+              className="ws-btn"
+              onClick={runProbe}
+              disabled={probe?.kind === 'checking'}
+            >
+              <Icon name="pulse" size={13} />
+              {probe?.kind === 'checking' ? 'checking…' : 'check again'}
+            </button>
+          }
+          bare
+        >
+          <div className="ops-live__head">
+            <PipelinePill verdict={client.pipeline} />
+            <p className="ops-live__summary">
+              {client.pipeline.state === 'connected'
+                ? 'every check passed — events can get from their n8n into this portal right now.'
+                : client.pipeline.state === 'checking'
+                  ? 'asking the ingest endpoint and n8n…'
+                  : client.pipeline.summary}
+            </p>
+          </div>
+
+          <CheckList checks={client.pipeline.checks} />
+
+          {probe?.kind === 'error' && (
+            <div style={{ padding: 'var(--panel-pad)', paddingTop: 0 }}>
+              <Notice tone="warn" title="the live check could not run">
+                <p>
+                  {probe.error}.{' '}
+                  {probe.result
+                    ? 'the rows above are from the last check that did.'
+                    : 'the rows above are judged from the event log and tokens instead, so they cannot say whether a workflow is switched on in n8n.'}
+                </p>
+              </Notice>
+            </div>
+          )}
+
+          {probe?.result && !probe.result.n8n?.configured && (
+            <p className="ws-note" style={{ padding: '0 var(--panel-pad) var(--panel-pad)' }}>
+              workflows are not being asked about: set <code>N8N_API_URL</code> and{' '}
+              <code>N8N_API_KEY</code> as secrets on the <code>ops</code> function and this panel also
+              says whether each workflow is switched on and how its last run went.
+            </p>
+          )}
+        </Panel>
+      )}
+
+      {!archived && !tenant.loginEmail && (
         <Notice tone="warn" title="this client cannot sign in yet">
           <p>
             a client id selects the account; the sign-in link still has to go somewhere. add
@@ -340,9 +502,11 @@ function ClientBody({ client, base, reload }) {
                 <TextInput value={form.company} onChange={set('company')} placeholder="optional" />
               </Field>
 
-              <Field label="status">
-                <SelectInput options={STATUS_OPTIONS} value={form.status} onChange={set('status')} />
-              </Field>
+              {!archived && (
+                <Field label="status" hint="a label you set — the pipeline check above is what is measured">
+                  <SelectInput options={STATUS_OPTIONS} value={form.status} onChange={set('status')} />
+                </Field>
+              )}
 
               <Field label="plan">
                 <TextInput value={form.plan} onChange={set('plan')} placeholder="pilot, retainer…" />
@@ -376,6 +540,7 @@ function ClientBody({ client, base, reload }) {
                 <TextArea value={form.notes} onChange={set('notes')} placeholder="anything worth remembering about this account" />
               </Field>
 
+              {!archived && (
               <div className="ops-form__row">
                 <ActionButton
                   icon="link"
@@ -397,6 +562,7 @@ function ClientBody({ client, base, reload }) {
                   touches auth, which is why it does not run in the browser.
                 </span>
               </div>
+              )}
           </div>
         </Panel>
 
@@ -513,8 +679,17 @@ function ClientBody({ client, base, reload }) {
                 <tr>
                   <th className="ws-table__wide">connection</th>
                   <th>kind</th>
-                  <th>declared</th>
-                  <th>observed</th>
+                  <th>
+                    marked as
+                    <Help>what you set on this connection by hand. it checks nothing.</Help>
+                  </th>
+                  <th>
+                    actually sending
+                    <Help>
+                      read from the event log: has this workflow id sent anything, and recently
+                      enough for how often it normally runs.
+                    </Help>
+                  </th>
                   <th>last seen</th>
                   <th className="ws-table__num">runs</th>
                   <th aria-label="actions" />
@@ -661,7 +836,18 @@ function ClientBody({ client, base, reload }) {
                 {tokens.map((token) => (
                   <tr className="ws-table__row" key={token.id}>
                     <td className="ws-table__strong">{token.label ?? 'unlabelled'}</td>
-                    <td className="ws-table__sub">{token.revokedAt ? 'revoked' : 'active'}</td>
+                    <td>
+                      {/* "active" only ever meant "not revoked", and said nothing about
+                          whether n8n had posted with it. the last-use stamp is the
+                          evidence, so the state is read off it. */}
+                      {token.revokedAt ? (
+                        <Pill tone="idle">revoked</Pill>
+                      ) : token.lastUsedAt ? (
+                        <Pill tone="ok">in use</Pill>
+                      ) : (
+                        <Pill tone="warn">never used</Pill>
+                      )}
+                    </td>
                     <td className="ws-table__sub">
                       {formatStamp(token.createdAt, tenant.timezone)}
                     </td>
@@ -750,6 +936,235 @@ function ClientBody({ client, base, reload }) {
           {site.brand}.
         </p>
       </Panel>
+
+      {!archived && (
+        <DeboardPanel
+          client={client}
+          tokens={tokens}
+          reload={reload}
+          onDone={(result) => {
+            setDeboarded(result);
+            /* the token table was read when the page opened; every row in it has
+               just been revoked, so read it again rather than show them live. */
+            listTokens(tenant.id)
+              .then(setTokens)
+              .catch((error) => setTokenError(error.message));
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * taking a client out of the system.
+ *
+ * closed until asked for, and then a form rather than a button, because the
+ * button's consequences are worth reading before they happen: the list of what
+ * will change is computed from this client's own tokens and connections, not
+ * written generically. the confirmation is typing their name — the one thing
+ * that cannot be done by reflex on the wrong client's page.
+ *
+ * what it deliberately does not do is on the list too. it cancels nothing that
+ * costs money, because the console has never held a billing key for any of those
+ * accounts; the subscriptions arc pays for are listed with a link to each
+ * provider's billing page, so ending them is one click away rather than
+ * something remembered a month later from an invoice.
+ */
+function DeboardPanel({ client, tokens, reload, onDone }) {
+  const { tenant, connections } = client;
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
+  const [deleteLogins, setDeleteLogins] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [state, setState] = useState({ kind: 'idle' });
+
+  const activeTokens = tokens === null ? null : tokens.filter((token) => !token.revokedAt).length;
+  const wired = connections.filter((connection) => connection.status !== 'retired');
+  const arcPays = connections.filter(
+    (connection) =>
+      connection.paidBy === 'arc' && ['active', 'trial', 'past_due'].includes(connection.billingStatus),
+  );
+
+  const confirmed = typed.trim().toLowerCase() === tenant.name.trim().toLowerCase();
+  const ready = Boolean(reason) && confirmed && state.kind !== 'busy';
+
+  async function submit(event) {
+    event.preventDefault();
+    if (!ready) return;
+    setState({ kind: 'busy' });
+    try {
+      const result = await deboardClient({ tenantId: tenant.id, reason, note, deleteLogins });
+      await reload();
+      onDone(result);
+    } catch (error) {
+      setState({ kind: 'error', message: error.message });
+    }
+  }
+
+  return (
+    <Panel
+      title="deboard this client"
+      note="take them out of the system — their history is kept"
+      className="ops-danger"
+      actions={
+        !open && (
+          <button type="button" className="ws-btn" onClick={() => setOpen(true)}>
+            <Icon name="exit" size={13} />
+            start deboarding
+          </button>
+        )
+      }
+    >
+      {!open ? (
+        <p className="ops-muted">
+          when an engagement ends: cuts off their pipeline and their sign-in in one step, and moves
+          them to <b>past clients</b>. nothing is deleted, and they can be restored.
+        </p>
+      ) : (
+        <form onSubmit={submit}>
+          <ul className="ops-danger__list">
+            <li>
+              <i>1</i>
+              <span>
+                <b>
+                  {activeTokens === null
+                    ? 'every ingest token is revoked'
+                    : `${activeTokens} ingest token${activeTokens === 1 ? ' is' : 's are'} revoked`}
+                </b>{' '}
+                — n8n&rsquo;s next post for this client is refused, so nothing more lands in their
+                account.
+              </span>
+            </li>
+            <li>
+              <i>2</i>
+              <span>
+                <b>sign-in access is removed</b>
+                {tenant.loginEmail ? ` for ${tenant.loginEmail}` : ''} — their client id stops
+                working and any open session reads nothing.
+              </span>
+            </li>
+            <li>
+              <i>3</i>
+              <span>
+                <b>
+                  {wired.length} connection{wired.length === 1 ? ' is' : 's are'} marked retired
+                </b>
+                {wired.length > 0 ? ` — ${wired.map((connection) => connection.label).join(', ')}` : ''}.
+              </span>
+            </li>
+            <li>
+              <i>4</i>
+              <span>
+                <b>they move to past clients</b>, with the reason below. events, incidents and
+                reports stay exactly as they are.
+              </span>
+            </li>
+          </ul>
+
+          {arcPays.length > 0 && (
+            <Notice tone="warn" title="cancel what arc pays for yourself">
+              <p>
+                deboarding does not cancel any subscription. these are marked paid by arc and still
+                running:
+              </p>
+              <ul className="ops-danger__list" style={{ margin: '8px 0 0' }}>
+                {arcPays.map((connection) => {
+                  const billingUrl = integrationFor(connection)?.billingUrl;
+                  return (
+                    <li key={connection.id}>
+                      <i>·</i>
+                      <span>
+                        <b>{connection.label}</b>
+                        {connection.costCents ? ` · ${formatMoney(connection.costCents)}` : ''}
+                        {billingUrl && (
+                          <>
+                            {' — '}
+                            <a href={billingUrl} target="_blank" rel="noreferrer">
+                              open billing
+                            </a>
+                          </>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Notice>
+          )}
+
+          <div className="ops-form" style={{ marginTop: 16 }}>
+            <Field label="why they are leaving" required>
+              <SelectInput
+                options={[
+                  { value: '', label: 'choose a reason…' },
+                  ...DEBOARD_REASONS.map((value) => ({ value, label: value })),
+                ]}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+              />
+            </Field>
+
+            <Field label="note" hint="kept with the record on the past clients page" wide>
+              <TextArea
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                placeholder="anything worth knowing if they come back"
+              />
+            </Field>
+
+            <label className="ops-check ops-field--wide">
+              <input
+                type="checkbox"
+                checked={deleteLogins}
+                onChange={(event) => setDeleteLogins(event.target.checked)}
+              />
+              <span>
+                also delete their login from supabase auth. a login that belongs to another client, or
+                to an operator, is always kept.
+              </span>
+            </label>
+
+            <Field label={`type ${tenant.name} to confirm`} required wide>
+              <TextInput
+                value={typed}
+                onChange={(event) => setTyped(event.target.value)}
+                autoComplete="off"
+                spellCheck="false"
+                placeholder={tenant.name}
+              />
+            </Field>
+          </div>
+
+          {state.kind === 'error' && (
+            <div style={{ marginTop: 14 }}>
+              <Notice tone="fail" title="nothing was changed">
+                <p>{state.message}</p>
+              </Notice>
+            </div>
+          )}
+
+          <div className="ops-row" style={{ marginTop: 16 }}>
+            <button type="submit" className="ws-btn ws-btn--danger" disabled={!ready}>
+              <Icon name="exit" size={13} />
+              {state.kind === 'busy' ? 'deboarding…' : `deboard ${tenant.name}`}
+            </button>
+            <button
+              type="button"
+              className="ws-btn"
+              onClick={() => {
+                setOpen(false);
+                setState({ kind: 'idle' });
+              }}
+              disabled={state.kind === 'busy'}
+            >
+              cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </Panel>
   );
 }

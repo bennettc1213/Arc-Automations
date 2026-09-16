@@ -122,7 +122,7 @@ export default function Topbar({
           <div className="ws-menu ws-menu--wide">
             <p className="ws-menu__label">alerts</p>
 
-            {status?.status !== 'operational' && (
+            {(status?.status === 'failed' || status?.status === 'degraded') && (
               <div className="ws-menu__row ws-menu__row--warn">
                 <span>
                   {status.status === 'failed' ? 'action required' : 'degraded — watching'}

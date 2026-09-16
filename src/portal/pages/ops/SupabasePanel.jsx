@@ -3,7 +3,7 @@ import Icon from '../../components/Icon';
 import { Panel, Pill, StatCard } from '../../components/ui';
 import { ActionButton, CopyValue, Notice } from '../../components/ops-ui';
 import OperatorAccount from '../../components/OperatorAccount';
-import { dashboardUrl, probeSupabase, projectRef } from '../../lib/ops';
+import { dashboardUrl, opsCapabilities, probeSupabase, projectRef } from '../../lib/ops';
 import { functionUrl, isConfigured } from '../../lib/supabase';
 import { formatCount, formatStamp } from '../../lib/format';
 
@@ -32,20 +32,44 @@ const TABLE_NOTE = {
 
 const FUNCTION_NOTE = {
   'client-login': 'turns a client id into a sign-in link, without disclosing the address',
-  ops: 'invites and links a client account — the only step that touches auth',
+  ops: 'links accounts, raises alerts, deboards clients and runs the live pipeline check',
   ingest: 'the write path n8n posts events to',
 };
+
+/* what this build of the console calls on the ops function. anything the
+   deployed copy does not list is named, so the fix is a redeploy rather than a
+   mystery the first time the button is pressed. */
+const OPS_ACTIONS_NEEDED = ['probe-pipelines', 'deboard-client', 'restore-client'];
 
 export default function SupabasePanel({ totals, email }) {
   const [probe, setProbe] = useState(null);
   const [error, setError] = useState(null);
+  const [ops, setOps] = useState(null);
 
   const run = useCallback(() => {
     setProbe(null);
     setError(null);
+    setOps({ kind: 'checking' });
     probeSupabase()
       .then(setProbe)
       .catch((probeError) => setError(probeError.message));
+    opsCapabilities()
+      .then((result) =>
+        setOps({
+          kind: 'ready',
+          missing: OPS_ACTIONS_NEEDED.filter((action) => !(result?.actions ?? []).includes(action)),
+          n8n: result?.n8n ?? null,
+        }),
+      )
+      .catch((capabilityError) =>
+        /* a deployment that predates `capabilities` answers "unknown action" —
+           which is itself the answer: none of the new actions are there. */
+        setOps(
+          /unknown action/i.test(capabilityError.message)
+            ? { kind: 'ready', missing: OPS_ACTIONS_NEEDED, n8n: null }
+            : { kind: 'error', error: capabilityError.message, missing: [] },
+        ),
+      );
   }, []);
 
   useEffect(run, [run]);
@@ -85,16 +109,29 @@ export default function SupabasePanel({ totals, email }) {
       )}
 
       {missingColumns.length > 0 && (
-        <Notice tone="warn" title="a migration has not been applied">
+        <Notice
+          tone="warn"
+          title={`${missingColumns.length === 1 ? 'a migration has' : `${missingColumns.length} migrations have`} not been applied`}
+        >
+          {missingColumns.map((column) => (
+            <p key={column.migration}>
+              <code>{column.table}.{column.column}</code> is missing — run{' '}
+              <code>supabase/migrations/{column.migration}</code> in the sql editor. until it is,{' '}
+              {column.consequence}.
+            </p>
+          ))}
+        </Notice>
+      )}
+
+      {ops && ops.kind !== 'checking' && (ops.kind === 'error' || ops.missing.length > 0) && (
+        <Notice tone="warn" title="the deployed ops function is out of date">
           <p>
-            {missingColumns.map((column) => (
-              <span key={column.migration}>
-                <code>{column.table}.{column.column}</code> is missing — run{' '}
-                <code>supabase/migrations/{column.migration}</code> in the sql editor.{' '}
-              </span>
-            ))}
-            until it is, subscriptions, renewal dates and key hints on a client page cannot be
-            saved.
+            {ops.kind === 'error'
+              ? `asking it what it can do failed: ${ops.error}.`
+              : `it does not know ${ops.missing.join(', ')}.`}{' '}
+            redeploy it from the repo root: <code>supabase functions deploy ops</code>. until then
+            the live pipeline check falls back to the event log, and clients cannot be deboarded or
+            restored.
           </p>
         </Notice>
       )}
@@ -202,6 +239,25 @@ export default function SupabasePanel({ totals, email }) {
             </div>
           ))}
           {!probe && <div className="ops-probe__row">probing the functions…</div>}
+        </div>
+
+        <div className="ops-probe">
+          <div className="ops-probe__row">
+            <span className="ops-probe__name">n8n api</span>
+            {!ops || ops.kind === 'checking' ? (
+              <Pill tone="neutral">asking…</Pill>
+            ) : ops.n8n?.configured ? (
+              <Pill tone="ok">configured</Pill>
+            ) : (
+              <Pill tone="warn">not set</Pill>
+            )}
+            <span className="ops-probe__detail">
+              {ops?.n8n?.configured
+                ? `the live check asks ${ops.n8n.host} whether each workflow is switched on`
+                : 'without it the live check cannot see whether a workflow is switched on in n8n. supabase secrets set N8N_API_URL=… N8N_API_KEY=…'}
+            </span>
+            <span className="ops-probe__val">secret on ops</span>
+          </div>
         </div>
 
         <div style={{ padding: 'var(--panel-pad)', display: 'grid', gap: 10 }}>

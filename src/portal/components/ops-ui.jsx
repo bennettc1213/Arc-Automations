@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import Icon from './Icon';
 import { Pill } from './ui';
 
@@ -159,13 +159,13 @@ export function TextInput({ mono = false, ...rest }) {
   return <input className={`ops-input${mono ? ' ops-input--mono' : ''}`} {...rest} />;
 }
 
-export function TextArea(props) {
-  return <textarea className="ops-input ops-input--area" rows={3} {...props} />;
+export function TextArea({ className = '', ...rest }) {
+  return <textarea className={`ops-input ops-input--area ${className}`} rows={3} {...rest} />;
 }
 
-export function SelectInput({ options, ...rest }) {
+export function SelectInput({ options, className = '', ...rest }) {
   return (
-    <select className="ops-input ops-input--select" {...rest}>
+    <select className={`ops-input ops-input--select ${className}`} {...rest}>
       {options.map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}
@@ -190,18 +190,86 @@ export function TenantStatus({ status }) {
   return <Pill tone={TENANT_TONE[status] ?? 'neutral'}>{status}</Pill>;
 }
 
-/* the pipeline's own verdict, from the event log rather than from the tenant row.
-   the two disagree often and usefully: an "active" client whose canaries have
-   been failing for a day is the row worth opening first. */
-const PIPELINE_TONE = { operational: 'ok', degraded: 'warn', failed: 'fail' };
-const PIPELINE_WORD = { operational: 'live', degraded: 'degraded', failed: 'action required' };
+/* the pipeline's own verdict — lib/ops.js pipelineVerdict — rather than the
+   tenant row. the two disagree often and usefully: an "active" client whose n8n
+   workflow was switched off yesterday is the row worth opening first, and the
+   account column alone would have kept saying active about it. */
+const PIPELINE_TONE = {
+  connected: 'ok',
+  partial: 'warn',
+  disconnected: 'fail',
+  unwired: 'idle',
+  checking: 'neutral',
+};
 
-export function PipelineStatus({ status }) {
-  const state = status?.status ?? 'operational';
+export function PipelinePill({ verdict }) {
+  if (!verdict) return null;
   return (
-    <Pill tone={PIPELINE_TONE[state]} title={status?.detail ?? undefined}>
-      {PIPELINE_WORD[state]}
+    <Pill
+      tone={PIPELINE_TONE[verdict.state] ?? 'neutral'}
+      title={`${verdict.summary}${verdict.evidence === 'events' ? ' · judged from the event log, not a live check' : ''}`}
+    >
+      {verdict.word}
     </Pill>
+  );
+}
+
+/**
+ * every check behind a pipeline verdict, one line each.
+ *
+ * the verdict is only worth trusting if the reasons are on screen next to it —
+ * "not connected" on its own is a claim, "Speed-to-Lead: switched off in n8n" is
+ * something you can go and fix.
+ */
+const CHECK_GLYPH = { ok: '■', warn: '▲', fail: '●', idle: '□' };
+
+export function CheckList({ checks }) {
+  if (!checks?.length) return null;
+  return (
+    <ul className="ops-checks">
+      {checks.map((check) => (
+        <li key={check.key} className={`ops-checks__row ops-checks__row--${check.tone}`}>
+          <i aria-hidden="true">{CHECK_GLYPH[check.tone] ?? '·'}</i>
+          <span className="ops-checks__label">{check.label}</span>
+          <span className="ops-checks__detail">{check.detail}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * a plain-words explanation for a term that needs one.
+ *
+ * a real button, so it takes focus and works from a keyboard, with the text in
+ * the accessible name as well as on screen. it opens on hover or focus rather
+ * than click so reading it costs nothing — this is a gloss, not a dialog.
+ */
+export function Help({ children, label = 'what does this mean' }) {
+  const id = useId();
+  const [side, setSide] = useState('center');
+
+  /* the tip is centred on its button unless that would run it off the screen —
+     a hint on the last stat card or the last table column opens leftwards, one
+     on the first opens rightwards. measured on the way in, so it is always right
+     for where the button is now. */
+  const place = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const half = 160;
+    setSide(
+      rect.right + half > window.innerWidth ? 'end' : rect.left - half < 0 ? 'start' : 'center',
+    );
+  };
+
+  return (
+    <span className={`ops-help ops-help--${side}`} onMouseEnter={place} onFocus={place}>
+      <button type="button" className="ops-help__btn" aria-label={label} aria-describedby={id}>
+        ?
+      </button>
+      <span className="ops-help__tip" role="tooltip" id={id}>
+        {children}
+      </span>
+    </span>
   );
 }
 

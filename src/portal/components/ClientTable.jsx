@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Icon from './Icon';
 import ReportDialog from './ReportDialog';
 import { Empty } from './ui';
-import { TenantStatus, PipelineStatus } from './ops-ui';
+import { Help, PipelinePill, TenantStatus } from './ops-ui';
 import { formatCount, formatDuration, formatRelative } from '../lib/format';
 
 /**
@@ -28,13 +28,25 @@ import { formatCount, formatDuration, formatRelative } from '../lib/format';
 
 /* ordered by what you would act on first, and it stops at the first hit: a client
    whose pipeline is down does not also need to be told their client id is not
-   wired up yet. one row, one reason, the most urgent one. */
+   wired up yet. one row, one reason, the most urgent one.
+
+   the pipeline verdict leads, because it is the live answer: it already folds in
+   the end-to-end check, the tokens, the last event and — when n8n can be asked —
+   whether the workflows are switched on. the event-log reasons below it only
+   decide when there is no verdict yet. */
 export function attentionFor(client) {
+  const verdict = client.pipeline;
+  if (verdict?.state === 'disconnected') {
+    return { level: 'down', why: `not connected — ${verdict.summary}` };
+  }
   if (client.data.status.status === 'failed') {
     return { level: 'down', why: 'the last end-to-end check failed' };
   }
   if (client.tenant.status === 'active' && client.eventCount === 0) {
-    return { level: 'attention', why: 'live, but has never sent an event' };
+    return { level: 'attention', why: 'marked active, but has never sent an event' };
+  }
+  if (verdict?.state === 'partial') {
+    return { level: 'attention', why: `partly connected — ${verdict.summary}` };
   }
   if (!client.tenant.loginEmail) {
     return { level: 'attention', why: 'no sign-in address — the client id will not work yet' };
@@ -67,12 +79,33 @@ export default function ClientTable({ clients, base, dense = false, emptyTitle, 
           <thead>
             <tr>
               <th className="ws-table__wide">client</th>
-              <th>account</th>
-              <th>pipeline</th>
+              <th>
+                account
+                <Help>
+                  what you set on the client: onboarding, active or paused. it is a label you
+                  choose — it does not check anything.
+                </Help>
+              </th>
+              <th>
+                pipeline
+                <Help>
+                  checked live, every few minutes: the ingest endpoint answers, the client has a
+                  token n8n is using, events are still arriving, and their n8n workflows are
+                  switched on. hover a row&rsquo;s pill for the reason.
+                </Help>
+              </th>
               <th className="ws-table__num">leads · 30d</th>
-              <th className="ws-table__num">median reply</th>
+              <th className="ws-table__num">
+                median reply
+                <Help>half of this client&rsquo;s leads got a text back faster than this.</Help>
+              </th>
               <th>last event</th>
-              <th className="ws-table__num">wired</th>
+              <th className="ws-table__num">
+                connected
+                <Help>
+                  connections marked connected, out of all the services recorded for this client.
+                </Help>
+              </th>
               <th aria-label="report" />
               <th aria-label="open" />
             </tr>
@@ -104,7 +137,7 @@ export default function ClientTable({ clients, base, dense = false, emptyTitle, 
                   </td>
 
                   <td className="ws-td--loss">
-                    <PipelineStatus status={data.status} />
+                    <PipelinePill verdict={client.pipeline} />
                   </td>
 
                   <td className="ws-table__num ws-table__strong ws-td--response" data-label="leads 30d">

@@ -119,7 +119,9 @@ export default function Support({ data, base }) {
                 ? 'all systems operational'
                 : status.status === 'degraded'
                   ? 'degraded — watching'
-                  : 'action required'}
+                  : status.status === 'failed'
+                    ? 'action required'
+                    : 'no end-to-end check has run yet'}
             </b>
             {status.lastCheckedAt && (
               <> · last checked {formatRelative(status.lastCheckedAt, tenant.timezone)}</>

@@ -23,8 +23,8 @@
    ──────────────────────────────────────────────── */
 
 .portal.ws {
-  --rail: 236px;
-  --rail-tight: 62px;
+  --rail: 252px;
+  --rail-tight: 66px;
   --top-h: 56px;
   --pad: clamp(16px, 2vw, 28px);
   --gap: clamp(16px, 1.8vw, 26px);
@@ -145,19 +145,20 @@
 
 .ws-nav__label {
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--faint);
-  padding: 16px 10px 7px;
+  padding: 18px 10px 8px;
 }
 
 .ws-nav__item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  font-size: 13px;
+  gap: 12px;
+  padding: 6px 10px 6px 8px;
+  font-size: 14px;
   color: var(--muted);
 }
 
@@ -184,13 +185,31 @@
   background: var(--accent);
 }
 
-.ws-nav__item .ws-icon {
-  color: var(--faint);
+/* each icon sits on its own small square tile. at 16px in --faint the icons were
+   a column of grey scratches you read past; on a tile, at 18px and in --muted,
+   they are signposts you can find a page by before reading its name. the tile
+   is the same hairline square as every other surface — no rounded chip. */
+.ws-nav__glyph {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
   flex: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  transition: color 0.18s var(--ease-out), border-color 0.18s var(--ease-out);
 }
 
-.ws-nav__item.is-active .ws-icon {
+.ws-nav__item:hover .ws-nav__glyph {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.ws-nav__item.is-active .ws-nav__glyph {
   color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line-strong));
+  background: var(--bg-2);
 }
 
 .ws-nav__text {
@@ -202,13 +221,13 @@
 .ws-nav__count {
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--faint);
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .ws--tight .ws-nav__item {
   justify-content: center;
-  padding: 10px 0;
+  padding: 5px 0;
 }
 
 .ws-rail__foot {
@@ -229,7 +248,7 @@
   align-items: center;
   gap: 8px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.09em;
 }
 
@@ -242,15 +261,18 @@
 .ws-rail__status--failed {
   color: var(--fail);
 }
+.ws-rail__status--idle {
+  color: var(--muted);
+}
 
 .ws-rail__collapse {
   display: flex;
   align-items: center;
   gap: 8px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.09em;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .ws-rail__collapse:hover {
@@ -354,17 +376,83 @@
 
 .ws-top__icon {
   position: relative;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
-  border: 1px solid transparent;
-  color: var(--muted);
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+
+.ws-top__icon .ws-icon {
+  width: 19px;
+  height: 19px;
 }
 
 .ws-top__icon:hover {
-  border-color: var(--line-strong);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ws-top__menu .ws-icon {
+  width: 22px;
+  height: 22px;
+}
+
+/* the live pipeline check, as a button that says when it last ran. neutral,
+   because "checked 14:02" is a timestamp, not a verdict — the verdicts are on
+   the rows. it only turns yellow when the check itself could not run. */
+.ws-top__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  flex: none;
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.ws-top__check .ws-icon {
+  width: 17px;
+  height: 17px;
   color: var(--text);
+}
+
+.ws-top__check:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ws-top__check:hover:not(:disabled) .ws-icon {
+  color: var(--accent);
+}
+
+.ws-top__check--checking .ws-icon {
+  animation: ws-pulse 1.1s var(--ease-out) infinite;
+}
+
+.ws-top__check--error {
+  color: var(--warn);
+}
+
+@keyframes ws-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* what the page is for, said inside the page once the top bar has run out of
+   room to say it. above 1180px the bar's own blurb does the job. */
+.ws-intro {
+  display: none;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 .ws-top__badge {
@@ -1093,6 +1181,14 @@
   background: none;
 }
 
+/* call sites pass size 12 or 13, drawn when the stroke was thinner. one rule
+   here rather than forty edits: every button's glyph is a readable 16px. */
+.ws-btn .ws-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
 .ws-btn:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
@@ -1188,6 +1284,13 @@
   color: var(--faint);
   margin-top: 3px;
   line-height: 1.45;
+}
+
+/* the same look on a whole cell. `display: block` on a <td> takes it out of the
+   table's layout, and two in a row stack under each other in the wrong column. */
+td.ws-table__sub {
+  display: table-cell;
+  margin-top: 0;
 }
 
 .ws-table__wide {
@@ -1631,6 +1734,11 @@
   border-bottom: none;
 }
 
+.ws-list li > .ws-icon {
+  flex: none;
+  color: var(--muted);
+}
+
 .ws-list__val {
   margin-left: auto;
   font-size: 11px;
@@ -1697,6 +1805,16 @@
 @media (max-width: 1180px) {
   .ws-top__window,
   .ws-top__title p {
+    display: none;
+  }
+
+  .ws-intro {
+    display: block;
+  }
+}
+
+@media (max-width: 720px) {
+  .ws-top__check span {
     display: none;
   }
 }

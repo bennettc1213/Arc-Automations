@@ -20,9 +20,14 @@ import { NAV_GROUPS } from '../lib/nav';
  * the two would be the wrong one and nobody would know which.
  */
 
-const STATUS_GLYPH = { operational: '■', degraded: '▲', failed: '●' };
-const STATUS_WORD = { operational: 'operational', degraded: 'degraded', failed: 'action required' };
-const STATUS_MOD = { operational: 'ok', degraded: 'degraded', failed: 'failed' };
+const STATUS_GLYPH = { operational: '■', degraded: '▲', failed: '●', unchecked: '□' };
+const STATUS_WORD = {
+  operational: 'operational',
+  degraded: 'degraded',
+  failed: 'action required',
+  unchecked: 'not checked yet',
+};
+const STATUS_MOD = { operational: 'ok', degraded: 'degraded', failed: 'failed', unchecked: 'idle' };
 
 export default function Sidebar({
   base,
@@ -73,11 +78,19 @@ export default function Sidebar({
                     end={item.end}
                     className={({ isActive }) => `ws-nav__item${isActive ? ' is-active' : ''}`}
                     onClick={onNavigate}
-                    /* the tooltip is the label when the label is hidden. a collapsed rail
-                       that is a column of unexplained glyphs is a puzzle, not a nav. */
-                    title={collapsed ? item.label : undefined}
+                    /* the tooltip says what the page is for, and carries the label too when
+                       the label is hidden. a collapsed rail that is a column of unexplained
+                       glyphs is a puzzle, not a nav — and "reliability" or "audit log" is
+                       only half an explanation even with the word showing. */
+                    title={
+                      collapsed
+                        ? `${item.label}${item.blurb ? ` — ${item.blurb}` : ''}`
+                        : item.blurb ?? undefined
+                    }
                   >
-                    <Icon name={item.icon} />
+                    <span className="ws-nav__glyph" aria-hidden="true">
+                      <Icon name={item.icon} size={18} />
+                    </span>
                     {!collapsed && <span className="ws-nav__text">{item.label}</span>}
                     {!collapsed && counts[item.to] !== undefined && counts[item.to] !== null && (
                       <span className="ws-nav__count">{counts[item.to]}</span>
@@ -91,9 +104,14 @@ export default function Sidebar({
       </div>
 
       <div className="ws-rail__foot">
-        <div className={`ws-rail__status ws-rail__status--${STATUS_MOD[state]}`}>
-          <span aria-hidden="true">{STATUS_GLYPH[state]}</span>
-          {!collapsed && <span>{STATUS_WORD[state]}</span>}
+        {/* `word` lets a workspace say it in its own terms: the ops console's lamp is
+            about every client's pipeline, not one client's end-to-end check. */}
+        <div
+          className={`ws-rail__status ws-rail__status--${STATUS_MOD[state] ?? 'idle'}`}
+          title={status?.detail ?? undefined}
+        >
+          <span aria-hidden="true">{STATUS_GLYPH[state] ?? '□'}</span>
+          {!collapsed && <span>{status?.word ?? STATUS_WORD[state]}</span>}
         </div>
 
         <button

@@ -1,0 +1,537 @@
+/* ────────────────────────────────────────────────
+   OpsHome.css — the ops console's front door
+
+   Deliberately not PortalHome.css. The client door is a hero built to sell;
+   this one is built out of the console's own parts — square panels on
+   --surface, mono labels, a strip of readouts — so it cannot be mistaken for
+   the product page. No new colours: the difference is structure, not hue, and
+   portal.css's two rules still hold. Orange is interactive only, and status
+   is never colour alone.
+   ──────────────────────────────────────────────── */
+
+.od {
+  position: relative;
+}
+
+/* a drafting grid under the panels, faded towards the edges so it reads as
+   the surface the console sits on rather than a pattern laid over it. */
+.od::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(237, 237, 239, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(237, 237, 239, 0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
+  -webkit-mask-image: radial-gradient(ellipse 85% 70% at 50% 35%, #000 25%, transparent 100%);
+  mask-image: radial-gradient(ellipse 85% 70% at 50% 35%, #000 25%, transparent 100%);
+}
+
+/* the same reveal the client door uses, so the shared veil lands on finished
+   type here too. */
+.od__stage {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  opacity: 0;
+  translate: -26px 0;
+  transition: opacity 0.42s var(--ease-out), translate 0.62s var(--ease-out);
+}
+
+.od__stage[data-entered='true'] {
+  opacity: 1;
+  translate: 0 0;
+}
+
+/* ── bar ─────────────────────────────────────── */
+
+.od-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 52px;
+  padding-inline: var(--gutter);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.od-bar__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  color: var(--text);
+}
+
+.od-bar__mark b {
+  color: var(--accent);
+  font-weight: inherit;
+}
+
+.od-bar__tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  padding: 3px 7px;
+}
+
+.od-bar__nav {
+  margin-left: auto;
+  display: flex;
+  gap: 20px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.od-bar__nav a {
+  color: var(--faint);
+  transition: color 0.25s var(--ease-out);
+}
+
+.od-bar__nav a:hover {
+  color: var(--accent);
+}
+
+/* ── readouts ────────────────────────────────── */
+
+.od-readouts {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-2);
+}
+
+.od-read {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 18px;
+  border-right: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.od-read:first-child {
+  padding-left: var(--gutter);
+}
+
+.od-read__label {
+  color: var(--faint);
+}
+
+.od-read__val {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.od-read__val i {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--faint);
+}
+
+.od-read__val--ok i {
+  color: var(--ok);
+}
+
+.od-read__val--warn i {
+  color: var(--warn);
+}
+
+.od-read__val--fail i {
+  color: var(--fail);
+}
+
+/* ── layout ──────────────────────────────────── */
+
+.od-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1240px;
+  margin-inline: auto;
+  padding: clamp(28px, 7vh, 80px) var(--gutter);
+  display: grid;
+  grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.od-panel {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.od-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.od-panel__note {
+  color: var(--faint);
+  letter-spacing: 0.06em;
+  text-align: right;
+}
+
+/* ── access ──────────────────────────────────── */
+
+.od-access__body {
+  padding: 26px 22px 22px;
+}
+
+.od-access__title {
+  font-size: clamp(1.6rem, 2.4vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin-bottom: 10px;
+}
+
+.od-access__sub {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  margin-bottom: 26px;
+}
+
+.od-access__who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.od-access__who i {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--ok);
+}
+
+.od-access__who .mono {
+  color: var(--text);
+}
+
+.od-field {
+  margin-bottom: 14px;
+}
+
+.od-field__label {
+  display: block;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+
+.od-input {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.od-input::placeholder {
+  color: var(--faint);
+}
+
+.od-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* the password field and its button as one control, prompt and all. */
+.od-prompt {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  transition: border-color 0.2s var(--ease-out);
+}
+
+.od-prompt:focus-within {
+  border-color: var(--accent);
+}
+
+.od-prompt__caret {
+  display: grid;
+  place-items: center;
+  padding-left: 12px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--faint);
+}
+
+.od-prompt:focus-within .od-prompt__caret {
+  color: var(--accent);
+}
+
+.od-prompt .od-input {
+  flex: 1;
+  padding-left: 10px;
+  background: none;
+  border: 0;
+}
+
+.od-prompt .od-btn {
+  flex: none;
+  border: 0;
+}
+
+.od-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 16px;
+  background: none;
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  transition:
+    background 0.2s var(--ease-out),
+    border-color 0.2s var(--ease-out),
+    color 0.2s var(--ease-out);
+}
+
+.od-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0a0a0b;
+}
+
+.od-btn--primary:hover:not(:disabled) {
+  background: var(--accent-hot);
+  border-color: var(--accent-hot);
+}
+
+.od-btn--wide {
+  width: 100%;
+}
+
+.od-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* underlined mono rather than a second button: two buttons of equal weight
+   under one form makes you read both to work out which one you wanted, and the
+   password path is the everyday one. */
+.od-switch {
+  display: block;
+  margin-top: 4px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  text-align: left;
+  transition: color 0.25s var(--ease-out), border-color 0.25s var(--ease-out);
+}
+
+.od-switch:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.od-fine {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+  color: var(--faint);
+}
+
+/* ── the console index ───────────────────────── */
+
+.od-index__group + .od-index__group {
+  border-top: 1px solid var(--line);
+}
+
+.od-index__grouplabel {
+  padding: 14px 16px 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.od-index ul {
+  margin: 0;
+  padding: 0 0 8px;
+  list-style: none;
+}
+
+.od-index__row {
+  display: grid;
+  grid-template-columns: 116px 112px minmax(0, 1fr);
+  gap: 16px;
+  align-items: baseline;
+  padding: 8px 16px;
+  color: inherit;
+}
+
+a.od-index__row {
+  transition: background 0.2s var(--ease-out);
+}
+
+a.od-index__row:hover {
+  background: var(--surface-2);
+}
+
+a.od-index__row:hover .od-index__label {
+  color: var(--accent);
+}
+
+.od-index__path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.od-index__label {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text);
+  transition: color 0.2s var(--ease-out);
+}
+
+.od-index__blurb {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ── foot ────────────────────────────────────── */
+
+.od-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px var(--gutter);
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+
+.od-foot a {
+  color: var(--accent);
+}
+
+.od-foot a:hover {
+  color: var(--accent-hot);
+}
+
+.od-foot__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.18em;
+}
+
+/* ── narrow ──────────────────────────────────── */
+
+@media (max-width: 899px) {
+  .od-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .od-readouts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-bottom: 0;
+  }
+
+  .od-read,
+  .od-read:first-child {
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .od-read:nth-child(2n),
+  .od-read:last-child:nth-child(odd) {
+    border-right: 0;
+  }
+
+  .od-read:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .od-index__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    padding-block: 10px;
+  }
+}
+
+@media (max-width: 520px) {
+  .od-bar__tag {
+    display: none;
+  }
+
+  .od-bar__nav {
+    gap: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .od__stage {
+    transition: none;
+    translate: 0 0;
+  }
+}

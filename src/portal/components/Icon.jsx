@@ -117,6 +117,23 @@ const PATHS = {
       <path d="M8.2 8h5.2M11.4 8v2.4M13.4 8v1.8" />
     </>
   ),
+  /* a box with its lid on: a past client, put away rather than thrown out */
+  archive: (
+    <>
+      <path d="M2.2 2.8h11.6v3H2.2z" />
+      <path d="M3.2 5.8v7.4h9.6V5.8" />
+      <path d="M6.4 8.4h3.2" />
+    </>
+  ),
+  /* a heartbeat trace: the live check, asked right now */
+  pulse: <path d="M1.4 8.6h3.1l1.6-3.8 2.6 7 1.9-4.8 1.1 1.6h2.9" />,
+  /* a door with the arrow leaving it: deboarding */
+  exit: (
+    <>
+      <path d="M9.8 2.6H2.8v10.8h7" />
+      <path d="M7 8h7.2M11.4 5.2L14.2 8l-2.8 2.8" />
+    </>
+  ),
   plus: <path d="M8 2.6v10.8M2.6 8h10.8" />,
   check: <path d="M2.8 8.4l3.4 3.4 7-7.6" />,
   copy: (
@@ -155,7 +172,7 @@ const PATHS = {
   ),
 };
 
-export default function Icon({ name, size = 16, className = '' }) {
+export default function Icon({ name, size = 18, className = '' }) {
   const path = PATHS[name];
   if (!path) return null;
 
@@ -167,7 +184,10 @@ export default function Icon({ name, size = 16, className = '' }) {
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.25"
+      /* 1.5 in a 16-unit box: about two device pixels at the sizes these are drawn.
+         the old 1.25 went to a single grey pixel below 16px and the icons read as
+         faint scratches rather than as signposts. */
+      strokeWidth="1.5"
       strokeLinecap="butt"
       strokeLinejoin="miter"
       aria-hidden="true"

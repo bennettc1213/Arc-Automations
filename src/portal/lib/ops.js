@@ -3,6 +3,7 @@ import { getSupabase, isConfigured, functionUrl, anonKey } from './supabase';
 import { buildDashboardData } from './dashboard-data';
 import { EVENT_COLUMNS, toEvent } from './event-row';
 import { generateIngestToken, sha256Hex, generateClientId } from './client-id';
+import { formatSpan } from './format';
 
 /* the ops console's data layer.
  *
@@ -60,6 +61,11 @@ export function toTenant(row) {
     contactPhone: row.contact_phone,
     createdAt: row.created_at,
     onboardedAt: row.onboarded_at,
+    /* 0007: when and why a client was deboarded. null on every row until that
+       migration is applied, and on every client still on the books after it. */
+    archivedAt: row.archived_at ?? null,
+    archiveReason: row.archive_reason ?? null,
+    archiveNote: row.archive_note ?? null,
   };
 }
 
@@ -104,9 +110,10 @@ export function toToken(row) {
   };
 }
 
-const TENANT_COLUMNS =
-  'id, client_id, name, slug, company, timezone, status, plan, notes, login_email, ' +
-  'contact_name, contact_phone, created_at, onboarded_at';
+/* every column rather than a list. a list naming 0007's archive columns would
+   take the whole roster down on a project where that migration has not run yet,
+   and toTenant already reads each newer column as null when it is absent. */
+const TENANT_COLUMNS = '*';
 
 /* ── who is asking ─────────────────────────────────────────── */
 
@@ -189,17 +196,25 @@ export async function loadRoster() {
 
   const since = DateTime.now().minus({ days: WINDOW_DAYS }).toUTC().toISO();
 
-  const [{ data: tenantRows, error: tenantError }, { data: connectionRows }, { data: alertRows }] =
-    await Promise.all([
-      supabase.from('tenants').select(TENANT_COLUMNS).order('created_at', { ascending: true }),
-      supabase.from('connections').select('*').order('created_at', { ascending: true }),
-      supabase
-        .from('alerts')
-        .select('id, tenant_id, check_type, severity, message, fired_at, acknowledged_at, resolved_at')
-        .gte('fired_at', since)
-        .order('fired_at', { ascending: false })
-        .limit(500),
-    ]);
+  const [
+    { data: tenantRows, error: tenantError },
+    { data: connectionRows },
+    { data: alertRows },
+    { data: tokenRows },
+  ] = await Promise.all([
+    supabase.from('tenants').select(TENANT_COLUMNS).order('created_at', { ascending: true }),
+    supabase.from('connections').select('*').order('created_at', { ascending: true }),
+    supabase
+      .from('alerts')
+      .select('id, tenant_id, check_type, severity, message, fired_at, acknowledged_at, resolved_at')
+      .gte('fired_at', since)
+      .order('fired_at', { ascending: false })
+      .limit(500),
+    /* only whether each client holds a usable token and when n8n last used one.
+       it is what the pipeline verdict falls back on when the live check cannot
+       run, and it never includes the hash. */
+    supabase.from('ingest_tokens').select('tenant_id, revoked_at, last_used_at'),
+  ]);
 
   if (tenantError) throw new Error(`tenant read: ${tenantError.message}`);
 
@@ -245,6 +260,11 @@ export async function loadRoster() {
       /* rolled up here, once, so no page has to hold this client's raw events to
          decide whether a declared connection is still sending. */
       workflowActivity: workflowActivity(own),
+      /* the same roll-up for the pipeline as a whole: how long this client is
+         normally quiet, so "no events for 20 hours" can be judged against them
+         rather than against a constant. */
+      typicalQuietHours: p90GapHours(own.map((event) => event.occurredAt)),
+      tokens: tokenFacts((tokenRows ?? []).filter((row) => row.tenant_id === tenant.id)),
       eventCount: own.length,
       lastEventAt: own.length ? own[0].occurredAt : null,
     };
@@ -282,8 +302,9 @@ export async function loadRoster() {
  * the book, and printing it as though it were would be exactly the quiet
  * wrongness this product exists to rule out.
  */
-export function rosterTotals(clients) {
+export function rosterTotals(clients, past = []) {
   const live = clients.filter((c) => c.tenant.status === 'active');
+  const verdicts = clients.map((c) => c.pipeline?.state).filter(Boolean);
   const responders = live
     .map((c) => c.data.metrics.medianResponseMs)
     .filter((ms) => ms !== null && ms !== undefined)
@@ -294,12 +315,19 @@ export function rosterTotals(clients) {
     active: live.length,
     onboarding: clients.filter((c) => c.tenant.status === 'onboarding').length,
     paused: clients.filter((c) => c.tenant.status === 'paused').length,
-    archived: clients.filter((c) => c.tenant.status === 'archived').length,
+    archived: past.length,
     leads: clients.reduce((sum, c) => sum + (c.data.metrics.leadsLast30Days ?? 0), 0),
     leadsThisMonth: clients.reduce((sum, c) => sum + (c.data.metrics.leadsThisMonth ?? 0), 0),
     answered: clients.reduce((sum, c) => sum + (c.data.metrics.missedCallsAnswered ?? 0), 0),
     sends: clients.reduce((sum, c) => sum + (c.data.metrics.sends ?? 0), 0),
-    degraded: clients.filter((c) => c.data.status.status !== 'operational').length,
+    /* failing or degraded end-to-end checks. a client that has never run one is
+       not counted here: nothing was measured, so nothing is down. */
+    degraded: clients.filter((c) => ['failed', 'degraded'].includes(c.data.status.status)).length,
+    /* the live pipeline verdicts, once they are in. */
+    connected: verdicts.filter((state) => state === 'connected').length,
+    partial: verdicts.filter((state) => state === 'partial').length,
+    disconnected: verdicts.filter((state) => state === 'disconnected').length,
+    unwired: verdicts.filter((state) => state === 'unwired').length,
     openIncidents: clients.reduce(
       (sum, c) => sum + c.data.incidents.filter((incident) => incident.open).length,
       0,
@@ -609,6 +637,15 @@ function p90GapHours(stamps) {
    five-minute cadence would otherwise flag on a twenty-minute blip. */
 const MIN_STALE_HOURS = 6;
 
+/* the one definition of "too quiet", shared by a single connection and by a
+   client's pipeline as a whole: twice the observed p90 gap, floored so a chatty
+   workflow is not flagged on a blip, and capped by what a human declared. */
+function staleThreshold(typicalQuietHours, declaredHours) {
+  return typicalQuietHours === null || typicalQuietHours === undefined
+    ? declaredHours
+    : Math.min(declaredHours, Math.max(MIN_STALE_HOURS, typicalQuietHours * 2));
+}
+
 export function connectionLiveness(connection, activity, now = DateTime.now()) {
   if (!connection.workflowId) {
     return { state: 'unmatched', lastAt: null, runs: 0, failed: 0, label: 'no workflow id' };
@@ -633,11 +670,7 @@ export function connectionLiveness(connection, activity, now = DateTime.now()) {
      rests two days is not. `expected_quiet_hours` on the connection is the
      backstop, used while there is too little history to describe a cadence, and
      the ceiling, so a per-client override always wins. */
-  const declared = connection.expectedQuietHours ?? 48;
-  const threshold =
-    row.typicalQuietHours === null
-      ? declared
-      : Math.min(declared, Math.max(MIN_STALE_HOURS, row.typicalQuietHours * 2));
+  const threshold = staleThreshold(row.typicalQuietHours, connection.expectedQuietHours ?? 48);
 
   const state = hours > threshold ? 'stale' : row.failed > 0 ? 'flaky' : 'live';
 
@@ -659,6 +692,356 @@ export function connectionLiveness(connection, activity, now = DateTime.now()) {
             ? `quiet ${Math.max(1, Math.round(hours))}h`
             : `quiet ${Math.round(hours / 24)}d`,
   };
+}
+
+/* ── is the pipeline actually connected ────────────────────── */
+
+function tokenFacts(rows) {
+  const live = rows.filter((row) => !row.revoked_at);
+  return {
+    active: live.length,
+    total: rows.length,
+    lastUsedAt:
+      live
+        .map((row) => row.last_used_at)
+        .filter(Boolean)
+        .sort()
+        .pop() ?? null,
+  };
+}
+
+function hoursSince(iso, now) {
+  return now.diff(DateTime.fromISO(iso, { zone: 'utc' }), 'hours').hours;
+}
+
+function ago(iso, now) {
+  return `${formatSpan(now.diff(DateTime.fromISO(iso, { zone: 'utc' })).milliseconds).replace(/ 0h$/, '')} ago`;
+}
+
+/* when several things are wrong, the reason printed on the pill is the cause
+   rather than the symptom: a switched-off workflow explains the silence, so it
+   is named ahead of "no events for three days". */
+const CAUSE_RANK = ['ingest', 'token', 'instance', 'wf', 'canary', 'events'];
+const causeRank = (check) => {
+  const index = CAUSE_RANK.indexOf(check.key.split(':')[0]);
+  return index === -1 ? CAUSE_RANK.length : index;
+};
+
+/* a workflow that was switched off more than this long after it last sent
+   anything reads as retired on purpose rather than as broken. */
+const RECENTLY_SENDING_HOURS = 24 * 7;
+
+const VERDICT_WORD = {
+  connected: 'connected',
+  partial: 'partly connected',
+  disconnected: 'not connected',
+  unwired: 'not set up',
+  checking: 'checking…',
+};
+
+/**
+ * what a client's pipeline adds up to, from the checks that could be made.
+ *
+ * `live` is this client's slice of the probe-pipelines response — facts the ops
+ * function fetched from ingest, n8n and the database moments ago. without it
+ * (the function is not deployed yet, or has not answered) the same checks are
+ * made from the roster's own copy of the event log and tokens, and the verdict
+ * says which it came from. both paths go through this function, so the pill on
+ * the roster and the checklist on the client page can never disagree.
+ *
+ * the rule the whole thing exists to enforce: green only on evidence. every
+ * "connected" is a token n8n is using, an event that arrived inside this
+ * client's normal quiet stretch, and — when n8n could be asked — workflows that
+ * are switched on. a client with nothing wired is "not set up", never green.
+ */
+export function pipelineVerdict(client, probe, now = DateTime.now()) {
+  const live = probe?.tenants?.[client.tenant.id] ?? null;
+  const checks = [];
+
+  const tokens = live
+    ? { active: live.tokens.active, total: live.tokens.total, lastUsedAt: live.tokens.last_used_at }
+    : client.tokens ?? null;
+  const lastEventAt = live ? live.last_event?.at ?? null : client.lastEventAt;
+
+  const wired = client.connections.filter((c) => c.status !== 'retired');
+  /* the tightest declared quiet stretch wins: if one connection is never meant to
+     go twelve hours without sending, the pipeline as a whole cannot either. */
+  const declared = wired.map((c) => c.expectedQuietHours).filter((hours) => hours > 0);
+  const threshold = staleThreshold(client.typicalQuietHours, declared.length ? Math.min(...declared) : 48);
+
+  /* nothing to connect yet: no token ever minted, nothing declared, nothing ever
+     received. that is onboarding, and saying "not connected" in red about it
+     would train the operator to ignore red. */
+  if ((tokens?.total ?? 0) === 0 && wired.length === 0 && !lastEventAt) {
+    return {
+      state: 'unwired',
+      word: VERDICT_WORD.unwired,
+      summary: 'no token, no connection and no event yet',
+      checks: [
+        {
+          key: 'setup',
+          label: 'setup',
+          tone: 'idle',
+          detail: 'mint an ingest token and add the n8n connection on the client page',
+        },
+      ],
+      evidence: live ? 'live' : 'events',
+      threshold,
+    };
+  }
+
+  // the door every event comes through. one answer for the whole book.
+  if (probe?.ingest) {
+    checks.push({
+      key: 'ingest',
+      label: 'ingest endpoint',
+      tone: probe.ingest.ok ? 'ok' : 'fail',
+      critical: true,
+      detail: probe.ingest.ok ? `up · answered in ${probe.ingest.ms}ms` : probe.ingest.detail ?? 'not answering',
+    });
+  }
+
+  if (tokens) {
+    const stale = tokens.lastUsedAt && hoursSince(tokens.lastUsedAt, now) > threshold;
+    checks.push({
+      key: 'token',
+      label: 'ingest token',
+      tone: tokens.active === 0 ? 'fail' : !tokens.lastUsedAt ? 'warn' : stale ? 'warn' : 'ok',
+      critical: tokens.active === 0,
+      detail:
+        tokens.active === 0
+          ? tokens.total > 0
+            ? `${tokens.total === 1 ? 'its only token is' : `all ${tokens.total} are`} revoked — n8n has nothing it can post with`
+            : 'none minted — n8n has nothing it can post with'
+          : !tokens.lastUsedAt
+            ? `${tokens.active} active, never used by n8n`
+            : `${tokens.active} active · last used ${ago(tokens.lastUsedAt, now)}`,
+    });
+  }
+
+  if (!lastEventAt) {
+    checks.push({
+      key: 'events',
+      label: 'last event',
+      tone: 'fail',
+      critical: true,
+      detail: live ? 'nothing has ever arrived' : 'nothing in the last 61 days',
+    });
+  } else {
+    const hours = hoursSince(lastEventAt, now);
+    checks.push({
+      key: 'events',
+      label: 'last event',
+      tone: hours > threshold ? 'fail' : 'ok',
+      critical: hours > threshold,
+      detail:
+        hours > threshold
+          ? `${ago(lastEventAt, now)} — longer than this client is ever normally quiet (${Math.round(threshold)}h)`
+          : `${ago(lastEventAt, now)}`,
+    });
+  }
+
+  const canary = client.data.status;
+  if (canary.status !== 'unchecked') {
+    checks.push({
+      key: 'canary',
+      label: 'end-to-end check',
+      tone: canary.status === 'failed' ? 'fail' : canary.status === 'degraded' ? 'warn' : 'ok',
+      critical: canary.status === 'failed',
+      detail:
+        canary.status === 'failed'
+          ? canary.detail ?? 'the last check did not come out the far end'
+          : canary.status === 'degraded'
+            ? 'a recent check failed and the next one passed'
+            : `passing · last ran ${ago(canary.lastCheckedAt, now)}`,
+    });
+  }
+
+  for (const instance of live?.instances ?? []) {
+    checks.push({
+      key: `instance:${instance.origin}`,
+      label: `n8n · ${new URL(instance.origin).host}`,
+      tone: instance.ok ? 'ok' : 'fail',
+      critical: !instance.ok,
+      detail: instance.ok ? `answering /healthz · ${instance.ms}ms` : instance.detail ?? 'not answering',
+    });
+  }
+
+  if (live) {
+    const unknown = [];
+    const found = [];
+
+    for (const wf of live.workflows) {
+      if (wf.found !== true) {
+        unknown.push(wf);
+        continue;
+      }
+      found.push(wf);
+      const seen = client.workflowActivity.get(wf.id);
+      const declared = wired.some((c) => c.workflowId === wf.id && c.status === 'connected');
+      const recentlySending = seen?.lastAt && hoursSince(seen.lastAt, now) < RECENTLY_SENDING_HOURS;
+      const name = wf.name ?? wf.id;
+
+      if (!wf.active) {
+        const matters = declared || recentlySending;
+        checks.push({
+          key: `wf:${wf.id}`,
+          label: name,
+          tone: matters ? 'fail' : 'idle',
+          workflow: true,
+          off: matters,
+          detail: matters
+            ? 'switched off in n8n — it will not run'
+            : `switched off${seen?.lastAt ? ` · last sent ${ago(seen.lastAt, now)}` : ''}, likely retired`,
+        });
+        continue;
+      }
+
+      const failedRun = wf.last_run && !['success', 'running', 'waiting', 'new'].includes(wf.last_run.status);
+      checks.push({
+        key: `wf:${wf.id}`,
+        label: name,
+        tone: failedRun ? 'warn' : 'ok',
+        workflow: true,
+        on: true,
+        detail: !wf.last_run
+          ? 'on · no executions yet'
+          : failedRun
+            ? `on · last run ${wf.last_run.status} ${ago(wf.last_run.at, now)}`
+            : `on · last run ${ago(wf.last_run.at, now)}`,
+      });
+    }
+
+    /* every workflow that matters is off, and none is on: nothing can run. */
+    const off = checks.filter((check) => check.off).length;
+    if (off > 0 && !checks.some((check) => check.on)) {
+      checks.find((check) => check.off).critical = true;
+    }
+
+    if (unknown.length > 0) {
+      checks.push({
+        key: 'wf:unknown',
+        label: `${unknown.length} workflow id${unknown.length === 1 ? '' : 's'}`,
+        tone: 'idle',
+        detail:
+          unknown[0].found === null
+            ? `n8n could not be asked — ${probe?.n8n?.api?.detail ?? 'no api access'}`
+            : `not on ${probe?.n8n?.host ?? 'arc’s n8n'} — ${unknown.map((wf) => wf.id).join(', ')}`,
+      });
+    }
+  } else {
+    /* no live answer: judge each declared workflow by its own events instead,
+       which is what the connections page has always done. */
+    for (const connection of wired) {
+      if (!connection.workflowId) continue;
+      const liveness = connectionLiveness(connection, client.workflowActivity, now);
+      checks.push({
+        key: `wf:${connection.workflowId}`,
+        label: connection.label,
+        tone: { live: 'ok', flaky: 'warn', stale: 'fail', silent: 'warn' }[liveness.state] ?? 'idle',
+        detail: `${liveness.label} (from the event log)`,
+      });
+    }
+  }
+
+  const failing = checks.filter((check) => check.tone === 'fail');
+  const warning = checks.filter((check) => check.tone === 'warn');
+
+  const state = failing.some((check) => check.critical)
+    ? 'disconnected'
+    : failing.length > 0 || warning.length > 0
+      ? 'partial'
+      : 'connected';
+
+  const byCause = (a, b) => causeRank(a) - causeRank(b);
+  const lead =
+    [...failing.filter((check) => check.critical)].sort(byCause)[0] ??
+    [...failing].sort(byCause)[0] ??
+    [...warning].sort(byCause)[0];
+
+  return {
+    state,
+    word: VERDICT_WORD[state],
+    summary: lead ? `${lead.label}: ${lead.detail}` : 'every check passed',
+    checks,
+    evidence: live ? 'live' : 'events',
+    threshold,
+  };
+}
+
+/** the verdict to show while the first live check is still out. */
+export function checkingVerdict() {
+  return { state: 'checking', word: VERDICT_WORD.checking, summary: 'asking ingest and n8n', checks: [], evidence: null };
+}
+
+/**
+ * the live check for every client in one call.
+ *
+ * the workflow ids sent are the ones each client's events carry; the function
+ * adds the ones declared on connections itself. an old deployment answers
+ * "unknown action", which is turned into the fix rather than passed through.
+ */
+export async function probePipelines(clients) {
+  try {
+    return await callOps({
+      action: 'probe-pipelines',
+      tenants: clients.map((client) => ({
+        tenant_id: client.tenant.id,
+        workflow_ids: [...client.workflowActivity.keys()],
+      })),
+    });
+  } catch (error) {
+    throw staleDeploy(error, 'the live check');
+  }
+}
+
+function staleDeploy(error, what) {
+  return /unknown action/i.test(error.message)
+    ? new Error(`the deployed ops function predates ${what} — run: supabase functions deploy ops`)
+    : error;
+}
+
+/* ── deboarding ────────────────────────────────────────────── */
+
+export const DEBOARD_REASONS = [
+  'contract ended',
+  'moved to another provider',
+  'business closed or sold',
+  'non-payment',
+  'paused indefinitely',
+  'other',
+];
+
+/**
+ * takes a client out of the system: tokens revoked, access removed, connections
+ * retired, tenant archived — one transaction, in the ops function, logged.
+ * nothing is deleted, so the report for a past client still builds.
+ */
+export async function deboardClient({ tenantId, reason, note, deleteLogins }) {
+  try {
+    return await callOps({
+      action: 'deboard-client',
+      tenant_id: tenantId,
+      reason,
+      note: note || null,
+      delete_logins: Boolean(deleteLogins),
+    });
+  } catch (error) {
+    throw staleDeploy(error, 'deboarding');
+  }
+}
+
+export async function restoreClient(tenantId, status = 'paused') {
+  try {
+    return await callOps({ action: 'restore-client', tenant_id: tenantId, status });
+  } catch (error) {
+    throw staleDeploy(error, 'restoring a client');
+  }
+}
+
+/** what the deployed ops function can do, and whether it can reach n8n. */
+export async function opsCapabilities() {
+  return callOps({ action: 'capabilities' });
 }
 
 /* ── edge functions ────────────────────────────────────────── */
@@ -797,7 +1180,20 @@ export async function probeSupabase() {
      the newest column by name, zero rows, is the cheapest question that fails
      exactly when the migration is missing. */
   const columns = await Promise.all(
-    [{ table: 'connections', column: 'billing_status', migration: '0006_connection_billing.sql' }].map(
+    [
+      {
+        table: 'connections',
+        column: 'billing_status',
+        migration: '0006_connection_billing.sql',
+        consequence: 'subscriptions, renewal dates and key hints on a client page cannot be saved',
+      },
+      {
+        table: 'tenants',
+        column: 'archived_at',
+        migration: '0007_client_offboarding.sql',
+        consequence: 'no client can be deboarded or restored',
+      },
+    ].map(
       async (probe) => {
         const { error } = await supabase.from(probe.table).select(probe.column).limit(0);
         return { ...probe, present: !error, error: error?.message ?? null };

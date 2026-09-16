@@ -7,6 +7,87 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-09-16
+
+Needs, before the new console features work on the live site:
+`supabase/migrations/0007_client_offboarding.sql` applied,
+`supabase functions deploy ops`, and (for the workflow checks)
+`supabase secrets set N8N_API_URL=… N8N_API_KEY=…`. Until then the console
+says which step is missing, and the pipeline column falls back to the event log.
+
+### Added
+- **A live pipeline check.** The console asks, when it opens, every five
+  minutes after, and on demand ("checked 15:11" in the top bar, "check again"
+  on a client), whether each client's pipeline is actually connected: the
+  ingest endpoint answers, the client holds a token n8n is using and when it
+  last did, the last event is inside that client's normal quiet stretch, their
+  n8n instance answers `/healthz`, and each workflow is switched on in n8n with
+  its last execution's result. The facts come from a new `probe-pipelines`
+  action on the `ops` function (the n8n key stays a function secret); one
+  function, `pipelineVerdict` in `lib/ops.js`, turns them into **connected**,
+  **partly connected**, **not connected** or **not set up**, with the cause
+  named — "Speed-to-Lead: switched off in n8n", not just a red pill. The roster's
+  pipeline column, the "needs looking at" list, the rail lamp and a new
+  checklist panel on each client page all read that one verdict.
+- **Deboarding.** A "deboard this client" panel at the foot of every client
+  page lists exactly what will change for that client, asks why they are
+  leaving, and takes their typed name as confirmation. One transaction
+  (`deboard_tenant`, migration 0007) revokes every ingest token, removes every
+  login's access, retires every connection and archives the tenant with the
+  date, reason and a note; the `ops` function wraps it and writes
+  `client.deboarded` to the audit log. Optionally deletes the login from auth
+  when it belongs to no other client and is not an operator. Nothing is
+  deleted — events, incidents and reports stay — and subscriptions Arc pays
+  for are listed with billing links, because deboarding cancels nothing.
+- **Past clients** page (`/ops/console/past-clients`): when each client left,
+  why, how long they were with Arc, their last event, a report from their
+  history, and restore. Restoring (`restore_tenant`) puts them back as paused,
+  onboarding or active with old tokens still revoked and access not re-granted.
+- Plain-words `?` hints on the terms that needed one (account vs pipeline,
+  median reply, marked as vs actually sending, typical reply time), a "how to
+  read the pipeline column" legend on the roster, each nav item's description
+  on hover, and the page's description inside the page when the top bar is too
+  narrow to show it.
+- The Supabase page says when migration 0007 is missing, when the deployed
+  `ops` function predates the new actions, and whether n8n access is set.
+
+### Changed
+- **The `/ops` door no longer looks like the client portal.** It was a copy of
+  `/portal` with different words — same ASCII wordmark hero, headline, sales
+  panels and stylesheet. It is now a staff entrance built from the console's
+  own parts: a `restricted` bar, a strip of readouts, a square access panel
+  with the password as a `>` prompt, and an index of every console page read
+  from `ops-nav.js`. The supabase readout is a real round trip to the project's
+  auth health endpoint with its response time, not "configured"; the session
+  readout says "signed in" rather than "active". Styles moved to `OpsHome.css`.
+- **Icons are bigger and easier to find.** Nav icons are 18px on their own
+  square tile in `--muted` instead of 16px scratches in `--faint`, every icon
+  is drawn at a 1.5 stroke, top-bar icons are 19px in bordered buttons, button
+  glyphs are 16px, and the rail's type is a size up. Applies to the client
+  portal too — it is the same shell.
+- **No checks is no longer "operational".** A client that has never run an
+  end-to-end check used to show a green "all systems operational" on their
+  dashboard and "live" in the console. `computeStatus` now returns
+  `unchecked`, shown in grey as "no end-to-end check has run yet" — on both
+  sides, so the console and the dashboard still agree.
+- The roster's "pipelines down" card is "pipelines connected", from the live
+  check; the rail reads "N connected" instead of counting clients typed active.
+- Ingest tokens show **in use**, **never used** or **revoked** instead of an
+  "active" that only meant not-revoked.
+- "archived" is gone from the status dropdowns — archiving by hand left tokens
+  valid. Past clients are out of every total, the clients list and the live
+  check.
+
+### Fixed
+- **The "raise an alert" fields were white.** They were the only bare
+  `<select>`/`<textarea>` in the console; they now use the console's inputs,
+  and every console field is a step darker than the panel it sits in.
+  `color-scheme: dark` on the portal keeps native dropdowns and pickers dark.
+- The clients page export produced a file of empty cells — it passed header
+  strings to a CSV helper that takes column objects.
+- A table cell classed `ws-table__sub` was `display: block`, which pulled it out
+  of the table and stacked columns under each other.
+
 ## [1.13.0] - 2026-09-16
 
 ### Added

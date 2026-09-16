@@ -30,6 +30,11 @@
 
   --panel-pad: clamp(16px, 2vw, 24px);
 
+  /* tells the browser the page is dark, so every native control it draws — a
+     select's option list, a date picker, a textarea's scrollbar — is drawn dark
+     too instead of arriving as a white box. */
+  color-scheme: dark;
+
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -170,6 +175,13 @@
 }
 .pt-status--failed .pt-status__label {
   color: var(--fail);
+}
+
+/* nothing has been checked. grey rather than any status colour: green would
+   claim a pass nobody measured, and amber would claim a problem nobody found. */
+.pt-status--idle .pt-status__glyph,
+.pt-status--idle .pt-status__label {
+  color: var(--muted);
 }
 
 .pt-status__detail {

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { DateTime } from 'luxon';
 import Icon from '../../components/Icon';
 import { Empty, Panel, StatCard } from '../../components/ui';
-import { LivenessPill, Notice } from '../../components/ops-ui';
+import { Help, LivenessPill, Notice } from '../../components/ops-ui';
 import { CONNECTION_KINDS, connectionLiveness } from '../../lib/ops';
 import { formatCount, formatRelative } from '../../lib/format';
 
@@ -104,7 +104,7 @@ export default function Servers({ clients, base }) {
           label="sending"
           value={counts.live}
           animate
-          sub="an event on that workflow id in the last 48h"
+          sub="an event on that workflow id inside its normal quiet stretch"
         />
         <StatCard
           label="not sending"
@@ -157,8 +157,18 @@ export default function Servers({ clients, base }) {
                   <th className="ws-table__wide">connection</th>
                   <th>client</th>
                   <th>kind</th>
-                  <th>declared</th>
-                  <th>observed</th>
+                  <th>
+                    marked as
+                    <Help>what you set on this connection by hand. it checks nothing.</Help>
+                  </th>
+                  <th>
+                    actually sending
+                    <Help>
+                      read from the event log: has this workflow id sent anything, and recently
+                      enough for how often it normally runs. the live check on a client&rsquo;s
+                      page also asks n8n whether it is switched on.
+                    </Help>
+                  </th>
                   <th>last seen</th>
                   <th className="ws-table__num">runs · 30d</th>
                 </tr>
@@ -209,10 +219,11 @@ export default function Servers({ clients, base }) {
         )}
 
         <p className="ws-note">
-          <b>observed</b> is matched on <code>workflow_id</code> against the last sixty days of
-          events. <b>live</b> means something ran in the last 48 hours — two days rather than one,
-          because a contractor's speed-to-lead workflow can legitimately go a quiet weekend, and a
-          console that cried down every monday is one you stop reading.
+          <b>actually sending</b> is matched on <code>workflow_id</code> against the last sixty
+          days of events. <b>live</b> means it ran within twice its own usual quiet stretch — never
+          flagged inside six hours, never allowed past the limit set on the connection (48 hours
+          unless you changed it) — so a speed-to-lead workflow that legitimately sleeps through a
+          quiet weekend is not called down every monday.
         </p>
       </Panel>
 

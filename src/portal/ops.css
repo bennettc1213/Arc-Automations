@@ -150,14 +150,19 @@
   line-height: 1.5;
 }
 
+/* the page's darkest value, one step below the panel it sits on. a field should
+   read as a hole cut into the panel, not a lighter card laid on top of it — and a
+   bare <textarea> the browser paints white on a dark console is the loudest thing
+   on the screen for the least important reason. */
 .ops-input {
   width: 100%;
   padding: 10px 12px;
-  background: var(--bg-2);
+  background: var(--bg);
   border: 1px solid var(--line-strong);
   color: var(--text);
   font-family: inherit;
   font-size: 13px;
+  color-scheme: dark;
 }
 
 .ops-input::placeholder {
@@ -826,4 +831,317 @@
   font-size: 10.5px;
   letter-spacing: 0.04em;
   color: var(--ok);
+}
+
+/* ── the live pipeline check ─────────────────── */
+
+/* the verdict, big, with the reason beside it. the pill alone says "not
+   connected"; the sentence next to it says what to go and fix. */
+.ops-live__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: var(--panel-pad);
+  border-bottom: 1px solid var(--line);
+}
+
+.ops-live__head .ws-pill {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.ops-live__summary {
+  flex: 1 1 280px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.ops-live__when {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+
+.ops-checks {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+
+.ops-checks__row {
+  display: grid;
+  grid-template-columns: 18px minmax(120px, 220px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 9px var(--panel-pad);
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.ops-checks__row:last-child {
+  border-bottom: 0;
+}
+
+.ops-checks__row i {
+  font-style: normal;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.ops-checks__row--ok i {
+  color: var(--ok);
+}
+.ops-checks__row--warn i {
+  color: var(--warn);
+}
+.ops-checks__row--fail i {
+  color: var(--fail);
+}
+.ops-checks__row--idle i {
+  color: var(--faint);
+}
+
+.ops-checks__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.ops-checks__detail {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.ops-checks__row--fail .ops-checks__detail {
+  color: var(--text);
+}
+
+@media (max-width: 720px) {
+  .ops-checks__row {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+
+  .ops-checks__detail {
+    grid-column: 2;
+  }
+}
+
+/* ── plain-words help ────────────────────────── */
+
+.ops-help {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+.ops-help__btn {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: help;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.ops-help__btn:hover,
+.ops-help__btn:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.ops-help__tip {
+  position: absolute;
+  z-index: 40;
+  left: 50%;
+  top: calc(100% + 8px);
+  translate: -50% 0;
+  width: max-content;
+  max-width: min(300px, 80vw);
+  padding: 9px 11px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  font-family: var(--font-sans, inherit);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: left;
+  white-space: normal;
+  color: var(--text);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.14s var(--ease-out), visibility 0.14s;
+}
+
+.ops-help:hover .ops-help__tip,
+.ops-help__btn:focus-visible + .ops-help__tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* a legend: every state a pill can be in, in words. */
+.ops-legend {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ops-legend li {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .ops-legend li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
+
+/* ── deboarding ──────────────────────────────── */
+
+/* the one panel on a client page that takes something away. marked on its edge
+   in the failure colour, and nowhere else — the button inside stays a plain
+   button until the form is filled in. */
+.ops-danger {
+  border-left: 2px solid var(--fail);
+}
+
+.ops-danger__list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.ops-danger__list li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.ops-danger__list li b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.ops-danger__list li > i {
+  font-style: normal;
+  font-family: var(--font-mono);
+  color: var(--faint);
+}
+
+.ops-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.ops-check input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.ws-btn--danger {
+  border-color: var(--fail);
+  color: var(--fail);
+}
+
+.ws-btn--danger:hover:not(:disabled) {
+  background: var(--fail);
+  border-color: var(--fail);
+  color: #0a0a0b;
+}
+
+/* a past client's page, said once at the top in words rather than by greying
+   the whole page out: the numbers underneath are still true, they are just
+   history now. */
+.ops-archived {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 14px 24px;
+  padding: var(--panel-pad);
+  border: 1px solid var(--line-strong);
+  background:
+    repeating-linear-gradient(135deg, rgba(237, 237, 239, 0.025) 0 6px, transparent 6px 12px),
+    var(--bg-2);
+}
+
+.ops-archived__text {
+  flex: 1 1 320px;
+  display: grid;
+  gap: 4px;
+}
+
+.ops-archived__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.ops-archived__body {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.ops-archived__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* near an edge of the screen the tip opens away from it (Help measures on
+   hover or focus), and in a right-aligned table column it always opens
+   leftwards so it stays inside the table's own scroll box. */
+.ops-help--end .ops-help__tip,
+.ws-table__num .ops-help__tip {
+  left: auto;
+  right: 0;
+  translate: 0 0;
+}
+
+.ops-help--start .ops-help__tip {
+  left: 0;
+  translate: 0 0;
+}
+
+.ops-archived__actions .ops-input {
+  width: auto;
 }

@@ -189,7 +189,7 @@ export default function Reliability({ data }) {
         )}
       </Panel>
 
-      {status.status !== 'operational' && status.detail && (
+      {(status.status === 'failed' || status.status === 'degraded') && status.detail && (
         <Panel title="right now">
           <p className="ws-note ws-note--loud">{status.detail}</p>
         </Panel>

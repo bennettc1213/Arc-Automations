@@ -166,6 +166,7 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
         {banner}
 
         <main className="ws__page">
+          {page.blurb && <p className="ws-intro">{page.blurb}</p>}
           <Routes>
             <Route index element={<Overview {...pageProps} />} />
             <Route path="leads" element={<Leads {...pageProps} />} />

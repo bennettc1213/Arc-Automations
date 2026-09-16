@@ -12,10 +12,11 @@ const PRESENTATION = {
   operational: { label: 'all systems operational', glyph: '■', mod: 'ok' },
   degraded: { label: 'degraded — watching', glyph: '▲', mod: 'degraded' },
   failed: { label: 'action required', glyph: '●', mod: 'failed' },
+  unchecked: { label: 'no end-to-end check has run yet', glyph: '□', mod: 'idle' },
 };
 
 export default function StatusBar({ status, timezone }) {
-  const { label, glyph, mod } = PRESENTATION[status.status] ?? PRESENTATION.operational;
+  const { label, glyph, mod } = PRESENTATION[status.status] ?? PRESENTATION.unchecked;
 
   return (
     <div className={`pt-status pt-status--${mod}`} role="status" aria-live="polite">

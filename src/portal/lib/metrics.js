@@ -166,14 +166,20 @@ export function computeResponseBuckets(events, now, days = 30) {
 }
 
 /* status is driven by the canary because it is the only check that proves the live
-   pipeline works end to end right now. */
+   pipeline works end to end right now.
+
+   no checks is its own state, not "operational". it used to fall through to
+   operational, which put a green "all systems operational" on every account that had
+   never run a single check — including ones with nothing wired up at all. a status
+   light that is green by default is a claim nobody made, and it is the one figure on
+   the page a client would be right to stop believing. */
 export function computeStatus(events) {
   const checks = events
     .filter((e) => e.eventType === 'canary_check')
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
 
   if (checks.length === 0) {
-    return { status: 'operational', lastCheckedAt: null, detail: null };
+    return { status: 'unchecked', lastCheckedAt: null, detail: null };
   }
 
   const latest = checks[0];

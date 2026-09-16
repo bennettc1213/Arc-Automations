@@ -35,6 +35,13 @@ export const OPS_NAV_GROUPS = [
         title: 'activity',
         blurb: 'every run across every client, newest first',
       },
+      {
+        to: 'past-clients',
+        icon: 'archive',
+        label: 'past clients',
+        title: 'past clients',
+        blurb: 'deboarded clients — cut off from the system, their history kept',
+      },
     ],
   },
   {

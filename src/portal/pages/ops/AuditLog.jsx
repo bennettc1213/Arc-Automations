@@ -31,6 +31,8 @@ const ACTION_TONE = {
   'alert.raised': 'fail',
   'alert.acknowledged': 'neutral',
   'alert.resolved': 'ok',
+  'client.deboarded': 'warn',
+  'client.restored': 'ok',
 };
 
 export default function AuditLog() {
