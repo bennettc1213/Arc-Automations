@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { gsap } from '../lib/gsap';
 import { useReducedMotion } from '../lib/hooks';
@@ -6,6 +7,7 @@ import { openPilot } from '../lib/pilot';
 import { scrollToId } from '../lib/SmoothScroll';
 import { site } from '../data/site';
 import { PixelRoamer } from './PixelGuy';
+import PortalFilm from './PortalFilm';
 import './Hero.css';
 
 function Cycler({ items }) {
@@ -57,6 +59,15 @@ export default function Hero() {
         stagger: 0.1,
         delay: 0.65,
       });
+      /* the film arrives last and from further away. it is the only object in the
+         hero rather than a line of type, so it gets the weight of one. */
+      gsap.from('.hero__stage', {
+        y: 40,
+        opacity: 0,
+        duration: 1.1,
+        ease: 'power3.out',
+        delay: 0.8,
+      });
     }, rootRef);
     return () => ctx.revert();
   }, [reduced]);
@@ -68,34 +79,48 @@ export default function Hero() {
         <PixelRoamer size={30} />
       </div>
 
-      <p className="hero__eyebrow mono">{site.hero.eyebrow}</p>
+      {/* the claim on the left, the evidence on the right. the film is the product
+          running, so it goes level with the sentence it is there to back up rather
+          than a scroll below it. */}
+      <div className="hero__grid">
+        <div className="hero__copy">
+          <p className="hero__eyebrow mono">{site.hero.eyebrow}</p>
 
-      <h1 className="hero__title">
-        {site.hero.lines.map((line) => (
-          <span className="hero__reveal" key={line}>
-            <span>{line}</span>
-          </span>
-        ))}
-        <span className="hero__reveal hero__reveal--accent">
-          <span>
-            <Cycler items={site.hero.cycle} />
-          </span>
-        </span>
-      </h1>
+          <h1 className="hero__title">
+            {site.hero.lines.map((line) => (
+              <span className="hero__reveal" key={line}>
+                <span>{line}</span>
+              </span>
+            ))}
+            <span className="hero__reveal hero__reveal--accent">
+              <span>
+                <Cycler items={site.hero.cycle} />
+              </span>
+            </span>
+          </h1>
 
-      <div className="hero__foot">
-        <p className="hero__sub">{site.hero.sub}</p>
-        <div className="hero__row">
-          <button
-            className="hero__btn hero__btn--ghost"
-            onClick={() => scrollToId('work')}
-          >
-            see the work ↓
-          </button>
-          <button className="hero__btn hero__btn--solid" onClick={openPilot}>
-            start a pilot →
-          </button>
-          <span className="hero__loc mono">{site.hero.location}</span>
+          <div className="hero__foot">
+            <p className="hero__sub">{site.hero.sub}</p>
+            <div className="hero__row">
+              <button
+                className="hero__btn hero__btn--ghost"
+                onClick={() => scrollToId('work')}
+              >
+                see the work ↓
+              </button>
+              <button className="hero__btn hero__btn--solid" onClick={openPilot}>
+                start a pilot →
+              </button>
+              <span className="hero__loc mono">{site.hero.location}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="hero__stage">
+          <PortalFilm />
+          <Link className="hero__stage-cap mono" to="/demo">
+            the client portal, live — open the demo →
+          </Link>
         </div>
       </div>
     </section>

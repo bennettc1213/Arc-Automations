@@ -7,6 +7,126 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-09-15
+
+### Added
+- **The hero runs a film of the portal.** A sixteen-second loop, played in a
+  window card beside the headline, of somebody actually using `/demo`: a missed
+  call lands in the live feed and the "missed calls answered" counter moves,
+  the cursor crosses to `leads` in the rail and clicks it, the page swaps to the
+  table, a row is opened to show the exact timeline underneath it -- lead,
+  text, routed, replied, to the second -- and then the `replied` filter is
+  clicked. Fade, loop.
+
+  The path is chosen, not a tour. The claim above it is that leads get answered
+  in seconds, and the one screen in the product that proves that claim is an
+  expanded lead row with timestamps on it. Everything before the expansion
+  exists to get there believably.
+
+  It is a replica of the workspace rather than the workspace itself
+  (`src/components/PortalFilm.jsx`, with its own stylesheet). The real thing is
+  a lazy route carrying a Supabase client, a router and a hundred kilobytes of
+  generated data; hauling all of that into the marketing bundle to play a loop
+  nobody can click would cost more than the hero is worth. What it does share is
+  the numbers -- 115 missed calls answered, 11.0s median, 253 leads, 99.44%
+  uptime, Halstead Restoration -- which are the figures `/demo` actually
+  renders, so clicking through from the film lands on the dashboard it just
+  showed you.
+
+  Every visual is derived from the current scene index rather than accumulated
+  by side effects, so the loop restarts by setting a number back to zero. The
+  cursor's targets are measured off the live DOM on each scene rather than
+  written down as coordinates, so it keeps landing on the thing it is pointing
+  at whether the card is 560px wide or 880px.
+
+  It is the site's own square cursor, not a borrowed arrow -- an arrow here
+  would be the only one on a site that replaced its pointer with a square. The
+  clock stops when the film scrolls off screen, and `prefers-reduced-motion`
+  gets the last frame of the film held still rather than no film at all.
+
+### Changed
+- **The hero is two columns above 1180px, and the film takes the larger half.**
+  Copy left at `0.9fr`, film right at `1.1fr`, pinned to the right gutter with
+  `justify-self: end` and centred on the headline's own axis. The headline gives
+  up its billboard scale to make room -- `clamp(2.9rem, 4.9vw, 5.8rem)` instead
+  of `clamp(3.1rem, 11.4vw, 9.8rem)` -- because eleven-and-a-half vw across half
+  a screen is a word per line. The sub and the buttons stack instead of sharing a
+  row, and the roaming pixel guy is kept to the copy column, since the window
+  card is opaque and a mark that walks behind it has simply disappeared. Below
+  1180px nothing changes except that the film stacks underneath at full width.
+
+  The card is sized in `svh`, not pixels: `clamp(400px, 52svh, 560px)`. A fixed
+  height generous enough to be worth looking at on a 1080p monitor is a hero
+  taller than the fold on a 1366x768 laptop, which is the machine a contractor
+  is most likely reading this on. The feed carries seven entries and the table
+  seven leads to match the taller box -- a live feed with four rows and a hand of
+  empty space under them is a product that looks quiet.
+
+  The film's own breakpoints are container queries, not media queries: the card
+  is about 55% of the viewport in the split hero and 100% of it when the hero
+  stacks, so viewport width says nothing useful about how much room its table
+  has. Under 660px the rail collapses to glyphs and the table sheds columns,
+  exactly as the real workspace does.
+
+### Added
+- **The hero runs a film of the portal.** A sixteen-second loop, played in a
+  window card beside the headline, of somebody actually using `/demo`: a missed
+  call lands in the live feed and the "missed calls answered" counter moves,
+  the cursor crosses to `leads` in the rail and clicks it, the page swaps to the
+  table, a row is opened to show the exact timeline underneath it -- lead,
+  text, routed, replied, to the second -- and then the `replied` filter is
+  clicked. Fade, loop.
+
+  The path is chosen, not a tour. The claim above it is that leads get answered
+  in seconds, and the one screen in the product that proves that claim is an
+  expanded lead row with timestamps on it. Everything before the expansion
+  exists to get there believably.
+
+  It is a replica of the workspace rather than the workspace itself
+  (`src/components/PortalFilm.jsx`, with its own stylesheet). The real thing is
+  a lazy route carrying a Supabase client, a router and a hundred kilobytes of
+  generated data; hauling all of that into the marketing bundle to play a loop
+  nobody can click would cost more than the hero is worth. What it does share is
+  the numbers -- 115 missed calls answered, 11.0s median, 253 leads, 99.44%
+  uptime, Halstead Restoration -- which are the figures `/demo` actually
+  renders, so clicking through from the film lands on the dashboard it just
+  showed you.
+
+  Every visual is derived from the current scene index rather than accumulated
+  by side effects, so the loop restarts by setting a number back to zero. The
+  cursor's targets are measured off the live DOM on each scene rather than
+  written down as coordinates, so it keeps landing on the thing it is pointing
+  at whether the card is 560px wide or 880px.
+
+  It is the site's own square cursor, not a borrowed arrow -- an arrow here
+  would be the only one on a site that replaced its pointer with a square. The
+  clock stops when the film scrolls off screen, and `prefers-reduced-motion`
+  gets the last frame of the film held still rather than no film at all.
+
+### Changed
+- **The hero is two columns above 1180px, and the film takes the larger half.**
+  Copy left at `0.9fr`, film right at `1.1fr`, pinned to the right gutter with
+  `justify-self: end` and centred on the headline's own axis. The headline gives
+  up its billboard scale to make room -- `clamp(2.9rem, 4.9vw, 5.8rem)` instead
+  of `clamp(3.1rem, 11.4vw, 9.8rem)` -- because eleven-and-a-half vw across half
+  a screen is a word per line. The sub and the buttons stack instead of sharing a
+  row, and the roaming pixel guy is kept to the copy column, since the window
+  card is opaque and a mark that walks behind it has simply disappeared. Below
+  1180px nothing changes except that the film stacks underneath at full width.
+
+  The card is sized in `svh`, not pixels: `clamp(400px, 52svh, 560px)`. A fixed
+  height generous enough to be worth looking at on a 1080p monitor is a hero
+  taller than the fold on a 1366x768 laptop, which is the machine a contractor
+  is most likely reading this on. Row counts were raised to match the taller box
+  -- seven feed entries and seven leads -- because a live feed with four rows and
+  a hand of empty space under them is a product that looks quiet.
+
+  The film's own breakpoints are container queries, not media queries: the card
+  is about 46% of the viewport in the split hero and 100% of it when the hero
+  stacks, so viewport width says nothing useful about how much room its table
+  has. Under 660px the rail collapses to glyphs and the table sheds columns,
+  exactly as the real workspace does.
+
 ## [1.9.0] - 2026-09-15
 
 ### Added

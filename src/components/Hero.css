@@ -20,6 +20,85 @@
   z-index: -1;
 }
 
+/* one column until there is room for two. the split is a container decision, not
+   a phone/desktop one — the film needs ~560px before its table stops being a
+   smear, and the headline needs the rest. */
+.hero__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(40px, 7vh, 72px);
+  align-items: end;
+  width: 100%;
+}
+
+.hero__copy {
+  min-width: 0;
+}
+
+.hero__stage {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 1000px;
+  width: 100%;
+}
+
+.hero__stage-cap {
+  color: var(--faint);
+  align-self: flex-end;
+  transition: color 0.25s;
+}
+
+.hero__stage-cap:hover {
+  color: var(--accent);
+}
+
+@media (min-width: 1180px) {
+  .hero {
+    justify-content: center;
+  }
+
+  .hero__grid {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: clamp(32px, 3.6vw, 72px);
+    align-items: center;
+  }
+
+  /* pinned to the right gutter and centred on the headline's own axis. the column
+     is wider than the card needs at the top of the range, and a card floating in
+     the middle of its column reads as a layout that has not been told where to
+     put things. */
+  .hero__stage {
+    justify-self: end;
+  }
+
+  /* the headline gives up its billboard scale to make room. eleven-and-a-half vw
+     across half a screen is a word per line — and the film taking the larger half
+     costs it a little more. */
+  .hero__title {
+    font-size: clamp(2.9rem, 4.9vw, 5.8rem);
+  }
+
+  /* the sub and the buttons stop competing for one line once the column is half
+     as wide as it was. */
+  .hero__foot {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 22px;
+  }
+
+  .hero__sub {
+    max-width: 40ch;
+  }
+
+  /* he keeps to the copy column — the window card is opaque, and a pixel guy who
+     walks behind it has simply disappeared. */
+  .hero__roam {
+    right: 54%;
+  }
+}
+
 .hero__eyebrow {
   margin-bottom: clamp(20px, 4vh, 44px);
   display: flex;
