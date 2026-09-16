@@ -7,6 +7,20 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-09-16
+
+### Fixed
+- **A client whose n8n workflows are sending no longer shows n8n as
+  "connect".** The service cards only looked at connections entered by hand,
+  so a client with months of events from n8n still showed a connect button
+  if nobody had added an n8n row. Every event arrives from an n8n workflow,
+  so any workflow activity now marks n8n connected. The card shows how many
+  workflows, how many events and when the last one was. If no row exists
+  yet, its button is **record it**: it opens the form already set to
+  connected, with no sign-up tab. Other services are not inferred this way,
+  because a Twilio send arrives as an n8n event, not as proof of the Twilio
+  account.
+
 ## [1.12.0] - 2026-09-16
 
 ### Added

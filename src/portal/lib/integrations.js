@@ -230,6 +230,26 @@ export function connectionsFor(integration, connections) {
     .sort((a, b) => (STATUS_RANK[a.status] ?? 9) - (STATUS_RANK[b.status] ?? 9));
 }
 
+/**
+ * what the event log proves about a service, whatever was typed about it.
+ *
+ * every event reaches `ingest` from an n8n workflow, so any workflow activity at
+ * all is proof n8n is wired and running for this client — even when nobody ever
+ * added an n8n row. the other services cannot be proved this way: a twilio send
+ * arrives as an event from n8n, not from twilio, so for them this returns null
+ * rather than guessing.
+ */
+export function observedFor(integration, workflowActivity) {
+  if (integration.key !== 'n8n' || !workflowActivity?.size) return null;
+  let runs = 0;
+  let lastAt = null;
+  for (const row of workflowActivity.values()) {
+    runs += row.runs;
+    if (lastAt === null || row.lastAt > lastAt) lastAt = row.lastAt;
+  }
+  return { runs, lastAt, workflows: workflowActivity.size };
+}
+
 /* ── billing ───────────────────────────────────────────────── */
 
 export const BILLING_STATUS_OPTIONS = [

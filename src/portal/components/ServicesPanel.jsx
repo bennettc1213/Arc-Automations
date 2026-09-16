@@ -12,6 +12,7 @@ import {
   integrationFor,
   keysUrlFor,
   nextRenewal,
+  observedFor,
 } from '../lib/integrations';
 import { formatRelative } from '../lib/format';
 
@@ -66,11 +67,26 @@ export default function ServicesPanel({ client, editing, onEdit, form, reload })
     .sort((a, b) => a.billing.rank - b.billing.rank);
 
   const totals = billingTotals(connections);
-  const connectedCount = INTEGRATIONS.filter((integration) =>
-    connectionsFor(integration, connections).some((c) => c.status === 'connected'),
+  /* connected means either declared connected or proven by the event log. */
+  const connectedCount = INTEGRATIONS.filter(
+    (integration) =>
+      connectionsFor(integration, connections).some((c) => c.status === 'connected') ||
+      observedFor(integration, client.workflowActivity),
   ).length;
 
   const trouble = accounts.filter((row) => row.billing.tone === 'fail').length;
+
+  /* the service is already running — nothing to sign up for, only a row to write. */
+  function record(integration) {
+    onEdit({
+      tenantId: tenant.id,
+      provider: integration.key,
+      kind: integration.kind,
+      label: integration.name,
+      status: 'connected',
+      credentialLocation: integration.keyStore,
+    });
+  }
 
   function connect(integration) {
     window.open(integration.connectUrl, '_blank', 'noopener,noreferrer');
@@ -271,10 +287,12 @@ export default function ServicesPanel({ client, editing, onEdit, form, reload })
             const rows = connectionsFor(integration, connections);
             const best = rows[0];
             const billing = best ? billingState(best, zone, now) : null;
+            const observed = observedFor(integration, client.workflowActivity);
+            const on = best?.status === 'connected' || Boolean(observed);
 
             return (
               <div
-                className={`ops-svc__card${best?.status === 'connected' ? ' ops-svc__card--on' : ''}`}
+                className={`ops-svc__card${on ? ' ops-svc__card--on' : ''}`}
                 key={integration.key}
               >
                 <div className="ops-svc__top">
@@ -285,13 +303,26 @@ export default function ServicesPanel({ client, editing, onEdit, form, reload })
                   </span>
                 </div>
 
-                <p className="ops-svc__blurb">{integration.blurb}</p>
+                <p className="ops-svc__blurb">
+                  {integration.blurb}
+                  {observed && (
+                    <span className="ops-svc__proof">
+                      {observed.workflows} workflow{observed.workflows === 1 ? '' : 's'} ·{' '}
+                      {observed.runs.toLocaleString('en-US')} events · last{' '}
+                      {formatRelative(observed.lastAt, zone)}
+                      {!best && ' · not recorded yet'}
+                    </span>
+                  )}
+                </p>
 
                 <div className="ops-svc__foot">
                   {best ? (
                     <>
-                      <Pill tone={DECLARED_TONE[best.status] ?? 'neutral'}>
-                        {best.status === 'connected' ? 'connected' : best.status}
+                      <Pill
+                        tone={observed ? 'ok' : (DECLARED_TONE[best.status] ?? 'neutral')}
+                        title={observed && best.status !== 'connected' ? `declared ${best.status}, but it is sending` : undefined}
+                      >
+                        {observed ? 'connected' : best.status}
                       </Pill>
                       {billing && billing.tone !== 'idle' && (
                         <Pill tone={billing.tone}>{billing.label}</Pill>
@@ -302,6 +333,19 @@ export default function ServicesPanel({ client, editing, onEdit, form, reload })
                         onClick={() => onEdit(best, integration)}
                       >
                         manage
+                      </button>
+                    </>
+                  ) : observed ? (
+                    <>
+                      <Pill tone="ok">connected</Pill>
+                      <button
+                        type="button"
+                        className="ws-btn ops-svc__btn"
+                        onClick={() => record(integration)}
+                        title="it is already sending — record the account, key and billing"
+                      >
+                        <Icon name="plus" size={12} />
+                        record it
                       </button>
                     </>
                   ) : (

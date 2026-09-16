@@ -817,3 +817,13 @@
     justify-content: flex-start;
   }
 }
+
+/* what the event log says, under the blurb: the evidence behind "connected". */
+.ops-svc__proof {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ok);
+}
