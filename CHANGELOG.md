@@ -7,6 +7,20 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-09-15
+
+### Changed
+- **The wordmark comes back three seconds after it is broken, down from six.**
+  End to end, from the cursor leaving the letters to the wordmark standing
+  again: ~4.4s, against ~7.1s before and ~32.5s two versions ago.
+
+  This is close to the floor, and the floor is set by the fall rather than by
+  taste. A grain knocked off the wordmark in the top right corner takes about
+  nine tenths of a second to reach the drift, so a quiet time much under 2.5s is
+  mostly spent watching sand that is still in the air -- the pile it lands in
+  never gets a moment to exist, and the erode half of the effect gets paid for
+  and then thrown away.
+
 ## [1.8.0] - 2026-09-15
 
 ### Changed

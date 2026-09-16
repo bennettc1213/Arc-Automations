@@ -115,8 +115,15 @@ const SLUMP_BIAS = 1;
    the state is temporary. short enough to read as recovery rather than damage
    is the target, and the clock restarts on every bond that breaks, so this is
    never a countdown anybody is fighting — it only begins once they have
-   stopped. */
-const RECALL_MS = 6000; /* quiet time before the field gathers itself back up */
+   stopped.
+
+   there is a floor underneath it, though, and it is set by the fall. a grain
+   knocked off the wordmark in the top right corner takes about nine tenths of a
+   second to reach the drift, so a quiet time much under two and a half seconds
+   is mostly spent watching sand that is still in the air — the pile it lands in
+   never gets a moment to exist, and the erode half of the effect is paid for
+   and then thrown away. */
+const RECALL_MS = 3000; /* quiet time before the field gathers itself back up */
 const SWEEP_MS = 620; /* the wave crosses the field in this long */
 const FALL_MS = 190; /* ...tilted by height, so it reads as a diagonal */
 const JITTER_MS = 300; /* per-grain scatter, so the wave has a soft edge */
