@@ -7,6 +7,44 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-15
+
+### Changed
+- **The wordmark is small now, and it stands in the upper right.** It used to
+  be the size of the hero -- roughly 1150x410px of "arc automations" across the
+  middle of the field. It is about a third of that area now, tucked into the
+  top right corner, with the gap between the two lines pulled in from 0.42 cap
+  heights to 0.20.
+
+  The corner is the upper one on purpose. The effect needs two things from
+  wherever the wordmark lives: cursor traffic, and a drop. The upper right has
+  both -- it sits on the diagonal between the nav in the top corner and the
+  sign-in button down on the left, which is the path nearly every visitor's
+  cursor actually takes, and it leaves the whole height of the hero underneath
+  it for the sand to fall through. The lower right has the traffic and none of
+  the drop: grains knocked off a wordmark already sitting on the floor fall a
+  few pixels and stop.
+
+  Placement and size are five named constants at the top of the file
+  (`WORD_W`, `ARC_RATIO`, `WORD_X`, `WORD_Y`, `LINE_GAP`) rather than numbers
+  buried in the rasteriser, so this is now tunable without reading the mask
+  code.
+
+- **The character cell is finer: 10px on desktop, 9px on phones, down from
+  12/11/10.** This is what makes the small wordmark possible rather than a
+  separate decision. These are letters drawn out of character cells, so
+  legibility is a function of cells-per-letter, not of pixels -- at the old
+  cell size a corner-sized "automations" had about three cells of cap height
+  and came out as texture rather than as a word. The finer cell buys back the
+  rows the smaller wordmark gave away. The drift is finer grained for it too,
+  which reads rather more like sand and rather less like gravel.
+
+- **Letterform coverage is gamma-corrected (`INK_GAMMA`).** A cell a stroke only
+  half fills scores 0.5 and drew a `;`, and a word built out of `;` does not
+  resolve as a word. The curve lifts the middle of the density ramp and leaves
+  both ends alone, so the fringe stays soft and the interior stays at `@`. This
+  is most of what makes "automations" readable at the new size.
+
 ## [1.7.0] - 2026-09-15
 
 ### Changed

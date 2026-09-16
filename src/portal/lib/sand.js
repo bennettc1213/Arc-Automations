@@ -127,13 +127,11 @@ const THROW_MAX = 16; /* ...capped, in cells */
 
 /* the pour is the same wave played slower and from further away: it is the
    first thing anybody sees of the portal, so it is allowed the extra beat. */
-/* and it waits a beat before it starts. being armed means the door has begun
-   to open, not that it is open — the tunnel is still fading out over it and the
-   page behind is still fading in. without the lead the wave starts under an
-   opaque overlay and the visitor's first sight of the field is a wordmark that
-   has already finished assembling, which is the one thing the arrival exists
-   not to be. tuned against the 0.7s stage fade in PortalHome.css. */
-const POUR_LEAD = 620;
+/* and it waits a beat before it starts. the doors arm the field the frame the
+   entrance veil leaves the tree, so this is no longer covering an opaque
+   overlay — it is only keeping the wave off the last of the wipe's falling
+   debris, so that the two do not read as one confused shower of characters. */
+const POUR_LEAD = 150;
 const POUR_SWEEP = 1150;
 const POUR_JITTER = 520;
 const POUR_DROP = 58; /* cells above the top edge the grains wait at */

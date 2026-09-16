@@ -13,9 +13,8 @@ import './AsciiField.css';
  * hosting it does. this is a live character field, so it does all four.
  *
  * canvas 2d on purpose. ASCII is a character grid, which is what canvas text is
- * good at, and the tunnel that hands off to this page has just released a WebGL
- * context — standing a second one up to draw letters would be worse on every
- * axis that matters.
+ * good at — and the entrance that hands off to this page is a second one, so the
+ * two halves of the arrival are made of the same material.
  *
  * there are two things on the canvas and they are drawn by two different rules:
  *
@@ -69,6 +68,36 @@ const COVER_MIN = 0.09;
    where a crop would eat a leg off the R. */
 const MAX_GRAINS = 4600;
 
+/* ── where the wordmark stands, and how big ─────────────────────────
+   the upper right, and deliberately not the lower right.
+
+   the effect needs two things from wherever the wordmark lives: cursor traffic,
+   and a drop. the upper right has both. it sits on the diagonal between the nav
+   in the top corner and the sign-in button down on the left, which is the one
+   path nearly every visitor's cursor actually takes, and it leaves the whole
+   height of the hero underneath it for the sand to fall through. the lower
+   right has the traffic and none of the drop — grains knocked off a wordmark
+   already sitting on the floor fall a few pixels and stop, and the part worth
+   building never happens.
+
+   the size has a floor, and it is not a matter of taste. these are letters made
+   out of character cells: below roughly five cells of cap height there are not
+   enough cells left to draw an 'a' that reads as an 'a', and the word stops
+   being a word and becomes texture. WORD_W is set as small as that limit
+   allows. */
+const WORD_W = 0.52; /* width of "automations", as a fraction of the field */
+const ARC_RATIO = 0.34; /* ...and "arc" relative to it, as the type is drawn */
+const WORD_X = 0.70; /* centre of the block, across the field */
+const WORD_Y = 0.24; /* ...and down it */
+const LINE_GAP = 0.20; /* between the two lines, in cap heights of the second */
+/* a small letterform needs denser characters than its coverage literally
+   implies. a cell the stroke only half fills scores 0.5 and draws a ';', and a
+   word built out of ';' does not resolve as a word — at this size the eye needs
+   the stroke to read solid before it will see a letter at all. the curve lifts
+   the middle of the ramp and leaves both ends where they were, so the fringe
+   stays soft and the interior stays at '@'. */
+const INK_GAMMA = 0.6;
+
 /* stable per-cell randomness — no allocation, same value every frame. */
 function hash(x, y) {
   let h = Math.imul(x, 374761393) + Math.imul(y, 668265263);
@@ -78,10 +107,9 @@ function hash(x, y) {
 
 /**
  * `armed` holds the arrival until the caller says the field is actually on
- * screen. both doors that mount this one put a full-screen tunnel over it for
- * the better part of a second, and a pour played under an opaque overlay is an
- * entrance the visitor never gets. defaults to true so the component still
- * works on its own.
+ * screen. both doors that mount this one slide a full-screen veil off it first,
+ * and a pour played under an opaque overlay is an entrance the visitor never
+ * gets. defaults to true so the component still works on its own.
  */
 export default function AsciiField({ armed = true }) {
   const canvasRef = useRef(null);
@@ -179,23 +207,28 @@ export default function AsciiField({ armed = true }) {
       /* on a wide screen the copy owns the left third, so the wordmark is
          pushed off-centre to stand in the clear half rather than being read
          through a paragraph. narrow layouts centre their copy, so it recentres. */
-      const bias = wide ? 0.58 : 0.5;
+      /* small, and up in the right-hand corner — see WORD_* above for why that
+         corner and not the other one. a narrow layout gets neither: there is no
+         corner to stand in at 430px, and the mobile scrim covers the middle of
+         the field so heavily that the wordmark is nearly invisible there
+         however it is placed, so it keeps the full-width centred setting. */
+      const bias = wide ? WORD_X : 0.5;
+      const wordW = wide ? WORD_W : 0.8;
+      const wordY = wide ? WORD_Y : 0.44;
 
       const lines = [
-        { text: 'arc', weight: 700, px: sizeFor('arc', 700, w * 0.36) },
-        { text: 'automations', weight: 500, px: sizeFor('automations', 500, w * 0.8) },
+        { text: 'arc', weight: 700, px: sizeFor('arc', 700, w * wordW * ARC_RATIO) },
+        { text: 'automations', weight: 500, px: sizeFor('automations', 500, w * wordW) },
       ];
 
       /* Space Grotesk sits about 0.72em from baseline to cap. */
       const capOf = (px) => px * 0.72 * squash;
-      const gap = capOf(lines[1].px) * 0.42;
+      const gap = capOf(lines[1].px) * LINE_GAP;
       const block = capOf(lines[0].px) + gap + capOf(lines[1].px);
 
-      /* the block is lifted off centre by a little, because the drift it comes
-         apart into needs somewhere to lie. the bottom tenth of the field is the
-         floor, and a wordmark centred on the full height sits close enough to
-         it that a full collapse has the sand piling into its own feet. */
-      let y = (h - block) / 2 - h * 0.06;
+      /* the block is centred on wordY rather than hung from it, so tuning the
+         size does not also move it. */
+      let y = h * wordY - block / 2;
       for (const line of lines) {
         const cap = capOf(line.px);
         y += cap;
@@ -273,7 +306,14 @@ export default function AsciiField({ armed = true }) {
 
       /* matches the 1100px breakpoint where PortalHome stops centring its copy */
       wide = w >= 1100;
-      fontPx = w < 640 ? 10 : w < 1100 ? 11 : 12;
+      /* the cell is the pen this thing draws with, and the wordmark is small
+         enough now that the pen had to get finer with it. at a 12px cell a
+         corner-sized "automations" had about three cells of cap height to work
+         with, and three cells cannot draw an 'a' that reads as an 'a' — the
+         word came out as texture. a 10px cell buys back the rows the smaller
+         wordmark gave away. the drift is finer grained for it too, which reads
+         rather more like sand and rather less like gravel. */
+      fontPx = w < 640 ? 9 : 10;
       ctx.font = `${fontPx}px "IBM Plex Mono", ui-monospace, monospace`;
       ctx.textBaseline = 'middle';
       cellW = ctx.measureText('M').width || fontPx * 0.6;
@@ -365,7 +405,7 @@ export default function AsciiField({ armed = true }) {
 
         if (state === HOME) {
           const shimmer = 0.12 * Math.sin(time * 0.0013 + g.hx[i] * 0.02 + g.hy[i] * 0.017);
-          lit = Math.min(1, g.cover[i] + shimmer + g.glow[i] * 0.6);
+          lit = Math.min(1, g.cover[i] ** INK_GAMMA + shimmer + g.glow[i] * 0.6);
           gi = Math.min(RAMP.length - 1, 2 + Math.floor(Math.max(0, lit) * (RAMP.length - 3)));
         } else {
           lit = Math.min(1, g.heat[i] + g.glow[i] * 0.4);
