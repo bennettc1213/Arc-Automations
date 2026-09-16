@@ -1,3 +1,15 @@
+/* ────────────────────────────────────────────────
+   Hero.css
+
+   Rule order carries weight in here. A media query adds no specificity, so
+   `.hero__title` inside one and `.hero__title` outside it are the same weight
+   and the later of the two simply wins. Every breakpoint block therefore lives
+   at the BOTTOM of this file, after the base rules it exists to override.
+   When the 1180px block sat above them instead, four of its seven rules did
+   nothing at all — the headline kept its billboard clamp inside a column sized
+   for a third of it, and the reveal masks cut the words down to fit.
+   ──────────────────────────────────────────────── */
+
 .hero {
   position: relative;
   min-height: 100svh;
@@ -5,19 +17,14 @@
   flex-direction: column;
   justify-content: flex-end;
   padding: calc(var(--nav-h) + 40px) var(--gutter) 48px;
-  max-width: 1560px;
+  /* the site's containers are 1560px and the hero matches them until there is
+     real room to spare, at which point the surplus goes to the film rather
+     than to two equal margins. a clamp rather than a breakpoint because a
+     breakpoint here snaps the hero 120px wider the moment you drag a window
+     past it, and the film jumps a hundred pixels with it. */
+  max-width: clamp(1560px, 100vw - 120px, 1860px);
   margin-inline: auto;
   width: 100%;
-}
-
-/* on a wide monitor 1560px stops being the headline's width and starts being
-   the whole hero's — the extra room past it is exactly where the film wants
-   to go. widening the cap here rather than the grid means the copy column
-   does not have to shrink to make space; the film just gets more of it. */
-@media (min-width: 1680px) {
-  .hero {
-    max-width: 1760px;
-  }
 }
 
 /* his floor line — the quiet strip between nav and headline */
@@ -64,85 +71,6 @@
   color: var(--accent);
 }
 
-@media (min-width: 1180px) {
-  .hero {
-    justify-content: center;
-  }
-
-  /* the copy column used to be a fraction of the row (`0.72fr`), which sounds
-     like it pins the split but doesn't: a fraction is a share of whatever
-     space is left over, so making the hero itself wider — which the
-     1680px rule above does — quietly widened the copy column right along
-     with the film, undoing the point of shrinking it. a fixed band does not
-     drift with the container: the copy gets exactly this much room at any
-     viewport, and every pixel the hero gains past that goes to the film,
-     which is the actual goal here. */
-  .hero__grid {
-    grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
-    gap: clamp(24px, 2.6vw, 56px);
-    align-items: center;
-  }
-
-  /* pinned to the right gutter and centred on the headline's own axis. the film
-     now owns the entire remainder of the row, not a fixed share of it — on a
-     1760px hero that is well over a thousand pixels. */
-  .hero__stage {
-    justify-self: end;
-  }
-
-  /* sized to the column, not to `ch` — `ch` is the width of "0" in *this*
-     element's own font, and this element inherits the page's 16px rather than
-     the headline's, so a `ch` value here describes a box for 16px text wrapped
-     around 80px text. it was never the floor it was meant to be; it was a box
-     roughly a third the width the headline actually needed, which is what was
-     clipping. the grid column is the real floor now. */
-  .hero__copy {
-    max-width: 360px;
-  }
-
-  /* tuned to the fixed column above, not to viewport width — "we don't just"
-     is the longest line, and it has to clear 260px, the column's narrow end.
-     `overflow-wrap: anywhere` on `.hero__title` is the backstop if it doesn't:
-     a wrap nobody planned beats letters silently missing from a word. */
-  .hero__title {
-    font-size: clamp(2rem, 2.4vw, 2.7rem);
-  }
-
-  /* the sub and the buttons stop competing for one line once the column is half
-     as wide as it was. */
-  .hero__foot {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 22px;
-  }
-
-  .hero__sub {
-    max-width: 30ch;
-  }
-
-  /* two buttons and a location chip fit on one line in a 46ch column; they do
-     not fit in a 30ch one. rather than let them spill past the column into the
-     film, they wrap — and the chip drops, the same trade the phone layout
-     below already makes once the row is this tight. */
-  .hero__row {
-    flex-wrap: wrap;
-    row-gap: 12px;
-  }
-
-  .hero__loc {
-    display: none;
-  }
-
-  /* he keeps to the copy column — the window card is opaque, and a pixel guy who
-     walks behind it has simply disappeared. that column is a fixed width now,
-     not a share of the hero, so his floor is pinned the same way rather than
-     as a percentage that stopped meaning anything the moment the column did. */
-  .hero__roam {
-    right: auto;
-    width: 360px;
-  }
-}
-
 .hero__eyebrow {
   margin-bottom: clamp(20px, 4vh, 44px);
   display: flex;
@@ -165,12 +93,12 @@
   line-height: 0.96;
   text-transform: lowercase;
   /* the reveal masks below clip anything that doesn't fit — silently, since
-     overflow:hidden has no visible seam where it cuts. a fixed column and a
-     font-size in vw units are two numbers that can drift out of sync with
-     each other at any viewport nobody tested at, and the failure mode is a
-     word missing its last few letters with no error to find. this makes the
-     failure mode "wraps to a second line" instead, which looks like a choice
-     even when it wasn't one. */
+     overflow:hidden leaves no visible seam where it cuts. this makes the
+     failure mode "wraps to a second line" instead, which is at least something
+     you can see. it should never fire now that the type is sized against the
+     column rather than against the viewport, but the cost of leaving it here
+     is nothing and the cost of needing it and not having it is a word with
+     its last letters missing and no error to go looking for. */
   overflow-wrap: anywhere;
 }
 
@@ -261,6 +189,10 @@
   color: var(--faint);
 }
 
+/* ── breakpoints ─────────────────────────────────
+   Below this line and nowhere above it. See the note at the top of the file.
+   ──────────────────────────────────────────────── */
+
 @media (max-width: 900px) {
   .hero__foot {
     flex-direction: column;
@@ -269,5 +201,79 @@
   }
   .hero__loc {
     display: none;
+  }
+}
+
+/* the split: claim on the left, the film that backs it up on the right. */
+@media (min-width: 1180px) {
+  .hero {
+    justify-content: center;
+  }
+
+  /* the copy column is a real width, not a share of the row. a fraction grows
+     whenever the hero does, so widening the hero on a big monitor — which the
+     1680px rule below does, for the film's benefit — widened the copy right
+     along with it and gave back the space it was supposed to be giving up.
+     this doesn't. everything past this column belongs to the film. */
+  .hero__grid {
+    grid-template-columns: clamp(380px, 33%, 580px) minmax(0, 1fr);
+    gap: clamp(24px, 2.6vw, 56px);
+    align-items: center;
+  }
+
+  .hero__stage {
+    justify-self: end;
+  }
+
+  /* the column is a share of the grid, not of the viewport, and the type is a
+     share of the column. sizing either against `vw` instead lets them drift
+     apart wherever the hero's own width stops tracking the viewport — between
+     1600 and 1680 a vw-sized column kept growing while the capped hero did
+     not, and the film got *smaller* as the window got wider. */
+  .hero__copy {
+    container-type: inline-size;
+  }
+
+  /* ~11% of the column it sits in, which is the ratio the full-width headline
+     always had to the hero around it: 156.8px of type in a 1432px container.
+     `cqw` is a percentage of that column specifically, so this is that ratio
+     stated directly rather than re-derived from viewport width and hoped to
+     land in the same place. */
+  .hero__title {
+    font-size: clamp(2.6rem, 11cqw, 3.9rem);
+  }
+
+  /* the column is the measure now. a `ch` cap on top of it would either do
+     nothing or fight it, and `ch` here counts the page's 16px rather than this
+     text's own size anyway. */
+  .hero__sub {
+    max-width: none;
+  }
+
+  .hero__foot {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 22px;
+  }
+
+  /* two buttons and a location chip sat on one line across the full-width
+     hero. in a 380px column they do not, so they wrap — and the chip drops,
+     the same trade the phone layout above already makes. */
+  .hero__row {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  .hero__loc {
+    display: none;
+  }
+
+  /* he keeps to the copy column — the window card is opaque, and a pixel guy
+     who walks behind it has simply disappeared. 30% of the hero's padding box
+     rather than 33% of the grid's content box, which is the same strip to
+     within a few pixels; he is wandering, not aligning to anything. */
+  .hero__roam {
+    right: auto;
+    width: clamp(380px, 30%, 580px);
   }
 }

@@ -7,6 +7,42 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.10.4] - 2026-09-16
+
+### Fixed
+- **The headline was rendering at its full billboard size inside a 360px
+  column, and breaking words apart to fit.** Not the `ch` unit this time --
+  that was real but it was the second bug, not the first. The `@media
+  (min-width: 1180px)` block sat *above* the base rules in `Hero.css`, and a
+  media query adds no specificity: `.hero__title` inside one and
+  `.hero__title` outside it are the same weight, so the later of the two wins,
+  and the later one was always the base rule. The split layout's
+  `font-size` never applied once, at any point since it was introduced in
+  1.10.0. Four rules were affected the same way -- `.hero__title`,
+  `.hero__sub`, `.hero__foot` and `.hero__row`. The ones that did work
+  (`.hero__grid`, `.hero__copy`, `.hero__stage`, `.hero__roam`) are exactly
+  the ones whose base declarations come *before* the block, which is why the
+  film kept moving and growing correctly while the headline never shrank.
+
+  Every breakpoint block now lives at the bottom of the file, after the rules
+  it overrides, with a note at the top saying why the order is load-bearing.
+
+### Changed
+- **The headline is sized against its column, not the viewport.** `11cqw` --
+  eleven percent of the copy column, which is the ratio the full-width
+  headline always had to the hero around it (156.8px of type in a 1432px
+  container). Stating the ratio directly means the type and the column cannot
+  drift apart at some width nobody checked, which is what every version of
+  this bug has been. The column is `clamp(380px, 33%, 580px)`: a share of the
+  grid rather than of the viewport, because between 1600px and 1680px a
+  vw-sized column kept growing while the hero's capped width did not, and the
+  film got *smaller* as the window got wider. It now grows monotonically from
+  675px to 1104px across the whole range.
+- **The hero's width cap is a clamp, not a breakpoint.**
+  `clamp(1560px, 100vw - 120px, 1860px)` instead of a jump to a fixed wider
+  value at 1680px, which snapped the hero 120px wider -- and the film a
+  hundred pixels with it -- the moment you dragged a window past that mark.
+
 ## [1.10.3] - 2026-09-15
 
 ### Fixed
