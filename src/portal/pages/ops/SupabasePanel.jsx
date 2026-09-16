@@ -64,6 +64,7 @@ export default function SupabasePanel({ totals, email }) {
 
   const failedTables = (probe?.tables ?? []).filter((table) => table.error);
   const missingFunctions = (probe?.functions ?? []).filter((fn) => !fn.deployed);
+  const missingColumns = (probe?.columns ?? []).filter((column) => !column.present);
 
   return (
     <>
@@ -79,6 +80,21 @@ export default function SupabasePanel({ totals, email }) {
             {failedTables.map((table) => `${table.table}: ${table.error}`).join(' · ')}. if these
             are permission errors, migration <code>0003_client_ids_and_ops.sql</code> has not
             been applied — it is what grants this console read access across tenants.
+          </p>
+        </Notice>
+      )}
+
+      {missingColumns.length > 0 && (
+        <Notice tone="warn" title="a migration has not been applied">
+          <p>
+            {missingColumns.map((column) => (
+              <span key={column.migration}>
+                <code>{column.table}.{column.column}</code> is missing — run{' '}
+                <code>supabase/migrations/{column.migration}</code> in the sql editor.{' '}
+              </span>
+            ))}
+            until it is, subscriptions, renewal dates and key hints on a client page cannot be
+            saved.
           </p>
         </Notice>
       )}

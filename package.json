@@ -1,7 +1,7 @@
 {
   "name": "ben-portfolio",
   "private": true,
-  "version": "1.10.5",
+  "version": "1.12.0",
   "type": "module",
   "scripts": {
     "predev": "node scripts/build-demo-data.mjs",

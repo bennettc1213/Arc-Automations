@@ -76,6 +76,18 @@ export function toConnection(row) {
        0004 is applied, and connectionLiveness treats null as the old 48. */
     expectedQuietHours: row.expected_quiet_hours ?? null,
     notes: row.notes,
+    /* 0006: the account behind the wiring, and what it costs. every one reads
+       as unset until that migration is applied. */
+    provider: row.provider ?? null,
+    accountRef: row.account_ref ?? null,
+    credentialHint: row.credential_hint ?? null,
+    credentialLocation: row.credential_location ?? null,
+    verifiedAt: row.verified_at ?? null,
+    billingStatus: row.billing_status ?? 'none',
+    paidBy: row.paid_by ?? null,
+    costCents: row.cost_cents ?? null,
+    billingCycle: row.billing_cycle ?? null,
+    renewsAt: row.renews_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -439,8 +451,38 @@ export const CONNECTION_KINDS = [
   { value: 'crm', label: 'crm' },
   { value: 'calendar', label: 'calendar' },
   { value: 'database', label: 'database' },
+  { value: 'ai', label: 'ai model' },
+  { value: 'messaging', label: 'messaging' },
+  { value: 'email', label: 'email' },
+  { value: 'payments', label: 'payments' },
   { value: 'other', label: 'other' },
 ];
+
+const BILLING_COLUMNS = [
+  'provider',
+  'account_ref',
+  'credential_hint',
+  'credential_location',
+  'verified_at',
+  'billing_status',
+  'paid_by',
+  'cost_cents',
+  'billing_cycle',
+  'renews_at',
+];
+
+/* postgrest names the column it could not find. when it is one of 0006's, the
+   fix is a migration, and the message should say which one. */
+function connectionWriteError(error) {
+  const missing = BILLING_COLUMNS.find(
+    (column) => error.message.includes(`'${column}'`) || error.message.includes(`"${column}"`),
+  );
+  return new Error(
+    missing
+      ? `the connections table has no ${missing} column — apply supabase/migrations/0006_connection_billing.sql`
+      : error.message,
+  );
+}
 
 export async function saveConnection(connection) {
   const supabase = getSupabase();
@@ -453,6 +495,16 @@ export async function saveConnection(connection) {
     workflow_id: connection.workflowId || null,
     expected_quiet_hours: connection.expectedQuietHours || null,
     notes: connection.notes || null,
+    provider: connection.provider || null,
+    account_ref: connection.accountRef || null,
+    credential_hint: connection.credentialHint || null,
+    credential_location: connection.credentialLocation || null,
+    verified_at: connection.verifiedAt || null,
+    billing_status: connection.billingStatus || 'none',
+    paid_by: connection.paidBy || null,
+    cost_cents: connection.costCents ?? null,
+    billing_cycle: connection.billingCycle || null,
+    renews_at: connection.renewsAt || null,
     updated_at: new Date().toISOString(),
   };
 
@@ -461,7 +513,22 @@ export async function saveConnection(connection) {
     : supabase.from('connections').insert(row);
 
   const { data, error } = await query.select('*').single();
-  if (error) throw new Error(error.message);
+  if (error) throw connectionWriteError(error);
+  return toConnection(data);
+}
+
+/* the two one-click writes on a subscription row: "i just checked the key works"
+   and "this renewal was paid". partial updates, so they cannot clobber an edit
+   somebody else saved a minute ago. */
+export async function patchConnection(id, patch) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('connections')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw connectionWriteError(error);
   return toConnection(data);
 }
 
@@ -726,6 +793,18 @@ export async function probeSupabase() {
   );
   const latencyMs = Math.round(performance.now() - started);
 
+  /* migrations that only add columns cannot be seen in a row count. asking for
+     the newest column by name, zero rows, is the cheapest question that fails
+     exactly when the migration is missing. */
+  const columns = await Promise.all(
+    [{ table: 'connections', column: 'billing_status', migration: '0006_connection_billing.sql' }].map(
+      async (probe) => {
+        const { error } = await supabase.from(probe.table).select(probe.column).limit(0);
+        return { ...probe, present: !error, error: error?.message ?? null };
+      },
+    ),
+  );
+
   /* the functions are probed with a body they will reject. a 400 back from
      client-login means it is deployed, reachable and validating input — and no
      sign-in email was sent to anybody to find that out. */
@@ -770,6 +849,7 @@ export async function probeSupabase() {
     url: import.meta.env.VITE_SUPABASE_URL ?? null,
     latencyMs,
     tables,
+    columns,
     functions,
     realtime,
     checkedAt: DateTime.now().toISO(),

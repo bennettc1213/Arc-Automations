@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { DateTime } from 'luxon';
 import Icon from '../../components/Icon';
@@ -18,6 +18,7 @@ import {
   TextInput,
 } from '../../components/ops-ui';
 import ConnectionForm from '../../components/ConnectionForm';
+import ServicesPanel from '../../components/ServicesPanel';
 import {
   CONNECTION_KINDS,
   connectionLiveness,
@@ -113,7 +114,18 @@ function ClientBody({ client, base, reload }) {
   const [tokens, setTokens] = useState(null);
   const [tokenError, setTokenError] = useState(null);
   const [freshToken, setFreshToken] = useState(null);
+  /* one form for the whole page, whichever table or card opened it. `integration`
+     is set when it was opened by a connect button, so the form can say what to do
+     in the tab that just opened. */
   const [editing, setEditing] = useState(null);
+  const servicesRef = useRef(null);
+
+  const openEditor = (connection, integration = null, connecting = false) => {
+    setEditing({ connection, integration, connecting });
+    window.requestAnimationFrame(() =>
+      servicesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    );
+  };
 
   useEffect(() => {
     let live = true;
@@ -422,6 +434,45 @@ function ClientBody({ client, base, reload }) {
         </Panel>
       </div>
 
+      {/* ── services & subscriptions ────────────────────────── */}
+
+      <div ref={servicesRef} className="ops-anchor">
+        <ServicesPanel
+          client={client}
+          reload={reload}
+          editing={Boolean(editing)}
+          onEdit={(connection, integration) =>
+            openEditor(connection, integration, !connection.id)
+          }
+          form={
+            editing && (
+              <ConnectionForm
+                key={editing.connection.id ?? `new-${editing.connection.provider ?? 'other'}`}
+                connection={editing.connection}
+                intro={
+                  editing.connecting &&
+                  editing.integration && (
+                    <Notice tone="ok" title={`${editing.integration.name} opened in a new tab`}>
+                      <p>
+                        sign in or create the account there, set up billing and make a key. then
+                        come back and record it here: the account, the key&apos;s last four,
+                        what it costs and when it renews. set declared status to{' '}
+                        <b>connected</b> once it is wired in.
+                      </p>
+                    </Notice>
+                  )
+                }
+                onCancel={() => setEditing(null)}
+                onSaved={async () => {
+                  setEditing(null);
+                  await reload();
+                }}
+              />
+            )
+          }
+        />
+      </div>
+
       {/* ── connections ─────────────────────────────────────── */}
 
       <Panel
@@ -431,7 +482,7 @@ function ClientBody({ client, base, reload }) {
           <button
             type="button"
             className="ws-btn"
-            onClick={() => setEditing({ tenantId: tenant.id, kind: 'n8n', status: 'planned' })}
+            onClick={() => openEditor({ tenantId: tenant.id, kind: 'n8n', status: 'planned' })}
           >
             <Icon name="plus" size={13} />
             add a connection
@@ -439,16 +490,6 @@ function ClientBody({ client, base, reload }) {
         }
         bare
       >
-        {editing && (
-          <ConnectionForm
-            connection={editing}
-            onCancel={() => setEditing(null)}
-            onSaved={async () => {
-              setEditing(null);
-              await reload();
-            }}
-          />
-        )}
 
         {client.connections.length === 0 ? (
           <Empty title="nothing declared yet">
@@ -506,7 +547,7 @@ function ClientBody({ client, base, reload }) {
                           <button
                             type="button"
                             className="ws-btn"
-                            onClick={() => setEditing(connection)}
+                            onClick={() => openEditor(connection)}
                             title="edit"
                           >
                             <Icon name="edit" size={12} />

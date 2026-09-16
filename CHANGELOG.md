@@ -7,6 +7,33 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-09-16
+
+### Added
+- **Services & subscriptions on every ops client page.** A table of the
+  accounts each client's automation runs on (n8n, Twilio, OpenAI, ...) showing
+  whose account it is, the key by its last four characters, where the real key
+  is stored and when it was last checked, the subscription state, cost, who
+  pays, and when it renews. Renewals within 7 days are flagged amber. Past-due
+  and cancelled-but-still-connected are flagged red. A renewal date that has
+  passed asks you to confirm the charge rather than claiming a lapse. **paid**
+  rolls the renewal forward one cycle and **key ok** stamps the key as checked.
+  Monthly totals are split into what Arc pays and what the client pays.
+- **Connect a service.** A grid of 15 services, each marked *connected* or
+  showing **connect**. Connect opens the provider's sign-up in a new tab and
+  opens a form on the page to record the account, key hint and billing. Cards
+  that are already connected show **manage** instead. Each row links straight
+  to the provider's billing and API-key pages.
+- Migration `0006_connection_billing.sql`: `provider`, `account_ref`,
+  `credential_hint` (limited to 4 characters, so a full key cannot be saved),
+  `credential_location`, `verified_at`, `billing_status`, `paid_by`,
+  `cost_cents`, `billing_cycle` and `renews_at` on `connections`. The console's
+  Supabase page now says when it is missing.
+
+### Fixed
+- Editing a connection no longer resets its `expected_quiet_hours` to empty.
+  The form never passed the value back, so every save cleared it.
+
 ## [1.10.5] - 2026-09-16
 
 ### Changed
