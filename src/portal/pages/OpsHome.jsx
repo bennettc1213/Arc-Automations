@@ -29,7 +29,7 @@ const PANELS = [
 /**
  * the front door of the ops console.
  *
- * the same door as /portal, deliberately: the same tunnel, the same reveal, the
+ * the same door as /portal, deliberately: the same entrance, the same reveal, the
  * same bar and the same panels. walking into your own console should feel exactly
  * like walking into the product you sell, and the entrance is shared code
  * (lib/entrance.js) rather than a copy that will drift.
@@ -54,7 +54,7 @@ const PANELS = [
  * and zero surface for the visitor who is not.
  */
 export default function OpsHome() {
-  const { entered, flown, Tunnel, enter, finish } = useEntrance();
+  const { entered, flown, Veil, enter, finish } = useEntrance();
   const navigate = useNavigate();
   const [session, setSession] = useState({ kind: 'unknown' });
   const [password, setPassword] = useState('');
@@ -130,7 +130,7 @@ export default function OpsHome() {
 
   return (
     <div className="ph">
-      {!flown && (Tunnel ? <Tunnel onBreach={enter} onDone={finish} /> : <div className="ph__veil" />)}
+      {!flown && <Veil onReveal={enter} onDone={finish} />}
 
       <div className="ph__stage" data-entered={entered ? 'true' : 'false'}>
         <header className="ph__bar">
@@ -147,7 +147,7 @@ export default function OpsHome() {
         </header>
 
         <section className="ph__hero">
-          <AsciiField armed={entered} />
+          <AsciiField armed={flown} />
 
           <div className="ph__heroin">
             <ArcMark className="ph__crest" size={58} />

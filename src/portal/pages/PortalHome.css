@@ -10,27 +10,23 @@
   background: var(--bg);
 }
 
-/* what the visitor looks at while the entrance chunk is still downloading.
-   black, so it is indistinguishable from the tunnel's own first frame. */
-.ph__veil {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  background: var(--bg);
-}
+/* the page is built and laid out underneath the veil the whole time, then
+   revealed — so the reveal lands on finished type, never on reflowing text.
 
-/* the page is built and laid out underneath the tunnel the whole time, then
-   revealed — so the reveal lands on finished type, never on reflowing text. */
+   it settles in from the left as the veil's seam crosses to the right, which is
+   what makes the crossing read as one movement rather than as a wipe with a
+   fade happening behind it. the distance is small on purpose: the seam is doing
+   the travelling, and content that slides as far as the sheet does starts to
+   look like it is being dragged along by it. */
 .ph__stage {
   opacity: 0;
-  transition: opacity 0.7s var(--ease-out), scale 0.9s var(--ease-out);
-  scale: 1.04;
-  transform-origin: 50% 40%;
+  translate: -26px 0;
+  transition: opacity 0.42s var(--ease-out), translate 0.62s var(--ease-out);
 }
 
 .ph__stage[data-entered='true'] {
   opacity: 1;
-  scale: 1;
+  translate: 0 0;
 }
 
 /* ── bar ─────────────────────────────────────── */
@@ -341,6 +337,6 @@
 @media (prefers-reduced-motion: reduce) {
   .ph__stage {
     transition: none;
-    scale: 1;
+    translate: 0 0;
   }
 }

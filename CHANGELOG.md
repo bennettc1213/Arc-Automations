@@ -7,6 +7,50 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-09-15
+
+### Changed
+- **The entrance is a slide now, not a tunnel.** Both front doors (`/portal`
+  and `/ops`) used to fly you down a WebGL tunnel on every arrival. It was the
+  right amount of spectacle for a thing you see once and the wrong amount for a
+  thing you cross several times a session -- and the portal is a place people
+  go back and forth from, so it got crossed a lot.
+
+  What replaces it: a sheet the colour of the page slides off to the right in
+  760ms, led by a lit orange seam. Behind the seam the sheet frays into
+  character cells and comes apart, and what breaks off is left behind as a trail
+  of digits that drift back, fall, and burn out -- the same ramp, the same
+  accent stops and the same "the wordmark is made of numbers" conceit as the
+  character field the door hands off to. The page settles in from the left as
+  the seam crosses to the right, so the wipe and the reveal are one movement.
+
+  There is no progress bar, no scroll-to-advance and no skip button, because at
+  760ms there is nothing to skip. `prefers-reduced-motion` still bypasses it
+  entirely.
+
+### Removed
+- **three.js, and the machinery that existed to load it.** The tunnel was the
+  only thing in the project using it; the new entrance is one canvas-2d file
+  drawing a character grid, which is what the rest of the portal's motion is
+  already made of. Knock-on effects:
+  - the ~470 kB `HoleTunnel` chunk is gone from the build, along with `three`
+    as a dependency;
+  - `lib/entrance.js` loses the dynamic import, the stale-deploy chunk retry and
+    the eight-second "a slow chunk must not become a locked door" deadline --
+    the entrance is now bundled, so there is no fetch that can stall in front of
+    it. The two-second safety that drops a veil which never asked to be removed
+    stays;
+  - the `.ph__veil` placeholder (what you looked at while the tunnel chunk
+    downloaded) has nothing left to stand in for.
+
+### Fixed
+- **The wordmark's pour is no longer half over before you can see it.** Both
+  doors armed the character field on `entered` -- the moment the door *began* to
+  open -- so the pour played its first 600ms under an opaque overlay. It is
+  armed on `flown` now, the frame the veil actually leaves, and `POUR_LEAD`
+  drops from 620ms to 150ms accordingly: just enough to keep the wave clear of
+  the wipe's last falling debris.
+
 ## [1.6.1] - 2026-09-15
 
 ### Changed

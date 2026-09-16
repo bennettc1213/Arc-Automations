@@ -9,8 +9,7 @@ import { lazy } from 'react';
  * reload loop when the failure is something else, and session scope is right because the
  * question is only ever "in this tab, already tried?".
  *
- * this is the same recovery PortalHome performs by hand for the tunnel chunk. it is a
- * helper here because the reason to split these routes is size, and the portal is now most
+ * it is a helper here because the reason to split these routes is size, and the portal is now most
  * of the application by weight: the dashboard, its eight pages and the demo dataset together
  * are larger than the marketing site they would otherwise be bundled into, for visitors who
  * will mostly never open them.

@@ -39,7 +39,7 @@ const PANELS = [
 ];
 
 export default function PortalHome() {
-  const { entered, flown, Tunnel, enter, finish } = useEntrance();
+  const { entered, flown, Veil, enter, finish } = useEntrance();
   const [signedIn, setSignedIn] = useState(false);
 
   /* only changes the label on the primary button. a wrong guess here sends a
@@ -58,7 +58,7 @@ export default function PortalHome() {
 
   return (
     <div className="ph">
-      {!flown && (Tunnel ? <Tunnel onBreach={enter} onDone={finish} /> : <div className="ph__veil" />)}
+      {!flown && <Veil onReveal={enter} onDone={finish} />}
 
       <div className="ph__stage" data-entered={entered ? 'true' : 'false'}>
         <header className="ph__bar">
@@ -75,7 +75,7 @@ export default function PortalHome() {
         </header>
 
         <section className="ph__hero">
-          <AsciiField armed={entered} />
+          <AsciiField armed={flown} />
 
           <div className="ph__heroin">
             <ArcMark className="ph__crest" size={58} />
