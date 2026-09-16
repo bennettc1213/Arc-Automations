@@ -7,6 +7,34 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.10.3] - 2026-09-15
+
+### Fixed
+- **The headline was clipping words at the 1180px+ breakpoint.** The previous
+  patch capped `.hero__copy` at `max-width: 30ch` meaning to give the shrunken
+  column a floor. `ch` is the width of "0" in the element's *own* font, and
+  `.hero__copy` never sets one -- it inherits the page's 16px, not the
+  headline's 2.6-5.2rem. So the cap was a box sized for 16px text wrapped
+  around 40-80px text: roughly a third the width the headline actually needed.
+  The reveal masks around each line clip whatever doesn't fit, silently, so
+  the failure was a word missing letters with nothing pointing at why.
+  `.hero__title` now carries `overflow-wrap: anywhere` as a standing backstop
+  -- a wrap nobody planned is a visible, harmless surprise; a clip is neither.
+
+### Changed
+- **The film's column is a fixed band now, not a fraction of the row, and
+  claims everything past it.** `0.72fr`/`1.28fr` sounds pinned but isn't -- a
+  fraction is a share of whatever space is left, so widening the hero itself
+  (the 1680px rule two patches back) quietly widened the copy column right
+  along with the film, undoing the point of narrowing it. The copy column is
+  `minmax(260px, 360px)` now: a real ceiling that does not drift with the
+  container. Everything past it -- `minmax(0, 1fr)` -- is the film's, which on
+  a wide monitor is well over a thousand pixels, a much larger jump right than
+  the fraction ever produced. The headline's clamp came down again to fit the
+  new fixed column (`2.7rem` max, down from `5.2rem`), and the roaming pixel
+  guy's floor is pinned to the same fixed width rather than a percentage of
+  the hero that stopped meaning anything the moment the column did.
+
 ## [1.10.2] - 2026-09-15
 
 ### Changed

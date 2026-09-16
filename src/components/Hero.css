@@ -69,33 +69,43 @@
     justify-content: center;
   }
 
+  /* the copy column used to be a fraction of the row (`0.72fr`), which sounds
+     like it pins the split but doesn't: a fraction is a share of whatever
+     space is left over, so making the hero itself wider — which the
+     1680px rule above does — quietly widened the copy column right along
+     with the film, undoing the point of shrinking it. a fixed band does not
+     drift with the container: the copy gets exactly this much room at any
+     viewport, and every pixel the hero gains past that goes to the film,
+     which is the actual goal here. */
   .hero__grid {
-    grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
-    gap: clamp(28px, 3.2vw, 64px);
+    grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+    gap: clamp(24px, 2.6vw, 56px);
     align-items: center;
   }
 
-  /* pinned to the right gutter and centred on the headline's own axis. the column
-     is wider than the card needs at the top of the range, and a card floating in
-     the middle of its column reads as a layout that has not been told where to
-     put things. */
+  /* pinned to the right gutter and centred on the headline's own axis. the film
+     now owns the entire remainder of the row, not a fixed share of it — on a
+     1760px hero that is well over a thousand pixels. */
   .hero__stage {
     justify-self: end;
   }
 
-  /* the copy column is the one that shrank to send the film further right, so
-     it gets a floor: a title that gives up more than this starts wrapping
-     "we don't just" onto a third line, which is a worse trade than the film
-     sitting a little further from centre than it otherwise would. */
+  /* sized to the column, not to `ch` — `ch` is the width of "0" in *this*
+     element's own font, and this element inherits the page's 16px rather than
+     the headline's, so a `ch` value here describes a box for 16px text wrapped
+     around 80px text. it was never the floor it was meant to be; it was a box
+     roughly a third the width the headline actually needed, which is what was
+     clipping. the grid column is the real floor now. */
   .hero__copy {
-    max-width: 30ch;
+    max-width: 360px;
   }
 
-  /* the headline gives up its billboard scale to make room. eleven-and-a-half vw
-     across half a screen is a word per line — and the film taking the larger half
-     costs it more still. */
+  /* tuned to the fixed column above, not to viewport width — "we don't just"
+     is the longest line, and it has to clear 260px, the column's narrow end.
+     `overflow-wrap: anywhere` on `.hero__title` is the backstop if it doesn't:
+     a wrap nobody planned beats letters silently missing from a word. */
   .hero__title {
-    font-size: clamp(2.6rem, 4.3vw, 5.2rem);
+    font-size: clamp(2rem, 2.4vw, 2.7rem);
   }
 
   /* the sub and the buttons stop competing for one line once the column is half
@@ -124,10 +134,12 @@
   }
 
   /* he keeps to the copy column — the window card is opaque, and a pixel guy who
-     walks behind it has simply disappeared. the column shrank, so his floor
-     does too. */
+     walks behind it has simply disappeared. that column is a fixed width now,
+     not a share of the hero, so his floor is pinned the same way rather than
+     as a percentage that stopped meaning anything the moment the column did. */
   .hero__roam {
-    right: 62%;
+    right: auto;
+    width: 360px;
   }
 }
 
@@ -152,6 +164,14 @@
   letter-spacing: -0.045em;
   line-height: 0.96;
   text-transform: lowercase;
+  /* the reveal masks below clip anything that doesn't fit — silently, since
+     overflow:hidden has no visible seam where it cuts. a fixed column and a
+     font-size in vw units are two numbers that can drift out of sync with
+     each other at any viewport nobody tested at, and the failure mode is a
+     word missing its last few letters with no error to find. this makes the
+     failure mode "wraps to a second line" instead, which looks like a choice
+     even when it wasn't one. */
+  overflow-wrap: anywhere;
 }
 
 /* mask wrapper for the load-in line reveal */
