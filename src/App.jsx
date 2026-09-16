@@ -1,5 +1,6 @@
-import { Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Suspense, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { noteRoute } from './lib/crossing';
 import CursorSquare from './components/CursorSquare';
 import FocusRing from './components/FocusRing';
 import Site from './Site';
@@ -37,6 +38,24 @@ const AuthCallback = lazyRoute(() => import('./portal/pages/AuthCallback'));
 const OpsHome = lazyRoute(() => import('./portal/pages/OpsHome'));
 const Ops = lazyRoute(() => import('./portal/pages/Ops'));
 
+/**
+ * remembers which side of the product you were last on, so the marketing site
+ * can tell an arrival from the portal apart from an arrival from anywhere else
+ * and only play the crossing for the former.
+ *
+ * mounted after <Routes> on purpose. react runs effects child-first and then in
+ * source order, so the route that just rendered has already read the previous
+ * value by the time this overwrites it with the current one — which is what
+ * makes a single module-level string enough, with no context and no provider.
+ */
+function RouteWatch() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    noteRoute(pathname);
+  }, [pathname]);
+  return null;
+}
+
 export default function App() {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
@@ -72,6 +91,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      <RouteWatch />
       <CursorSquare />
       <FocusRing />
     </BrowserRouter>

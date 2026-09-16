@@ -6,7 +6,11 @@
 .veil {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  /* above everything on either side of the crossing — the portal door tops out
+     at 20, the marketing site's nav is 100 and its pilot overlay 1000 — and
+     below the cursor square and focus ring (9990/9999), which are the one pair
+     of layers that should still draw over a transition. */
+  z-index: 1500;
   /* it is over the page for well under a second, but that is long enough to
      swallow a click aimed at something the visitor cannot see yet. */
   touch-action: none;

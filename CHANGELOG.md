@@ -7,6 +7,36 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-09-15
+
+### Added
+- **Leaving the portal plays the crossing in reverse.** Going in, the entrance
+  sheet leaves to the right. Coming back out to the marketing site it now leaves
+  to the left -- the same sheet, the same fray, the same seam and falling
+  digits, mirrored about the vertical axis -- so the two halves of the product
+  sit on either side of you and the transition says which way you just moved.
+
+  It is modelled as an *arrival* on the site rather than an exit from the
+  portal, which is what makes the browser's back button work. An exit animation
+  has to hold the navigation open while it plays and there is no holding a
+  popstate open -- by the time you hear about it the URL has already changed. An
+  arrival that knows where it came from needs no such cooperation, so the back
+  button, the link in the portal's bar, the one in its button row, the one in
+  the ops door and the one in the workspace account menu are all one code path
+  with nothing to intercept.
+
+  It plays only for visitors who actually came from over there. `src/lib/crossing.js`
+  remembers the last route; an arrival at `/` from a search result or a bookmark
+  gets no wipe at all, because putting a full-screen animation in front of every
+  first visit is the same mistake the tunnel made.
+
+### Changed
+- **The veil sits at `z-index: 1500`, up from 60.** 60 cleared the portal door
+  (which tops out at 20) but not the marketing site's nav (100) or its pilot
+  overlay (1000), so the sheet would have swept *under* the nav on the way out.
+  Still below the cursor square and focus ring at 9990/9999, which are the one
+  pair of layers that should keep drawing over a transition.
+
 ## [1.8.1] - 2026-09-15
 
 ### Changed

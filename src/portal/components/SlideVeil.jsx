@@ -4,11 +4,19 @@ import './SlideVeil.css';
 /**
  * the doorway between the marketing site and the portal.
  *
- * a sheet the colour of the page slides off to the right and comes apart as it
- * goes: a lit seam leads it, the sheet crumbles into character cells behind
- * that seam, and what breaks off is left behind as a trail of digits that fall
- * and burn out. the page is already laid out underneath, so the seam is not
- * covering a reveal — it *is* the reveal.
+ * a sheet the colour of the page slides off and comes apart as it goes: a lit
+ * seam leads it, the sheet crumbles into character cells behind that seam, and
+ * what breaks off is left behind as a trail of digits that fall and burn out.
+ * the page is already laid out underneath, so the seam is not covering a reveal
+ * — it *is* the reveal.
+ *
+ * it runs in both directions, and the direction is the whole point. going into
+ * the portal the sheet leaves to the right; coming back out to the site it
+ * leaves to the left, so the two halves of the product sit on either side of
+ * you and the transition says which way you just moved. `reverse` mirrors the
+ * entire effect about the vertical axis — solid, fray, seam and trail — through
+ * a single sign, `dir`, rather than through a canvas transform, because a
+ * flipped canvas would draw every digit in the trail backwards.
  *
  * this replaces a WebGL tunnel. the tunnel was good work that you had to watch
  * every single time you crossed between the site and the portal, and a
@@ -78,7 +86,7 @@ function ease(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
 }
 
-export default function SlideVeil({ onReveal, onDone }) {
+export default function SlideVeil({ reverse = false, onReveal, onDone }) {
   const hostRef = useRef(null);
   /* read through refs so a re-rendering parent cannot restart the wipe. */
   const revealRef = useRef(onReveal);
@@ -86,9 +94,15 @@ export default function SlideVeil({ onReveal, onDone }) {
   revealRef.current = onReveal;
   doneRef.current = onDone;
 
+  /* the effect is built once and never rebuilt, so the direction is read into
+     it rather than tracked: a veil that changed direction halfway across would
+     be a bug, not a feature. */
+  const dirRef = useRef(reverse ? -1 : 1);
+
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return undefined;
+    const dir = dirRef.current;
 
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -126,9 +140,11 @@ export default function SlideVeil({ onReveal, onDone }) {
     let start = 0;
     let disposed = false;
 
-    /* the seam's whole journey: from fully off the left of the screen to far
-       enough past the right that the last of the trail has gone with it. */
-    const travel = () => width + BAND + TAIL;
+    /* the seam's whole journey: from the far side of a fully covered screen to
+       far enough past the near side that the last of the trail has gone with
+       it. mirrored, the two ends swap. */
+    const span = () => width + BAND + TAIL;
+    const origin = () => (dir > 0 ? -BAND : width + BAND);
 
     const draw = (edge) => {
       ctx.clearRect(0, 0, width, height);
@@ -136,14 +152,17 @@ export default function SlideVeil({ onReveal, onDone }) {
       /* ── what is left of the sheet ─────────────────────────────────
          a hair lighter towards its leading side, so it reads as something
          lifting off the page rather than as the page itself. */
-      const solid = edge + BAND;
-      if (solid < width) {
-        const x0 = Math.max(0, solid);
-        const grad = ctx.createLinearGradient(x0, 0, width, 0);
+      const solid = edge + dir * BAND;
+      const near = dir > 0 ? Math.max(0, solid) : 0;
+      const far = dir > 0 ? width : Math.min(width, solid);
+      if (far > near) {
+        /* the light end is always the one against the seam. */
+        const grad =
+          dir > 0 ? ctx.createLinearGradient(near, 0, width, 0) : ctx.createLinearGradient(far, 0, 0, 0);
         grad.addColorStop(0, '#0d0d10');
         grad.addColorStop(1, BG);
         ctx.fillStyle = grad;
-        ctx.fillRect(x0, 0, width - x0, height);
+        ctx.fillRect(near, 0, far - near, height);
       }
 
       /* ── the fray ─────────────────────────────────────────────────
@@ -152,12 +171,12 @@ export default function SlideVeil({ onReveal, onDone }) {
          from reading as television static: grains come away in small clumps,
          the way a solid thing actually breaks. */
       const wob = edge * 0.012;
-      const c0 = Math.max(0, Math.floor(edge / CELL_W));
-      const c1 = Math.min(cols, Math.ceil(solid / CELL_W));
+      const c0 = Math.max(0, Math.floor(Math.min(edge, solid) / CELL_W));
+      const c1 = Math.min(cols, Math.ceil(Math.max(edge, solid) / CELL_W));
       ctx.fillStyle = BG;
       for (let cx = c0; cx < c1; cx++) {
         const x = cx * CELL_W;
-        const base = (x - edge) / BAND;
+        const base = ((x - edge) * dir) / BAND;
         for (let cy = 0; cy < rows; cy++) {
           /* the seam is not a ruled line — it undulates down the screen, and
              the undulation travels with it. */
@@ -173,12 +192,14 @@ export default function SlideVeil({ onReveal, onDone }) {
          the one bright thing on screen, and the whole reason a sheet the exact
          colour of the page behind it is legible as a moving object at all. */
       if (edge > -60 && edge < width + 60) {
-        const glow = ctx.createLinearGradient(edge - 30, 0, edge + 90, 0);
+        const g0 = edge - 30 * dir;
+        const g1 = edge + 90 * dir;
+        const glow = ctx.createLinearGradient(g0, 0, g1, 0);
         glow.addColorStop(0, 'rgba(255, 77, 0, 0)');
         glow.addColorStop(0.25, 'rgba(255, 77, 0, 0.22)');
         glow.addColorStop(1, 'rgba(255, 77, 0, 0)');
         ctx.fillStyle = glow;
-        ctx.fillRect(edge - 30, 0, 120, height);
+        ctx.fillRect(Math.min(g0, g1), 0, 120, height);
 
         /* drawn per row with its own jitter and weight. one clean rect reads as
            a loading bar; a broken line reads as an edge under strain. */
@@ -196,11 +217,12 @@ export default function SlideVeil({ onReveal, onDone }) {
          seam's distance rather than integrated, so a grain's whole arc is fixed
          the moment the seam passes it — the trail can never smear or drift out
          of step with the edge that produced it. */
-      const t0 = Math.max(0, Math.floor((edge - TAIL) / CELL_W));
-      const t1 = Math.min(cols, Math.ceil(edge / CELL_W));
+      const spent = edge - dir * TAIL;
+      const t0 = Math.max(0, Math.floor(Math.min(edge, spent) / CELL_W));
+      const t1 = Math.min(cols, Math.ceil(Math.max(edge, spent) / CELL_W));
       for (let cx = t0; cx < t1; cx++) {
         const x = cx * CELL_W;
-        const d = edge - x;
+        const d = (edge - x) * dir;
         if (d < 0 || d > TAIL) continue;
         const a = (1 - d / TAIL) ** 1.7;
         /* thins out as it goes, so the trail ends by running out of grains
@@ -213,7 +235,7 @@ export default function SlideVeil({ onReveal, onDone }) {
           const h2 = hash(cx + 91, cy + 17);
           /* drifts back against the sheet's travel and accelerates downwards,
              which is the only part of this that has to look like gravity. */
-          const ox = -d * 0.07 * (0.4 + h2);
+          const ox = -d * 0.07 * (0.4 + h2) * dir;
           const oy = ((d * d) / (TAIL * 5)) * (0.35 + h * 1.3);
           ctx.globalAlpha = Math.min(1, a * (0.5 + h2 * 0.7));
           const ch =
@@ -234,7 +256,7 @@ export default function SlideVeil({ onReveal, onDone }) {
          negative. */
       if (!start) start = now;
       const t = Math.min(1, Math.max(0, (now - start) / DURATION));
-      draw(-BAND + ease(t) * travel());
+      draw(origin() + dir * ease(t) * span());
       if (t >= 1) {
         doneRef.current?.();
         return;
@@ -245,7 +267,7 @@ export default function SlideVeil({ onReveal, onDone }) {
     /* the sheet covers the screen on the first painted frame, so the page
        underneath can start arriving immediately — by the time the seam is over
        it, it is finished type rather than something fading in under a wipe. */
-    draw(-BAND);
+    draw(origin());
     revealRef.current?.();
     raf = requestAnimationFrame(frame);
 
@@ -263,5 +285,5 @@ export default function SlideVeil({ onReveal, onDone }) {
     };
   }, []);
 
-  return <div className="veil" ref={hostRef} aria-hidden="true" />;
+  return <div className="veil" data-dir={reverse ? 'left' : 'right'} ref={hostRef} aria-hidden="true" />;
 }
