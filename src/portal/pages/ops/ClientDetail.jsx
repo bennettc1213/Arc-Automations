@@ -19,6 +19,7 @@ import {
 } from '../../components/ops-ui';
 import ConnectionForm from '../../components/ConnectionForm';
 import ServicesPanel from '../../components/ServicesPanel';
+import ReportDialog from '../../components/ReportDialog';
 import {
   CONNECTION_KINDS,
   connectionLiveness,
@@ -118,6 +119,7 @@ function ClientBody({ client, base, reload }) {
      is set when it was opened by a connect button, so the form can say what to do
      in the tab that just opened. */
   const [editing, setEditing] = useState(null);
+  const [reporting, setReporting] = useState(false);
   const servicesRef = useRef(null);
 
   const openEditor = (connection, integration = null, connecting = false) => {
@@ -181,6 +183,11 @@ function ClientBody({ client, base, reload }) {
         </div>
 
         <div className="ops-head__actions">
+          <button type="button" className="ws-btn ws-btn--primary" onClick={() => setReporting(true)}>
+            <Icon name="reports" size={13} />
+            generate report
+          </button>
+
           {tenant.loginEmail && (
             <a
               className="ws-btn"
@@ -194,6 +201,8 @@ function ClientBody({ client, base, reload }) {
           )}
         </div>
       </div>
+
+      {reporting && <ReportDialog client={client} onClose={() => setReporting(false)} />}
 
       {!tenant.loginEmail && (
         <Notice tone="warn" title="this client cannot sign in yet">

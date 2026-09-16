@@ -7,6 +7,48 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-09-16
+
+### Added
+- **Client reports as a PDF, from the ops console.** Every row of the client
+  list (roster and clients page) has a **generate report** button, and so does
+  the header of each client page. It opens a report builder over the page:
+  - **period** -- last 7, 15, 30, 60 or 90 days, this month, last month, or a
+    custom range of up to 366 days, each compared with the same-length span
+    before it.
+  - **who it is for** -- *for the client*, where a service Arc pays for reads
+    "covered by arc" with no cost; or *internal*, which adds every cost, the
+    account on each service, whether each connection is still sending, and
+    the monitoring workflows.
+  - **what goes in it** -- lead volume, response speed, where leads came from,
+    when they arrived, who the work went to, automations, reliability and
+    incidents, services and subscriptions, a lead log (off by default: it
+    carries customer names and numbers) and a how-to-read page. The cover,
+    headline figures and a written summary are always included.
+  - a "prepared for" name and a note from Arc, both printed on the report.
+  - a live preview that redraws as the choices change, **download pdf**, and
+    **open to print**.
+- **The summary is written from the report's own figures**: leads and the
+  change, median and 9-in-10 reply time, share answered inside a minute,
+  missed calls answered, the after-hours share, customer replies, failed sends
+  and the usual reason, the end-to-end check pass rate, incidents, failing
+  automations, and any subscription that is past due, cancelled while still
+  connected, or renewing within 7 days.
+- Every figure runs through `statsForRange` and the `derive.js` readouts, so a
+  report's "last 30 days" prints the same numbers as the roster and the
+  client's own dashboard. The events are read fresh from Supabase for the
+  chosen window (`lib/report-data.js`) rather than taken from the roster's
+  61 days, so August or the last quarter can be reported on.
+- `jspdf` dependency, loaded only when the report builder opens. The PDF embeds
+  Latin subsets of Space Grotesk and IBM Plex Mono, renamed "Arc Report Sans"
+  and "Arc Report Mono" as the Open Font License requires of a modified copy;
+  both licences sit beside the files in `src/portal/report-fonts/`.
+
+### Changed
+- `derive.js` exports `comparison` and a new `windowCovered` (previously inline
+  in `computeDeltas`), so a report's period comparison is held back under the
+  same coverage rule as the dashboard's.
+
 ## [1.12.1] - 2026-09-16
 
 ### Fixed

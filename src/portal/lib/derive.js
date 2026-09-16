@@ -369,7 +369,9 @@ function pctChange(current, previous) {
   return ((current - previous) / previous) * 100;
 }
 
-function comparison(current, previous, comparable) {
+/* exported for the ops report, which compares whatever period it is asked for
+   rather than a fixed thirty days. same arrows, same colours, same refusal. */
+export function comparison(current, previous, comparable) {
   return (key, lowerIsBetter = false) => {
     const pct = comparable ? pctChange(current[key], previous[key]) : null;
     return {
@@ -386,21 +388,24 @@ function comparison(current, previous, comparable) {
   };
 }
 
+/* two conditions, both required, for any comparison: the tenant has to have existed for
+   the whole earlier period, and the fetched window has to actually reach back into it. */
+export function windowCovered(events, tenant, from) {
+  const earliestIso = events.reduce(
+    (min, e) => (min === null || e.occurredAt < min ? e.occurredAt : min),
+    null,
+  );
+  return Boolean(
+    utc(tenant.createdAt) <= from && earliestIso !== null && utc(earliestIso) <= from.plus({ days: 1 }),
+  );
+}
+
 export function computeDeltas(events, tenant, timezone, now, days = 30) {
   const end = now.plus({ seconds: 1 });
   const currentFrom = now.minus({ days });
   const previousFrom = now.minus({ days: days * 2 });
 
-  /* two conditions, both required, for any comparison: the tenant has to have existed for
-     the whole earlier period, and the fetched window has to actually reach back into it. */
-  const earliestIso = events.reduce(
-    (min, e) => (min === null || e.occurredAt < min ? e.occurredAt : min),
-    null,
-  );
-  const covers = (from) =>
-    Boolean(
-      utc(tenant.createdAt) <= from && earliestIso !== null && utc(earliestIso) <= from.plus({ days: 1 }),
-    );
+  const covers = (from) => windowCovered(events, tenant, from);
 
   const rollingComparable = covers(previousFrom);
   const rolling = comparison(
