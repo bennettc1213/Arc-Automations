@@ -1,5 +1,5 @@
 import { getSupabase } from './supabase';
-import { EVENT_COLUMNS, toEvent } from './event-row';
+import { readEvents, toEvent } from './event-row';
 
 /* the read behind a report.
  *
@@ -46,14 +46,16 @@ export async function fetchReportWindow(tenantId, since, until) {
       );
     }
 
-    const { data, error } = await supabase
-      .from('events')
-      .select(EVENT_COLUMNS)
-      .eq('tenant_id', tenantId)
-      .gte('occurred_at', sinceIso)
-      .lt('occurred_at', untilIso)
-      .order('occurred_at', { ascending: false })
-      .range(from, from + PAGE_SIZE - 1);
+    const { data, error } = await readEvents((columns) =>
+      supabase
+        .from('events')
+        .select(columns)
+        .eq('tenant_id', tenantId)
+        .gte('occurred_at', sinceIso)
+        .lt('occurred_at', untilIso)
+        .order('occurred_at', { ascending: false })
+        .range(from, from + PAGE_SIZE - 1),
+    );
 
     if (error) throw new Error(`event read: ${error.message}`);
 

@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon';
 import { getSupabase } from './supabase';
 import { buildDashboardData } from './dashboard-data';
-import { EVENT_COLUMNS, EVENT_COLUMNS_BASE, toEvent } from './event-row';
+import { isMissingColumn, readEvents, toEvent } from './event-row';
 
 /* days of history fetched. sixty-one rather than thirty-one so the portal can compare the
    last thirty days against the thirty before them — a lead count with no "up or down from
@@ -19,16 +19,8 @@ const PAGE_SIZE = 1000;
    a bigger fetch, and should not silently hang here. */
 const MAX_EVENTS = 80_000;
 
-/* the lifecycle columns (0009) and the tenant's module list are migration-gated. a
-   deployment running the new bundle against the old schema must degrade to the pipeline it
-   already had rather than showing an error page: postgrest answers an unknown column with
-   a 42703, and that is a recoverable condition, not a broken dashboard. */
-function isMissingColumn(error) {
-  return (
-    error?.code === '42703' ||
-    /column .* does not exist|could not find the .* column/i.test(error?.message ?? '')
-  );
-}
+/* the tenant's module list is migration-gated the same way the event columns are, and
+   degrades the same way — see readEvents()/isMissingColumn() in event-row.js. */
 
 function toAlert(row) {
   return {
@@ -64,20 +56,11 @@ const TENANT_COLUMNS_BASE = 'id, name, slug, timezone, status, created_at';
 
 async function fetchEventWindow(fetchPage, label) {
   const events = [];
-  let columns = EVENT_COLUMNS;
 
   for (let from = 0; from < MAX_EVENTS; from += PAGE_SIZE) {
-    let { data, error } = await fetchPage(columns, from, from + PAGE_SIZE - 1);
-
-    /* only worth retrying on the first page: if the column set were wrong it would have
-       failed there, and a mid-fetch failure is a real error. */
-    if (error && from === 0 && columns === EVENT_COLUMNS && isMissingColumn(error)) {
-      console.warn(
-        'event read: lifecycle columns are missing — apply migration 0009. falling back to the base column set.',
-      );
-      columns = EVENT_COLUMNS_BASE;
-      ({ data, error } = await fetchPage(columns, from, from + PAGE_SIZE - 1));
-    }
+    const { data, error } = await readEvents((columns) =>
+      fetchPage(columns, from, from + PAGE_SIZE - 1),
+    );
 
     if (error) throw new Error(`${label}: ${error.message}`);
 

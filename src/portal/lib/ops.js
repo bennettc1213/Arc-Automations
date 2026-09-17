@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon';
 import { getSupabase, isConfigured, functionUrl, anonKey } from './supabase';
 import { buildDashboardData } from './dashboard-data';
-import { EVENT_COLUMNS, toEvent } from './event-row';
+import { readEvents, toEvent } from './event-row';
 import { generateIngestToken, sha256Hex, generateClientId } from './client-id';
 import { formatSpan } from './format';
 import { loadBuilds, withBuilds } from './builds';
@@ -163,14 +163,16 @@ async function fetchAllEvents(supabase, since) {
   const events = [];
 
   for (let from = 0; from < MAX_EVENTS; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from('events')
-      /* tenant_id is already in EVENT_COLUMNS, which is what makes one pass over
-         the whole book possible instead of one query per client. */
-      .select(EVENT_COLUMNS)
-      .gte('occurred_at', since)
-      .order('occurred_at', { ascending: false })
-      .range(from, from + PAGE_SIZE - 1);
+    const { data, error } = await readEvents((columns) =>
+      supabase
+        .from('events')
+        /* tenant_id is already in the column set, which is what makes one pass over
+           the whole book possible instead of one query per client. */
+        .select(columns)
+        .gte('occurred_at', since)
+        .order('occurred_at', { ascending: false })
+        .range(from, from + PAGE_SIZE - 1),
+    );
 
     if (error) throw new Error(`event read: ${error.message}`);
 

@@ -17,6 +17,47 @@ export const EVENT_COLUMNS_BASE =
 
 export const EVENT_COLUMNS = `${EVENT_COLUMNS_BASE}, entity_type, entity_id, source_system, external_id, actor, error_class`;
 
+/* ── the pre-0009 fallback ─────────────────────────────────
+ *
+ * three separate paths read events — the client dashboard, the ops roster and the pdf
+ * report — and all three ask for the lifecycle columns. a bundle deployed ahead of the
+ * migration must not take any of them down: postgrest answers an unknown column with a
+ * 42703, which is a recoverable condition, not a broken page.
+ *
+ * the answer is cached at module scope rather than retried per request. without that, a
+ * paged read of eighty thousand events against an un-migrated database would make a failing
+ * round trip for every one of its eighty pages. one probe, then every later read in the
+ * session asks for what the database actually has.
+ */
+let columnsKnownMissing = false;
+
+export function eventColumns() {
+  return columnsKnownMissing ? EVENT_COLUMNS_BASE : EVENT_COLUMNS;
+}
+
+export function isMissingColumn(error) {
+  return (
+    error?.code === '42703' ||
+    /column .* does not exist|could not find the .* column/i.test(error?.message ?? '')
+  );
+}
+
+/* runs a paged read and, the first time the lifecycle columns turn out not to exist,
+   remembers it and retries that one request against the base column set. */
+export async function readEvents(run) {
+  let { data, error } = await run(eventColumns());
+
+  if (error && !columnsKnownMissing && isMissingColumn(error)) {
+    console.warn(
+      'events: lifecycle columns are missing — apply migration 0009. falling back to the base column set for the rest of this session.',
+    );
+    columnsKnownMissing = true;
+    ({ data, error } = await run(EVENT_COLUMNS_BASE));
+  }
+
+  return { data, error };
+}
+
 export function toEvent(row) {
   return {
     id: row.id,
