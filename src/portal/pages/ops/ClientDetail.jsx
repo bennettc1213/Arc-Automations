@@ -21,6 +21,7 @@ import {
 } from '../../components/ops-ui';
 import ConnectionForm from '../../components/ConnectionForm';
 import ServicesPanel from '../../components/ServicesPanel';
+import BuildPanel from '../../components/BuildPanel';
 import ReportDialog from '../../components/ReportDialog';
 import {
   CONNECTION_KINDS,
@@ -50,9 +51,10 @@ import {
 /**
  * one client, all the way down.
  *
- * four questions, in the order they get asked: can they get in, what are their
- * numbers doing, what are they wired to, and is any of it still sending. the page
- * is laid out in that order and nothing else is on it.
+ * five questions, in the order they get asked: can they get in, how far along is
+ * what they bought, what are their numbers doing, what are they wired to, and is
+ * any of it still sending. the page is laid out in that order and nothing else is
+ * on it.
  *
  * the numbers are the client's own dashboard object, not a summary of it — the
  * same `data` their sign-in renders. so "how is this client doing" is answered
@@ -104,7 +106,7 @@ function seedForm(tenant) {
  * and it is one line rather than an effect that re-seeds on some changes and not
  * others.
  */
-export default function ClientDetail({ allClients, base, reload, probe, runProbe }) {
+export default function ClientDetail({ allClients, base, reload, reloadBuilds, probe, runProbe }) {
   const { tenantId } = useParams();
   const client = allClients.find((entry) => entry.tenant.id === tenantId);
 
@@ -126,13 +128,14 @@ export default function ClientDetail({ allClients, base, reload, probe, runProbe
       client={client}
       base={base}
       reload={reload}
+      reloadBuilds={reloadBuilds ?? reload}
       probe={probe}
       runProbe={runProbe}
     />
   );
 }
 
-function ClientBody({ client, base, reload, probe, runProbe }) {
+function ClientBody({ client, base, reload, reloadBuilds, probe, runProbe }) {
   const { tenant, data } = client;
   const archived = tenant.status === 'archived';
   /* what the deboard just did, kept here rather than in the panel that did it:
@@ -375,6 +378,10 @@ function ClientBody({ client, base, reload, probe, runProbe }) {
           </p>
         </Notice>
       )}
+
+      {/* ── what we're building ─────────────────────────────── */}
+
+      <BuildPanel client={client} reloadBuilds={reloadBuilds} readOnly={archived} />
 
       <div className="ws-stats">
         <StatCard

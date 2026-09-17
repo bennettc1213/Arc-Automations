@@ -30,7 +30,6 @@ export const site = {
       { word: 'workflows.', hold: 3400 },
     ],
     sub: 'production automation for hvac, plumbing, roofing & restoration crews — built on n8n, claude code, and gohighlevel. leads answered in seconds, not voicemail.',
-    location: 'northern utah',
   },
 
   marqueeA: [
@@ -356,5 +355,5 @@ export const site = {
     cta: 'start a pilot',
   },
 
-  ticker: ['arc automations', 'northern utah', 'open for pilot builds', 'speed-to-lead < 60s', 'built by hand, not a template'],
+  ticker: ['arc automations', 'open for pilot builds', 'speed-to-lead < 60s', 'built by hand, not a template'],
 };

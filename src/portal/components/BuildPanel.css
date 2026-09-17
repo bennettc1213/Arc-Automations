@@ -1,0 +1,550 @@
+/* ── what we're building ─────────────────────────
+   the service picker and the per-client build checklists (BuildPanel.jsx).
+
+   progress here is not system health, so none of it is orange (orange is
+   interactive only) and only a finished checklist is green. the bar is drawn
+   in the text colour; a delivered build's bar turns --ok beside its pill. */
+
+/* ── the picker ──────────────────────────────── */
+
+.bld-pick {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.bld-pick__card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 8px;
+  padding: 14px;
+  background: var(--surface);
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  transition: background 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out);
+}
+
+.bld-pick__card:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.bld-pick__card:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* picked is an interactive state, so it is the accent — on the edge, the same
+   way a connected service card is marked on its edge in green. */
+.bld-pick__card--on {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.bld-pick__card--taken {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.bld-pick__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.bld-pick__box {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--bg);
+}
+
+.bld-pick__card--on .bld-pick__box {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.bld-pick__card--taken .bld-pick__box {
+  color: var(--muted);
+}
+
+.bld-pick__name {
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.bld-pick__flag {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.bld-pick__brief {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.bld-pick__meta {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  line-height: 1.5;
+  color: var(--faint);
+}
+
+/* ── the panel ───────────────────────────────── */
+
+.bld-add {
+  display: grid;
+  gap: 14px;
+  padding: var(--panel-pad);
+  border-bottom: 1px solid var(--line);
+}
+
+.bld-add__lead {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 88ch;
+}
+
+.bld-list {
+  display: grid;
+}
+
+.bld {
+  border-bottom: 1px solid var(--line);
+}
+
+.bld__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 14px var(--panel-pad);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.bld__head::-webkit-details-marker {
+  display: none;
+}
+.bld__head::marker {
+  content: '';
+}
+
+.bld__head:hover {
+  background: var(--bg-2);
+}
+
+.bld__chev {
+  flex: none;
+  color: var(--faint);
+  transition: transform 0.2s var(--ease-out), color 0.2s var(--ease-out);
+}
+
+.bld[open] .bld__chev {
+  transform: rotate(90deg);
+  color: var(--text);
+}
+
+.bld__title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.bld__name {
+  font-size: 14.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.bld__tag {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.bld__status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.bld__bar {
+  position: relative;
+  width: 96px;
+  height: 4px;
+  background: var(--line-strong);
+  overflow: hidden;
+}
+
+.bld__bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--text);
+  transition: width 0.35s var(--ease-out);
+}
+
+.bld--delivered .bld__bar > span {
+  background: var(--ok);
+}
+
+.bld__count {
+  min-width: 42px;
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.bld__body {
+  border-top: 1px solid var(--line);
+}
+
+.bld__phases {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.bld-phase {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  padding: 14px var(--panel-pad) 16px;
+}
+
+.bld-phase + .bld-phase {
+  border-left: 1px solid var(--line);
+}
+
+.bld-phase__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding-bottom: 10px;
+}
+
+.bld-phase__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.bld-phase__note {
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.bld-phase__count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.bld-phase__empty {
+  font-size: 12.5px;
+  color: var(--faint);
+  padding: 6px 0 10px;
+}
+
+.bld-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.bld-step {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.bld-step--warn {
+  box-shadow: inset 2px 0 0 var(--warn);
+  padding-left: 10px;
+}
+
+.bld-step__main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.bld-step__main input {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.bld-step__main input:disabled {
+  cursor: default;
+}
+
+.bld-step__text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.bld-step__label {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.bld-step--done .bld-step__label {
+  color: var(--muted);
+}
+
+.bld-step__custom {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.bld-step__detail {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--faint);
+}
+
+.bld-step__proof {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+}
+
+.bld-step__proof i {
+  flex: none;
+  font-style: normal;
+  font-size: 8px;
+}
+
+.bld-step__proof--ok {
+  color: var(--ok);
+}
+.bld-step__proof--warn {
+  color: var(--warn);
+}
+.bld-step__proof--idle {
+  color: var(--faint);
+}
+
+.bld-step__side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding-top: 1px;
+}
+
+.bld-step__when {
+  font-size: 10.5px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* out of the way until the row is hovered or the button is focused: removing a
+   step is occasional, and eleven × buttons down a list read as eleven reasons
+   to worry. */
+.bld-step__remove {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--faint);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s var(--ease-out), color 0.15s var(--ease-out), border-color 0.15s var(--ease-out);
+}
+
+.bld-step:hover .bld-step__remove,
+.bld-step__remove:focus-visible {
+  opacity: 1;
+}
+
+.bld-step__remove:hover,
+.bld-step__remove:focus-visible {
+  color: var(--fail);
+  border-color: var(--line-strong);
+}
+
+@media (hover: none) {
+  .bld-step__remove {
+    opacity: 1;
+  }
+}
+
+.bld-addstep {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.bld-addstep .ops-input {
+  flex: 1 1 200px;
+  width: auto;
+  padding: 7px 10px;
+  font-size: 12.5px;
+}
+
+.bld__foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  padding: 12px var(--panel-pad);
+  border-top: 1px solid var(--line);
+  background: var(--bg-2);
+}
+
+.bld__needs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
+.bld__needs-label {
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.bld__need {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--muted);
+}
+
+.bld__need i {
+  font-style: normal;
+  font-size: 8px;
+}
+
+.bld__need--ok i {
+  color: var(--ok);
+}
+.bld__need--idle i {
+  color: var(--faint);
+}
+
+.bld__since {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.bld-note {
+  padding: 0 var(--panel-pad) var(--panel-pad);
+}
+
+.bld-inline-warn {
+  color: var(--warn);
+  font-size: 9px;
+}
+
+/* the build line under a client's account pill in the roster. */
+.bld-cell {
+  display: block;
+  margin-top: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* the summary on "add a client" once the account is saved. */
+.bld-created {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.bld-created li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.bld-created li .mono {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+@media (max-width: 720px) {
+  .bld-phase + .bld-phase {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .bld__bar {
+    width: 64px;
+  }
+
+  .bld__since {
+    margin-left: 0;
+  }
+}

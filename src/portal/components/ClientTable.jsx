@@ -5,6 +5,8 @@ import ReportDialog from './ReportDialog';
 import { Empty } from './ui';
 import { Help, PipelinePill, TenantStatus } from './ops-ui';
 import { formatCount, formatDuration, formatRelative } from '../lib/format';
+import { buildsSummary } from '../lib/builds';
+import './BuildPanel.css';
 
 /**
  * the roster, as a table.
@@ -83,7 +85,8 @@ export default function ClientTable({ clients, base, dense = false, emptyTitle, 
                 account
                 <Help>
                   what you set on the client: onboarding, active or paused. it is a label you
-                  choose — it does not check anything.
+                  choose — it does not check anything. the line under it is the build: steps
+                  ticked across every service they bought.
                 </Help>
               </th>
               <th>
@@ -116,6 +119,7 @@ export default function ClientTable({ clients, base, dense = false, emptyTitle, 
               const { tenant, data } = client;
               const attention = attentionFor(client);
               const live = client.connections.filter((c) => c.status === 'connected').length;
+              const build = buildsSummary(client.builds);
 
               return (
                 <tr
@@ -134,6 +138,15 @@ export default function ClientTable({ clients, base, dense = false, emptyTitle, 
 
                   <td className="ws-td--source">
                     <TenantStatus status={tenant.status} />
+                    {build && (
+                      <span className="bld-cell">
+                        {build.services === 0
+                          ? 'no services'
+                          : build.delivered === build.services
+                            ? `${build.services} delivered`
+                            : `build ${build.done}/${build.steps}`}
+                      </span>
+                    )}
                   </td>
 
                   <td className="ws-td--loss">

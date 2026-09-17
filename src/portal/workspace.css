@@ -1293,6 +1293,10 @@ td.ws-table__sub {
   margin-top: 0;
 }
 
+td.ws-table__strong {
+  display: table-cell;
+}
+
 .ws-table__wide {
   min-width: 190px;
   max-width: 360px;
@@ -2031,5 +2035,666 @@ td.ws-table__sub {
   .ws__scrim,
   .ws-table__chev .ws-icon {
     transition: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   the revenue lifecycle modules
+
+   nothing below introduces a colour, a radius or a type scale the workspace did
+   not already have. the modules are more of this product, not a second one, and
+   the fastest way to make them read as bolted on would be a new palette.
+
+   one rule governs the whole section: the honest states get the same design
+   effort as the good ones. "not connected yet" and "we cannot attribute this"
+   are drawn deliberately rather than left as grey afterthoughts, because they
+   are the states that make the confident numbers believable.
+   ══════════════════════════════════════════════════════════ */
+
+/* a second, quieter row of figures under the headline four. smaller minimum so
+   four secondary cards stay on one line where the headline row wraps to two. */
+.ws-stats--four {
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+}
+
+.ws-stats--four .ws-stat {
+  min-height: 118px;
+}
+
+/* the reason a figure is absent, in the slot the figure would have used. it is
+   set in the sub line's size rather than the value's: a sentence at 2.4rem is a
+   headline, and "not connected yet" is not a headline. */
+.ws-stat__unavail {
+  color: var(--faint);
+  font-style: italic;
+}
+
+.ws-withheld {
+  color: var(--warn);
+  font-style: normal;
+}
+
+.ws-coverage {
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* ── data freshness ──────────────────────────── */
+
+/* printed under a module's stat row rather than in the top bar, because it is
+   about the records on this page rather than about the session. a dashboard with
+   no freshness stamp is implicitly claiming to be live. */
+.ws-fresh {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: -6px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+
+.ws-fresh .ws-icon {
+  color: var(--line-strong);
+  flex: none;
+}
+
+/* ── rule checks ─────────────────────────────── */
+
+.ws-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.ws-rule {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 13px var(--panel-pad);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.ws-rule > .ws-pill {
+  flex: none;
+  margin-top: 1px;
+  min-width: 108px;
+  justify-content: center;
+}
+
+.ws-rule__text {
+  flex: 1 1 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-rule__text b {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.ws-rule__text em {
+  font-style: normal;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--faint);
+}
+
+.ws-rule__link {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  border-bottom: 1px solid var(--line-strong);
+  align-self: center;
+}
+
+.ws-rule__link:hover {
+  border-color: var(--accent);
+}
+
+/* a breached rule is marked on its left edge as well as by its pill, so the row
+   is findable by scanning down the list rather than by reading every pill. */
+.ws-rule.is-breached {
+  box-shadow: inset 2px 0 0 var(--fail);
+}
+
+/* ── the needs-attention queue ───────────────── */
+
+.ws-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.ws-queue__item {
+  background: var(--surface);
+  padding: 13px var(--panel-pad);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* only urgent carries the failure colour. a queue where every row is red is a
+   queue nobody triages, so high gets the warning edge and normal gets none —
+   the list stays scannable by severity rather than uniformly alarming. */
+.ws-queue__item.is-urgent {
+  box-shadow: inset 2px 0 0 var(--fail);
+}
+
+.ws-queue__item.is-high {
+  box-shadow: inset 2px 0 0 var(--warn);
+}
+
+.ws-queue__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ws-queue__head .ws-pill {
+  min-width: 74px;
+  justify-content: center;
+}
+
+.ws-queue__who {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ws-queue__module {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  padding: 2px 6px;
+}
+
+.ws-queue__reason {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+/* a customer's own words are the most useful thing in the row and the most
+   variable in length. two lines, then an ellipsis — the record itself is one
+   click away. */
+.ws-queue__reason em {
+  font-style: normal;
+  color: var(--faint);
+  margin-top: 3px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ws-queue__meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.ws-queue__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ws-queue__meta .is-overdue {
+  color: var(--fail);
+}
+
+.ws-queue__state {
+  color: var(--muted);
+}
+
+.ws-queue__link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+}
+
+.ws-queue__counts {
+  display: inline-flex;
+  gap: 12px;
+}
+
+.ws-queue__counts b {
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.ws-queue__counts .is-urgent {
+  color: var(--fail);
+}
+
+.ws-queue__counts .is-high {
+  color: var(--warn);
+}
+
+/* ── the lifecycle strip ─────────────────────── */
+
+.ws-life {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.ws-life__stage {
+  background: var(--surface);
+  min-width: 0;
+}
+
+.ws-life__in {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 16px 14px;
+  height: 100%;
+  position: relative;
+}
+
+a.ws-life__in:hover {
+  background: var(--bg-2);
+}
+
+a.ws-life__in:hover .ws-life__value {
+  color: var(--accent);
+}
+
+/* the chevron between stages is drawn rather than typed, so it never lands in
+   the tab order or gets read out as content. */
+.ws-life__stage + .ws-life__stage .ws-life__in::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-top: 1px solid var(--line-strong);
+  border-right: 1px solid var(--line-strong);
+  rotate: 45deg;
+  translate: -50% -50%;
+  background: var(--surface);
+}
+
+.ws-life__value {
+  font-family: var(--font-mono);
+  font-size: clamp(1.3rem, 2vw, 1.75rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text);
+}
+
+.ws-life__label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+}
+
+.ws-life__note {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--faint);
+  margin-top: auto;
+}
+
+/* a stage whose module is not connected is drawn as unknown rather than as
+   empty: the dash is faint, and the note carries the reason. the hatch is the
+   same one the empty state uses, so "nothing here yet" looks the same wherever
+   it appears in the product. */
+.ws-life__stage.is-awaiting,
+.ws-life__stage.is-unavailable {
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 14px, rgba(237, 237, 239, 0.018) 14px 15px),
+    var(--surface);
+}
+
+.ws-life__stage.is-awaiting .ws-life__value,
+.ws-life__stage.is-unavailable .ws-life__value {
+  color: var(--line-strong);
+}
+
+/* ── module health ───────────────────────────── */
+
+.ws-health {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.ws-health__row {
+  background: var(--surface);
+  padding: 15px var(--panel-pad);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.ws-health__row.is-failing {
+  box-shadow: inset 2px 0 0 var(--fail);
+}
+
+.ws-health__row.is-degraded,
+.ws-health__row.is-quiet {
+  box-shadow: inset 2px 0 0 var(--warn);
+}
+
+/* unverified gets an edge too, in the neutral line colour. it is not a failure,
+   but it is the state a person is meant to do something about, and a state with
+   no marking at all reads as "fine". */
+.ws-health__row.is-unverified {
+  box-shadow: inset 2px 0 0 var(--line-strong);
+}
+
+.ws-health__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.ws-health__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.ws-health__summary {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.ws-health__checks {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.ws-health__checks li {
+  display: grid;
+  grid-template-columns: 12px minmax(74px, auto) minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.ws-health__checks i {
+  font-style: normal;
+  font-size: 8px;
+  color: var(--faint);
+}
+
+.ws-health__checks .is-ok i {
+  color: var(--ok);
+}
+
+.ws-health__checks .is-warn i {
+  color: var(--warn);
+}
+
+.ws-health__checks .is-fail i {
+  color: var(--fail);
+}
+
+.ws-health__checks b {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.ws-health__checks span {
+  color: var(--muted);
+  min-width: 0;
+}
+
+.ws-health__foot {
+  margin-top: auto;
+  padding-top: 4px;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+/* ── module record tables ────────────────────── */
+
+/* a row holding something that needs a person. marked on the edge rather than by
+   tinting the whole row: a table where six rows are washed in red is harder to
+   read than one with six marks down its left side. */
+.ws-table__row--attention td:first-child {
+  box-shadow: inset 2px 0 0 var(--warn);
+}
+
+.ws-rtable .ws-table__strong {
+  display: block;
+}
+
+.ws-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 44ch;
+}
+
+.ws-log__row {
+  cursor: pointer;
+}
+
+.ws-log__row:hover td {
+  background: var(--bg-2);
+}
+
+.ws-detail__quote {
+  margin-top: 14px;
+  padding-left: 14px;
+  border-left: 2px solid var(--line-strong);
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text);
+  max-width: 72ch;
+}
+
+.ws-detail__next {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.ws-detail__next b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* a drafted response, shown as the draft it is rather than as published copy.
+   the dashed edge is the product's standing signal for "nothing real is here
+   yet", and a reply nobody has approved is exactly that. */
+.ws-draft {
+  margin-top: 14px;
+  border: 1px dashed var(--line-strong);
+  padding: 14px;
+  max-width: 76ch;
+}
+
+.ws-draft p:nth-child(2) {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text);
+  margin-top: 8px;
+}
+
+.ws-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  counter-reset: step;
+}
+
+.ws-steps li {
+  position: relative;
+  padding-left: 26px;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.ws-steps li::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+}
+
+.ws-steps b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* an explanatory panel sitting under the thing it explains. quieter than the
+   panels carrying data, so it never competes with them for the first read. */
+.ws-panel--quiet {
+  background: var(--bg-2);
+}
+
+.ws-linkbtn {
+  color: var(--accent);
+  border-bottom: 1px solid var(--line-strong);
+  font: inherit;
+}
+
+.ws-linkbtn:hover {
+  border-color: var(--accent);
+}
+
+/* ── narrow screens ──────────────────────────── */
+
+@media (max-width: 1180px) {
+  /* six stages across a tablet gives each one about ninety pixels, which is not
+     enough for a label and a number. two rows of three keeps both readable. */
+  .ws-life {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .ws-life__stage:nth-child(4) .ws-life__in::before {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .ws-life {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ws-life__stage:nth-child(odd) .ws-life__in::before {
+    display: none;
+  }
+
+  .ws-life__in {
+    padding: 13px 12px;
+  }
+
+  .ws-rule > .ws-pill {
+    min-width: 0;
+  }
+
+  .ws-queue__link {
+    margin-left: 0;
+  }
+
+  /* the generic record tables restack into labelled cards. unlike the leads
+     table — whose seven columns are hand-placed into a grid — these are driven
+     by configuration, so the layout has to work for any column list: the first
+     column is the card's headline, and every other value carries the column
+     header it lost. */
+  .ws-rtable .ws-table__row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 12px;
+    row-gap: 8px;
+    padding: 14px;
+    position: relative;
+  }
+
+  .ws-rtable .ws-table__row td {
+    padding: 0;
+    border-bottom: none;
+    min-width: 0;
+  }
+
+  .ws-rtd--lead {
+    grid-column: 1 / -1;
+    padding-right: 30px !important;
+    font-size: 13.5px;
+  }
+
+  .ws-rtable .ws-table__row td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    color: var(--faint);
+    margin-bottom: 3px;
+  }
+
+  /* a wide column — a review's text, a next action — gets the full width back
+     rather than being squeezed into half of a phone. */
+  .ws-rtable .ws-table__row td.ws-table__wide {
+    grid-column: 1 / -1;
+  }
+
+  .ws-rtable .ws-table__num {
+    text-align: left !important;
+  }
+
+  .ws-clamp {
+    max-width: none;
+  }
+
+  .ws-health__checks li {
+    grid-template-columns: 12px minmax(0, 1fr);
+  }
+
+  .ws-health__checks b {
+    display: none;
   }
 }

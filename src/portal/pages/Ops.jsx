@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import ArcMark from '../../components/ArcMark';
 import OpsWorkspace from '../components/OpsWorkspace';
 import { getOpsSession, loadRoster } from '../lib/ops';
+import { loadBuilds, withBuilds } from '../lib/builds';
 import { getSupabase } from '../lib/supabase';
 import { site } from '../../data/site';
 import '../ops.css';
@@ -110,6 +111,20 @@ export default function Ops() {
     setState((prev) => (prev.kind === 'ready' ? { ...prev, roster } : prev));
   }, []);
 
+  /* the build checklists only. ticking a box is a write too, but re-reading sixty
+     days of every client's events for it would make a checklist something you
+     wait on between clicks — so it re-reads the two small tables instead, and the
+     roster, the client page and the clients list still read the one object.
+     boxes get ticked faster than reads come back, so only the newest read is
+     applied: an older one landing late would untick what a newer one saw done. */
+  const buildsRead = useRef(0);
+  const reloadBuilds = useCallback(async () => {
+    const read = ++buildsRead.current;
+    const builds = await loadBuilds();
+    if (read !== buildsRead.current) return;
+    setState((prev) => (prev.kind === 'ready' ? { ...prev, roster: withBuilds(prev.roster, builds) } : prev));
+  }, []);
+
   if (state.kind === 'ready') {
     return (
       <OpsWorkspace
@@ -117,6 +132,7 @@ export default function Ops() {
         email={state.email}
         onSignOut={signOut}
         onReload={reload}
+        onReloadBuilds={reloadBuilds}
       />
     );
   }

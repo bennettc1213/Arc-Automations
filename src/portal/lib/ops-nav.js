@@ -85,7 +85,7 @@ export const OPS_NAV_GROUPS = [
         icon: 'plus',
         label: 'add a client',
         title: 'add a client',
-        blurb: 'name them, generate an id, wire them up',
+        blurb: 'name them, choose what they bought, generate an id, wire them up',
       },
       {
         to: 'identity',

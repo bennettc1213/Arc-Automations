@@ -1,0 +1,168 @@
+/* what a client actually has, and how to say so when they do not have it.
+ *
+ * the rule this file exists to enforce: a module that is not wired up must never render as
+ * a page full of zeros. zero is a fact about a working pipeline — "nobody called yesterday"
+ * — and printing it for a pipeline that was never connected is the most expensive kind of
+ * quiet wrongness this portal can produce, because it is indistinguishable from the truth
+ * until somebody asks.
+ *
+ * so availability is a three-way answer, decided from two independent sources:
+ *
+ *   declared   the tenant's `modules` list, set by an operator when the work is sold.
+ *   observed   at least one real event of that module's types in the fetched window.
+ *
+ *   declared + observed    → live          render the numbers
+ *   declared + none        → awaiting      render the page, say it is not connected yet
+ *   none     + observed    → live          observation always wins; never hide real data
+ *   none     + none        → unavailable   the page does not exist for this client
+ *
+ * observation beating declaration is deliberate. a missing declaration is an operator
+ * oversight, and an oversight must not be able to hide a client's own data from them.
+ */
+
+import { MODULE_EVENT_TYPES, MODULES, moduleForEvent } from './types.js';
+import { utc } from './metrics.js';
+
+/* per-module presentation and the one number that is a judgement rather than a count: how
+   long a module may go silent before the portal says so. these differ by an order of
+   magnitude between modules and a single flat threshold would be wrong for all of them —
+   lead capture going quiet for two days is an outage, warranty registration going quiet for
+   two days is a tuesday. */
+export const MODULE_META = {
+  lead_capture: {
+    key: 'lead_capture',
+    label: 'lead capture',
+    nav: 'lead capture',
+    icon: 'leads',
+    blurb: 'every opportunity that came in, and how fast it was answered',
+    entity: 'lead',
+    /* the pipeline fires on customer behaviour, several times a day for a working shop. */
+    quietAfterHours: 48,
+    awaiting:
+      'lead capture is being wired up. nothing has come through it yet — the first call or form will appear here within seconds of it happening.',
+  },
+  estimates: {
+    key: 'estimates',
+    label: 'estimate recovery',
+    nav: 'estimates',
+    icon: 'reports',
+    blurb: 'open quotes waiting on a decision, and what came back',
+    entity: 'estimate',
+    /* follow-up sequences are scheduled daily, so three days of silence is a stopped
+       scheduler rather than a slow week. */
+    quietAfterHours: 72,
+    awaiting:
+      'estimate recovery is being wired up. once your estimates are syncing, every open quote and the follow-up against it will show here.',
+  },
+  reviews: {
+    key: 'reviews',
+    label: 'reviews & recovery',
+    nav: 'reviews',
+    icon: 'reliability',
+    blurb: 'review requests, what came back, and the cases that need a person',
+    entity: 'job',
+    quietAfterHours: 120,
+    awaiting:
+      'review requests are being wired up. once completed jobs are syncing, every request and the review it earned will show here.',
+  },
+  memberships: {
+    key: 'memberships',
+    label: 'memberships',
+    nav: 'memberships',
+    icon: 'account',
+    blurb: 'renewals, failed payments and the visits still owed',
+    entity: 'membership',
+    /* a membership book is checked daily but only speaks when something changes, so it is
+       allowed a genuinely quiet week. */
+    quietAfterHours: 168,
+    awaiting:
+      'memberships are being wired up. once your service agreements are syncing, renewals and payment exceptions will show here.',
+  },
+  installs: {
+    key: 'installs',
+    label: 'install & warranty',
+    nav: 'install & warranty',
+    icon: 'automations',
+    blurb: 'closeout, serial capture and registration proof',
+    entity: 'install',
+    quietAfterHours: 168,
+    awaiting:
+      'install closeout is being wired up. once completed installs are syncing, each one and its registration state will show here.',
+  },
+};
+
+/* the tenant column is text[] and arrives from postgrest as an array, but a tenant row
+   written before the column existed reads as null. treated as "nothing declared" rather
+   than as an error, because a client whose operator has not filled this in yet still gets
+   every module their event log proves. */
+export function declaredModules(tenant) {
+  const raw = tenant?.modules;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((key) => MODULES.includes(key));
+}
+
+/* lead capture is the product's floor. every client has it — it is what they bought first
+   and it is what the ingest pipeline is for — so it is never "unavailable", only quiet. */
+const ALWAYS_ON = ['lead_capture'];
+
+export function computeModuleAvailability(tenant, events, now) {
+  const declared = new Set([...declaredModules(tenant), ...ALWAYS_ON]);
+
+  const observed = new Map();
+  for (const event of events) {
+    if (event.isCanary) continue;
+    const key = moduleForEvent(event);
+    if (!MODULE_EVENT_TYPES[key]) continue;
+    /* a task or a verification row resolves to a module, but neither one is evidence that
+       the module's own pipeline ran. "observed" has to mean the business events. */
+    if (!MODULE_EVENT_TYPES[key].includes(event.eventType)) continue;
+
+    const row = observed.get(key) ?? { count: 0, firstAt: null, lastAt: null, lastOkAt: null };
+    row.count++;
+    if (row.firstAt === null || event.occurredAt < row.firstAt) row.firstAt = event.occurredAt;
+    if (row.lastAt === null || event.occurredAt > row.lastAt) row.lastAt = event.occurredAt;
+    if (event.status !== 'failure' && (row.lastOkAt === null || event.occurredAt > row.lastOkAt)) {
+      row.lastOkAt = event.occurredAt;
+    }
+    observed.set(key, row);
+  }
+
+  const result = {};
+  for (const key of MODULES) {
+    const meta = MODULE_META[key];
+    const seen = observed.get(key) ?? null;
+    const isDeclared = declared.has(key);
+    const state = seen ? 'live' : isDeclared ? 'awaiting' : 'unavailable';
+
+    result[key] = {
+      ...meta,
+      state,
+      declared: isDeclared,
+      observed: Boolean(seen),
+      events: seen?.count ?? 0,
+      firstEventAt: seen?.firstAt ?? null,
+      lastEventAt: seen?.lastAt ?? null,
+      lastSuccessAt: seen?.lastOkAt ?? null,
+      /* measured against the module's own tolerance, not a shared one. */
+      quietHours:
+        seen?.lastOkAt && now ? Math.max(0, now.diff(utc(seen.lastOkAt), 'hours').hours) : null,
+      isQuiet:
+        seen?.lastOkAt && now
+          ? now.diff(utc(seen.lastOkAt), 'hours').hours > meta.quietAfterHours
+          : false,
+      available: state !== 'unavailable',
+      live: state === 'live',
+    };
+  }
+
+  return result;
+}
+
+/* the single question every metric on a module page has to pass before it prints a number.
+   a figure whose module is not live is not zero — it is unknown, and the ui renders the
+   reason instead. */
+export function isLive(availability, key) {
+  return availability?.[key]?.state === 'live';
+}
+
+export const MODULE_ORDER = MODULES;

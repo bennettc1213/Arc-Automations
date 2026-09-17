@@ -10,6 +10,10 @@ src/portal/demo/demo-data.json
 
 # stray verification screenshots
 bisect-*.png
+
+# render-check screenshots from `npm run smoke`. regenerated on demand, and a
+# folder of megabyte pngs is not what a repo is for.
+dist-smoke
 supabase/.temp
 
 # working docs that map the auth surface and its known gaps. this repo is

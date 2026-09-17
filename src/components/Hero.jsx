@@ -111,7 +111,6 @@ export default function Hero() {
               <button className="hero__btn hero__btn--solid" onClick={openPilot}>
                 start a pilot →
               </button>
-              <span className="hero__loc mono">{site.hero.location}</span>
             </div>
           </div>
         </div>

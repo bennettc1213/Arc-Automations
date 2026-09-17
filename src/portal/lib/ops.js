@@ -4,6 +4,7 @@ import { buildDashboardData } from './dashboard-data';
 import { EVENT_COLUMNS, toEvent } from './event-row';
 import { generateIngestToken, sha256Hex, generateClientId } from './client-id';
 import { formatSpan } from './format';
+import { loadBuilds, withBuilds } from './builds';
 
 /* the ops console's data layer.
  *
@@ -201,6 +202,7 @@ export async function loadRoster() {
     { data: connectionRows },
     { data: alertRows },
     { data: tokenRows },
+    builds,
   ] = await Promise.all([
     supabase.from('tenants').select(TENANT_COLUMNS).order('created_at', { ascending: true }),
     supabase.from('connections').select('*').order('created_at', { ascending: true }),
@@ -214,6 +216,9 @@ export async function loadRoster() {
        it is what the pipeline verdict falls back on when the live check cannot
        run, and it never includes the hash. */
     supabase.from('ingest_tokens').select('tenant_id, revoked_at, last_used_at'),
+    /* the services each client bought and their checklists (0008). a project
+       without that migration still loads — every client's builds are null. */
+    loadBuilds(supabase),
   ]);
 
   if (tenantError) throw new Error(`tenant read: ${tenantError.message}`);
@@ -281,13 +286,16 @@ export async function loadRoster() {
     tenantTimezone: names.get(event.tenantId)?.timezone ?? 'UTC',
   }));
 
-  return {
-    clients,
-    recentEvents,
-    totalEvents: events.length,
-    generatedAt: DateTime.now().toISO(),
-    windowDays: WINDOW_DAYS,
-  };
+  return withBuilds(
+    {
+      clients,
+      recentEvents,
+      totalEvents: events.length,
+      generatedAt: DateTime.now().toISO(),
+      windowDays: WINDOW_DAYS,
+    },
+    builds,
+  );
 }
 
 /**
@@ -1192,6 +1200,12 @@ export async function probeSupabase() {
         column: 'archived_at',
         migration: '0007_client_offboarding.sql',
         consequence: 'no client can be deboarded or restored',
+      },
+      {
+        table: 'client_service_steps',
+        column: 'done_at',
+        migration: '0008_client_services.sql',
+        consequence: 'no services can be chosen for a client and no build checklist can be kept',
       },
     ].map(
       async (probe) => {

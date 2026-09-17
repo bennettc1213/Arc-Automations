@@ -115,6 +115,72 @@ export function formatSpan(ms) {
   return `${days}d ${hours % 24}h`;
 }
 
+/* ── money ────────────────────────────────────────────────
+   every amount in the product is integer cents from the moment an adapter reads it, and is
+   only ever turned into a string here. whole dollars by default: an estimate book printed
+   to the cent is two extra characters per row that nobody reads and that make the column
+   harder to scan. */
+export function formatMoney(cents, { precise = false } = {}) {
+  if (cents === null || cents === undefined || Number.isNaN(cents)) return '—';
+  const dollars = cents / 100;
+  return dollars.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: precise ? 2 : 0,
+    maximumFractionDigits: precise ? 2 : 0,
+  });
+}
+
+/* a compact form for a stat card, where "$1.2M" and "$1,248,300" carry the same meaning and
+   only one of them fits. */
+export function formatMoneyShort(cents) {
+  if (cents === null || cents === undefined || Number.isNaN(cents)) return '—';
+  const dollars = cents / 100;
+  if (Math.abs(dollars) >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(dollars) >= 10_000) return `$${Math.round(dollars / 1000)}k`;
+  return formatMoney(cents);
+}
+
+/* ── masking ──────────────────────────────────────────────
+   the client owns their customers' contact details and the leads table shows them in full —
+   that is the evidence the page exists to provide. the module queues are a different job:
+   they are read over somebody's shoulder in a van, exported, and screenshotted into group
+   chats, and none of that needs a working email address in it. so the queues carry enough
+   to recognise a customer and not enough to contact them from the screenshot. */
+export function maskEmail(raw) {
+  if (!raw) return '—';
+  const value = String(raw);
+  const at = value.indexOf('@');
+  if (at < 1) return '•••';
+  const user = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  const dot = domain.lastIndexOf('.');
+  const head = domain.slice(0, dot > 0 ? dot : domain.length);
+  const tld = dot > 0 ? domain.slice(dot) : '';
+  return `${user.slice(0, 1)}•••@${head.slice(0, 2)}•••${tld}`;
+}
+
+export function maskPhone(raw) {
+  if (!raw) return '—';
+  const digits = String(raw).replace(/\D/g, '');
+  if (digits.length < 4) return '•••';
+  return `••• ••• ${digits.slice(-4)}`;
+}
+
+/* ── small units ──────────────────────────────────────── */
+
+export function formatDays(n) {
+  if (n === null || n === undefined || Number.isNaN(n)) return '—';
+  if (n === 0) return 'today';
+  if (n < 0) return `${Math.abs(n)}d overdue`;
+  return `${n}d`;
+}
+
+export function formatRating(rating) {
+  if (rating === null || rating === undefined || Number.isNaN(rating)) return '—';
+  return `${rating.toFixed(rating % 1 === 0 ? 0 : 1)}★`;
+}
+
 export function eventLabel(eventType, payload = {}) {
   switch (eventType) {
     case 'lead_received': {
@@ -136,6 +202,58 @@ export function eventLabel(eventType, payload = {}) {
       return `routed to ${payload.tech ?? 'on-call tech'}`;
     case 'reply_received':
       return 'customer replied';
+    case 'lead_qualified':
+      return payload.outcome === 'qualified' ? 'lead qualified' : 'lead did not qualify';
+    case 'handoff_requested':
+      return `handed to a person${payload.reason ? ` — ${payload.reason}` : ''}`;
+    case 'estimate_created':
+      return 'estimate opened';
+    case 'estimate_followup_sent':
+      return `follow-up sent${payload.stage ? ` · ${payload.stage}` : ''}`;
+    case 'estimate_reply_received':
+      return `customer replied${payload.classification ? ` — ${payload.classification}` : ''}`;
+    case 'estimate_decision':
+      return `estimate ${payload.decision ?? 'decided'}`;
+    case 'estimate_suppressed':
+      return `estimate held back${payload.reason ? ` — ${payload.reason.replace(/_/g, ' ')}` : ''}`;
+    case 'job_completed':
+      return 'job completed';
+    case 'review_request_sent':
+      return 'review request sent';
+    case 'review_received':
+      return `${payload.rating ?? '—'}★ review received`;
+    case 'review_response_published':
+      return 'response published';
+    case 'service_recovery_opened':
+      return 'service recovery opened';
+    case 'service_recovery_resolved':
+      return 'service recovery resolved';
+    case 'membership_recorded':
+      return 'membership synced';
+    case 'membership_payment_failed':
+      return 'membership payment failed';
+    case 'membership_payment_recovered':
+      return `payment recovered${payload.recovered_by ? ` by ${payload.recovered_by}` : ''}`;
+    case 'membership_visit_due':
+      return 'included visit due';
+    case 'membership_visit_booked':
+      return 'included visit booked';
+    case 'membership_cancellation_requested':
+      return 'cancellation requested';
+    case 'install_completed':
+      return 'installation completed';
+    case 'install_closeout_updated':
+      return 'closeout updated';
+    case 'warranty_registration_submitted':
+      return 'warranty registration submitted';
+    case 'warranty_registration_verified':
+      return 'warranty registration confirmed';
+    case 'warranty_registration_blocked':
+      return `registration blocked${payload.reason ? ` — ${payload.reason}` : ''}`;
+    case 'task_opened':
+      return `task raised${payload.reason ? ` — ${payload.reason}` : ''}`;
+    case 'task_resolved':
+      return 'task resolved';
     default:
       return eventType.replace(/_/g, ' ');
   }

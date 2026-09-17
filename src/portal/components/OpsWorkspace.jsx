@@ -101,7 +101,7 @@ function bookStatus(clients, probe) {
   return { status: 'operational', word: 'all connected', detail: null };
 }
 
-export default function OpsWorkspace({ roster, email, onSignOut, onReload, banner }) {
+export default function OpsWorkspace({ roster, email, onSignOut, onReload, onReloadBuilds, banner }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -283,6 +283,8 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, banne
     totals,
     base,
     reload: onReload,
+    /* falls back to the full reload wherever the console is mounted without it. */
+    reloadBuilds: onReloadBuilds ?? onReload,
     email,
     probe,
     runProbe,

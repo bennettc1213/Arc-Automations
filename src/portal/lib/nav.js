@@ -4,8 +4,14 @@
  * palette. three places that each kept their own list would drift within a week, and the
  * failure mode is a page that exists but cannot be found from the search box.
  *
- * grouped the way an owner thinks about the product rather than the way it is built:
- * "what came in" first, then "what is running it", then "the account".
+ * grouped the way an owner thinks about the product rather than the way it is built: the
+ * work the business does, then the machine running it, then the account.
+ *
+ * the lifecycle modules each carry a `module` key. that key is what `navGroupsFor` filters
+ * on, so a client who does not sell memberships never sees a memberships tab — a nav item
+ * leading to a page of dashes is a worse answer than no nav item. the full list stays
+ * exported for `activeItem` and the palette, because a page reached by a pasted url still
+ * needs a title and a blurb even when it is not in this client's rail.
  */
 
 export const NAV_GROUPS = [
@@ -18,27 +24,63 @@ export const NAV_GROUPS = [
         icon: 'overview',
         label: 'overview',
         title: 'overview',
-        blurb: 'the numbers and the live feed',
+        blurb: 'the lifecycle, what needs you, and whether it is all running',
       },
       {
+        /* the route keeps its original path. this page grew from "every lead" into the
+           whole capture stage — qualification, routing, escalation — but a client who
+           bookmarked /leads two years ago still lands where they meant to. */
         to: 'leads',
+        module: 'lead_capture',
         icon: 'leads',
-        label: 'leads',
-        title: 'leads',
-        blurb: 'every lead, what happened to it, and how fast',
+        label: 'lead capture',
+        title: 'lead capture',
+        blurb: 'every opportunity, how fast it was answered, and where it went',
       },
       {
-        to: 'activity',
-        icon: 'activity',
-        label: 'activity',
-        title: 'activity',
-        blurb: 'the raw run log, newest first',
+        to: 'estimates',
+        module: 'estimates',
+        icon: 'reports',
+        label: 'estimates',
+        title: 'estimate recovery',
+        blurb: 'open quotes waiting on a decision, and what came back',
+      },
+      {
+        to: 'reviews',
+        module: 'reviews',
+        icon: 'reliability',
+        label: 'reviews',
+        title: 'reviews & service recovery',
+        blurb: 'requests sent, reviews received, and the cases that need a person',
+      },
+      {
+        to: 'memberships',
+        module: 'memberships',
+        icon: 'account',
+        label: 'memberships',
+        title: 'memberships',
+        blurb: 'renewals, failed payments and the visits still owed',
+      },
+      {
+        to: 'installs',
+        module: 'installs',
+        icon: 'automations',
+        label: 'install & warranty',
+        title: 'install & warranty',
+        blurb: 'closeout, serial capture and registration proof',
       },
     ],
   },
   {
     label: 'the machine',
     items: [
+      {
+        to: 'activity',
+        icon: 'activity',
+        label: 'activity',
+        title: 'activity & system health',
+        blurb: 'the raw run log, newest first, and what is checking it',
+      },
       {
         to: 'automations',
         icon: 'automations',
@@ -86,6 +128,28 @@ export const NAV_GROUPS = [
 export const NAV_ITEMS = NAV_GROUPS.flatMap((group) =>
   group.items.map((item) => ({ ...item, group: group.label })),
 );
+
+/* the rail this client actually gets.
+ *
+ * "unavailable" is the only state that hides a page. a module that is declared but has
+ * never produced an event stays in the nav on purpose — the page it leads to says it is
+ * awaiting connection, which is a thing the client should be able to find and ask about. */
+export function navGroupsFor(availability) {
+  if (!availability) return NAV_GROUPS;
+
+  return NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter(
+      (item) => !item.module || availability[item.module]?.state !== 'unavailable',
+    ),
+  })).filter((group) => group.items.length > 0);
+}
+
+export function navItemsFor(availability) {
+  return navGroupsFor(availability).flatMap((group) =>
+    group.items.map((item) => ({ ...item, group: group.label })),
+  );
+}
 
 /* resolves the page a path is on. matched longest-first so `/leads` does not lose to the
    empty index path, which is a prefix of everything — and so `clients/new` in the ops

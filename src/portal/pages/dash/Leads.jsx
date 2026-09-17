@@ -2,13 +2,22 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Icon from '../../components/Icon';
 import EarlyData from '../../components/EarlyData';
-import { Empty, Panel, Pill } from '../../components/ui';
+import { Empty, Panel, Pill, StatCard } from '../../components/ui';
+import { DetailFacts } from '../../components/RecordTable';
+import { Freshness, RuleCheck, RuleList, Withheld } from '../../components/ModuleUI';
 import { useReducedMotion } from '../../../lib/hooks';
 import { downloadCsv, threadsToCsv } from '../../lib/csv';
-import { formatCount, formatDuration, formatPhone, formatStamp } from '../../lib/format';
+import { SAFETY_FLAG_LABEL } from '../../lib/lifecycle';
+import {
+  formatCount,
+  formatDuration,
+  formatPct,
+  formatPhone,
+  formatStamp,
+} from '../../lib/format';
 
 /**
- * every lead, and what happened to it.
+ * lead capture: every opportunity, and what happened to it.
  *
  * this is the page that settles arguments. an owner who thinks the phone was quiet last
  * Tuesday can open it, and a row that says a text went out in six seconds — with the
@@ -17,6 +26,11 @@ import { formatCount, formatDuration, formatPhone, formatStamp } from '../../lib
  *
  * so it is a table, not a card grid. cards are for things you browse; this is something
  * people scan, sort and export, and a table is the shape that does that.
+ *
+ * the page grew to cover qualification, routing and human handoff without gaining columns.
+ * the seven columns here are hand-placed into a phone card layout in workspace.css, and this
+ * is the page a contractor opens from a truck — so the qualifier's verdict, the safety flags
+ * and the consent record live in the expanded row rather than pushing the table sideways.
  */
 
 const STATE_TONE = {
@@ -37,6 +51,7 @@ const STEP_LABEL = {
 
 const OUTCOMES = [
   { key: 'all', label: 'all' },
+  { key: 'needs-you', label: 'needs you' },
   { key: 'replied', label: 'replied' },
   { key: 'routed', label: 'routed' },
   { key: 'send failed', label: 'failed' },
@@ -62,12 +77,27 @@ const SORTS = {
   },
 };
 
+function matchesOutcome(lead, outcome) {
+  if (outcome === 'all') return true;
+  if (outcome === 'needs-you') {
+    return Boolean(lead.safetyBreach || lead.unacknowledged || (lead.handoff && !lead.handoff.resolvedAt));
+  }
+  return lead.state === outcome;
+}
+
 export default function Leads({ data }) {
-  const { tenant, threads, threadTotal } = data;
+  const { tenant, threadTotal } = data;
+  /* the same array the rest of the workspace calls `threads`, carrying the qualifier's
+     verdict and any handoff. one list, so this table and the overview's feed can never
+     disagree about what happened to a lead. */
+  const leads = data.threads;
+  const m = data.leadCapture.metrics;
+  const tz = tenant.timezone;
+
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [source, setSource] = useState('all');
-  const [outcome, setOutcome] = useState('all');
+  const [outcome, setOutcome] = useState(() => params.get('view') === 'needs-you' ? 'needs-you' : 'all');
   const [sort, setSort] = useState('newest');
   const [shown, setShown] = useState(PAGE);
   const reduced = useReducedMotion();
@@ -78,12 +108,15 @@ export default function Leads({ data }) {
   const clicked = useRef(false);
 
   /* the opened row lives in the url so the command palette can link straight to a lead and
-     so a client can send someone the row rather than describing it. */
-  const openId = params.get('thread');
+     so a client can send someone the row rather than describing it. `record` is the name the
+     needs-attention queue uses across every module; `thread` is what this page has always
+     used and every existing link still carries. both are honoured. */
+  const openId = params.get('thread') ?? params.get('record');
 
   const toggleRow = (id) => {
     clicked.current = true;
     const next = new URLSearchParams(params);
+    next.delete('record');
     if (openId === id) next.delete('thread');
     else next.set('thread', id);
     setParams(next, { replace: true });
@@ -97,17 +130,17 @@ export default function Leads({ data }) {
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
 
-    return threads
-      .filter((thread) => {
-        if (source !== 'all' && thread.source !== source) return false;
-        if (outcome !== 'all' && thread.state !== outcome) return false;
+    return leads
+      .filter((lead) => {
+        if (source !== 'all' && lead.source !== source) return false;
+        if (!matchesOutcome(lead, outcome)) return false;
         if (!q) return true;
-        return [thread.name, thread.phone, thread.lossType, thread.tech].some((field) =>
-          String(field ?? '').toLowerCase().includes(q),
+        return [lead.name, lead.phone, lead.lossType, lead.tech, lead.qualification?.jobType].some(
+          (field) => String(field ?? '').toLowerCase().includes(q),
         );
       })
       .sort(SORTS[sort].compare);
-  }, [threads, query, source, outcome, sort]);
+  }, [leads, query, source, outcome, sort]);
 
   /* back to the first page whenever the result set changes underneath. leaving it at
      "showing 120" after a filter that matches nine rows means the count in the panel header
@@ -119,7 +152,7 @@ export default function Leads({ data }) {
      having silently failed. */
   useEffect(() => {
     if (!openId) return;
-    const index = rows.findIndex((thread) => thread.id === openId);
+    const index = rows.findIndex((lead) => lead.id === openId);
     if (index >= shown) setShown(Math.ceil((index + 1) / PAGE) * PAGE);
   }, [openId, rows, shown]);
 
@@ -139,232 +172,418 @@ export default function Leads({ data }) {
   const visible = rows.slice(0, shown);
 
   return (
-    <Panel
-      title="leads"
-      note={
-        rows.length === threads.length
-          ? `${formatCount(threads.length)} of ${formatCount(threadTotal)} in the window`
-          : `${formatCount(rows.length)} matching · ${formatCount(threads.length)} loaded`
-      }
-      actions={
-        /* exports what is on screen, filters and all. an export button that quietly ignores
-           the filters above it hands somebody a spreadsheet that does not match the table
-           they were looking at when they clicked it. */
-        <button
-          type="button"
-          className="ws-btn"
-          onClick={() =>
-            downloadCsv(
-              `${tenant.slug ?? 'arc'}-leads-${new Date().toISOString().slice(0, 10)}.csv`,
-              threadsToCsv(rows, tenant.timezone),
+    <>
+      <div className="ws-stats">
+        <StatCard
+          label="opportunities in"
+          value={m.opportunities}
+          animate
+          format={formatCount}
+          sub={`${formatCount(m.missedCallsRecovered)} of them calls that rang out and got a text back`}
+          tone="lead"
+        />
+
+        <StatCard
+          label="median response"
+          value={formatDuration(m.medianResponseMs)}
+          sub={
+            m.withinSlaPct === null
+              ? 'nothing answered in this window yet'
+              : `${formatPct(m.withinSlaPct)} inside your ${formatDuration(m.slaMs)} target`
+          }
+        />
+
+        <StatCard
+          label="qualified"
+          value={m.qualificationSeen ? m.qualified : '—'}
+          animate={m.qualificationSeen}
+          format={formatCount}
+          compact={!m.qualificationSeen}
+          sub={
+            m.qualificationSeen ? (
+              'passed job type, service area and capacity'
+            ) : (
+              <Withheld>
+                qualification is not running yet — leads are captured and routed without it, so
+                this is not zero, it is unknown
+              </Withheld>
             )
           }
-          disabled={rows.length === 0}
-        >
-          <Icon name="download" />
-          export {formatCount(rows.length)} rows
-        </button>
-      }
-      bare
-    >
-      <div className="ws-toolbar">
-        <label className="ws-search">
-          <Icon name="search" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="name, phone, loss type or tech"
-            aria-label="filter leads"
-            spellCheck="false"
-          />
-          {query && (
-            <button type="button" onClick={() => setQuery('')} title="clear">
-              <Icon name="close" size={12} />
-            </button>
-          )}
-        </label>
+        />
 
-        <div className="ws-chips" role="group" aria-label="filter by source">
-          {sourceOptions.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              className={`ws-chip${source === option.key ? ' is-on' : ''}`}
-              onClick={() => setSource(option.key)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="ws-chips" role="group" aria-label="filter by outcome">
-          {OUTCOMES.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              className={`ws-chip${outcome === option.key ? ' is-on' : ''}`}
-              onClick={() => setOutcome(option.key)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-
-        <label className="ws-select">
-          <span>sort</span>
-          <select value={sort} onChange={(event) => setSort(event.target.value)}>
-            {Object.entries(SORTS).map(([key, option]) => (
-              <option key={key} value={key}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <StatCard
+          label="handed to a person"
+          value={m.escalations}
+          animate
+          format={formatCount}
+          sub="safety cases, distressed callers and anything your own rules mark human-only"
+        />
       </div>
 
-      {threads.length === 0 ? (
-        /* no leads at all is a different fact from no leads matching, and telling
-           somebody to widen their filters when there is nothing behind them reads
-           as the page blaming them for its own emptiness. */
-        <EarlyData
-          createdAt={tenant.createdAt}
-          timezone={tenant.timezone}
-          title="no leads yet"
-        >
-          the pipeline is live and watching. the first lead through your web form, your google
-          business profile, or a call that rings out will appear here within seconds of it
-          happening — with the exact time we texted them back.
-        </EarlyData>
-      ) : rows.length === 0 ? (
-        <Empty title="nothing matches those filters">
-          the window holds {formatCount(threads.length)} leads. clear the search or widen the
-          filters to see them.
-        </Empty>
-      ) : (
-        <>
-        {/* the expansion is the best thing on this page and nobody finds it from a
-            chevron alone. the hint retires itself the moment a row has been opened —
-            a permanent instruction is a permanent admission the ui did not explain
-            itself. */}
-        {!openId && (
-          <p className="ws-tablehint">
-            <Icon name="chevron" size={11} className="ws-tablehint__chev" />
-            open any row to see the exact timeline — call, text, routed, replied, to the second
+      <div className="ws-stats ws-stats--four">
+        <StatCard
+          label="nobody picked up"
+          value={m.unacknowledged}
+          compact
+          sub="routed more than two hours ago with no acknowledgement and no reply"
+        />
+        <StatCard
+          label="messages that failed"
+          value={m.failedSends}
+          compact
+          sub="carrier or provider rejections in this window"
+        />
+        <StatCard
+          label="inside target"
+          value={formatPct(m.withinSlaPct)}
+          compact
+          sub={`answered within ${formatDuration(m.slaMs)}`}
+        />
+        <StatCard
+          label="answered"
+          value={m.answered}
+          compact
+          sub="leads that got a text back at all"
+        />
+      </div>
+
+      <Freshness at={leads[0]?.startedAt ?? null} timezone={tz} label="newest lead" />
+
+      <RuleList note="the safety rule, checked against the log">
+        <RuleCheck
+          rule="a safety case never gets booked by an automation"
+          breaches={m.safetyBreaches}
+          detail="electrical, gas, fire, smoke, flooding with a safety concern, medical distress, an angry or distressed caller, a complaint, an unclear scope, or anything you have marked human-only — the sequence stops and a person is put in front of it"
+        />
+      </RuleList>
+
+      <Panel
+        title="every lead"
+        note={
+          rows.length === leads.length
+            ? `${formatCount(leads.length)} of ${formatCount(threadTotal)} in the window`
+            : `${formatCount(rows.length)} matching · ${formatCount(leads.length)} loaded`
+        }
+        actions={
+          /* exports what is on screen, filters and all. an export button that quietly ignores
+             the filters above it hands somebody a spreadsheet that does not match the table
+             they were looking at when they clicked it. */
+          <button
+            type="button"
+            className="ws-btn"
+            onClick={() =>
+              downloadCsv(
+                `${tenant.slug ?? 'arc'}-leads-${new Date().toISOString().slice(0, 10)}.csv`,
+                threadsToCsv(rows, tz),
+              )
+            }
+            disabled={rows.length === 0}
+          >
+            <Icon name="download" />
+            export {formatCount(rows.length)} rows
+          </button>
+        }
+        bare
+      >
+        <div className="ws-toolbar">
+          <label className="ws-search">
+            <Icon name="search" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="name, phone, loss type or tech"
+              aria-label="filter leads"
+              spellCheck="false"
+            />
+            {query && (
+              <button type="button" onClick={() => setQuery('')} title="clear">
+                <Icon name="close" size={12} />
+              </button>
+            )}
+          </label>
+
+          <div className="ws-chips" role="group" aria-label="filter by source">
+            {sourceOptions.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                className={`ws-chip${source === option.key ? ' is-on' : ''}`}
+                onClick={() => setSource(option.key)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="ws-chips" role="group" aria-label="filter by outcome">
+            {OUTCOMES.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                className={`ws-chip${outcome === option.key ? ' is-on' : ''}`}
+                onClick={() => setOutcome(option.key)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <label className="ws-select">
+            <span>sort</span>
+            <select value={sort} onChange={(event) => setSort(event.target.value)}>
+              {Object.entries(SORTS).map(([key, option]) => (
+                <option key={key} value={key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {leads.length === 0 ? (
+          /* no leads at all is a different fact from no leads matching, and telling
+             somebody to widen their filters when there is nothing behind them reads
+             as the page blaming them for its own emptiness. */
+          <EarlyData createdAt={tenant.createdAt} timezone={tz} title="no leads yet">
+            the pipeline is live and watching. the first lead through your web form, your google
+            business profile, or a call that rings out will appear here within seconds of it
+            happening — with the exact time we texted them back.
+          </EarlyData>
+        ) : rows.length === 0 ? (
+          <Empty title="nothing matches those filters">
+            the window holds {formatCount(leads.length)} leads. clear the search or widen the
+            filters to see them.
+          </Empty>
+        ) : (
+          <>
+            {/* the expansion is the best thing on this page and nobody finds it from a
+                chevron alone. the hint retires itself the moment a row has been opened —
+                a permanent instruction is a permanent admission the ui did not explain
+                itself. */}
+            {!openId && (
+              <p className="ws-tablehint">
+                <Icon name="chevron" size={11} className="ws-tablehint__chev" />
+                open any row to see the exact timeline — call, text, routed, replied, to the second
+              </p>
+            )}
+            <div className="ws-tablewrap">
+              <table className="ws-table">
+                <thead>
+                  <tr>
+                    <th>received</th>
+                    <th>customer</th>
+                    <th>source</th>
+                    <th>job type</th>
+                    <th className="ws-table__num">response</th>
+                    <th>routed to</th>
+                    <th>outcome</th>
+                    <th aria-label="expand" />
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {visible.map((lead) => {
+                    const isOpen = openId === lead.id;
+                    const q = lead.qualification;
+
+                    return [
+                      <tr
+                        key={lead.id}
+                        className={`ws-table__row${isOpen ? ' is-open' : ''}${
+                          lead.safetyBreach ? ' ws-table__row--attention' : ''
+                        }`}
+                        data-thread={lead.id}
+                        data-record={lead.id}
+                        onClick={() => toggleRow(lead.id)}
+                      >
+                        <td className="mono ws-td--time">{formatStamp(lead.startedAt, tz)}</td>
+                        <td className="ws-td--customer">
+                          <span className="ws-table__strong">{lead.name ?? 'unknown caller'}</span>
+                          <span className="ws-table__sub mono">{formatPhone(lead.phone)}</span>
+                        </td>
+                        <td className="ws-td--source">{lead.sourceLabel}</td>
+                        <td className="ws-table__wide ws-td--loss">
+                          {q?.jobType ?? lead.lossType ?? '—'}
+                          {/* urgency and service-area eligibility ride under the job type
+                              rather than taking columns the phone layout cannot spare. */}
+                          {(q?.urgency || q?.inServiceArea === false || lead.safetyFlags.length > 0) && (
+                            <span className="ws-table__sub">
+                              {lead.safetyFlags.length > 0
+                                ? lead.safetyFlags
+                                    .map((f) => SAFETY_FLAG_LABEL[f] ?? f)
+                                    .join(' · ')
+                                : q?.inServiceArea === false
+                                  ? 'outside your service area'
+                                  : q.urgency}
+                            </span>
+                          )}
+                        </td>
+                        <td className="ws-table__num mono ws-td--response" data-label="answered in">
+                          {lead.failed ? '—' : formatDuration(lead.latencyMs)}
+                        </td>
+                        <td className="ws-td--tech" data-label="routed to">
+                          {lead.routingDestination ?? '—'}
+                        </td>
+                        <td className="ws-td--outcome">
+                          {lead.safetyBreach ? (
+                            <Pill tone="fail">needs a person</Pill>
+                          ) : lead.handoff && !lead.handoff.resolvedAt ? (
+                            <Pill tone="warn">with a person</Pill>
+                          ) : lead.unacknowledged ? (
+                            <Pill tone="warn">not picked up</Pill>
+                          ) : (
+                            <Pill tone={STATE_TONE[lead.state] ?? 'neutral'}>{lead.state}</Pill>
+                          )}
+                        </td>
+                        <td className="ws-table__chev">
+                          <Icon name="chevron" size={12} />
+                        </td>
+                      </tr>,
+
+                      isOpen && (
+                        <tr key={`${lead.id}-detail`} className="ws-table__detail">
+                          <td colSpan={8}>
+                            <div className="ws-detail">
+                              <div className="ws-detail__steps">
+                                {lead.steps.map((step, i) => (
+                                  <div
+                                    key={`${step.type}-${step.at}`}
+                                    className={`ws-detail__step${
+                                      step.status === 'failure' ? ' is-fail' : ''
+                                    }`}
+                                  >
+                                    {i > 0 && <span className="ws-detail__rule" aria-hidden="true" />}
+                                    <span className="ws-detail__dot" aria-hidden="true" />
+                                    <span className="ws-detail__step-label">
+                                      {STEP_LABEL[step.type] ?? step.type.replace(/_/g, ' ')}
+                                    </span>
+                                    <span className="ws-detail__step-time mono">
+                                      {formatStamp(step.at, tz)}
+                                    </span>
+                                  </div>
+                                ))}
+                                {lead.handoff && (
+                                  <div className="ws-detail__step is-fail">
+                                    <span className="ws-detail__rule" aria-hidden="true" />
+                                    <span className="ws-detail__dot" aria-hidden="true" />
+                                    <span className="ws-detail__step-label">
+                                      handed to a person
+                                      {lead.handoff.assignedTo && ` — ${lead.handoff.assignedTo}`}
+                                    </span>
+                                    <span className="ws-detail__step-time mono">
+                                      {formatStamp(lead.handoff.at, tz)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {lead.failureReason && (
+                                <p className="ws-detail__fail">
+                                  <b>send failed:</b> {lead.failureReason}
+                                </p>
+                              )}
+
+                              {lead.safetyBreach && (
+                                <p className="ws-detail__fail">
+                                  <b>this should not have been handled automatically.</b> it carries{' '}
+                                  {lead.safetyFlags.map((f) => SAFETY_FLAG_LABEL[f] ?? f).join(', ')}{' '}
+                                  and no handoff to a person was recorded against it.
+                                </p>
+                              )}
+
+                              {q && (
+                                <DetailFacts
+                                  rows={[
+                                    { label: 'job type', value: q.jobType },
+                                    { label: 'urgency', value: q.urgency },
+                                    {
+                                      label: 'service area',
+                                      value:
+                                        q.inServiceArea === null
+                                          ? null
+                                          : q.inServiceArea
+                                            ? `in area${q.zip ? ` · ${q.zip}` : ''}`
+                                            : `outside your area${q.zip ? ` · ${q.zip}` : ''}`,
+                                    },
+                                    { label: 'property', value: q.propertyType },
+                                    { label: 'customer', value: q.customerStatus },
+                                    { label: 'scope', value: q.scope },
+                                    {
+                                      label: 'capacity',
+                                      value:
+                                        q.capacityOk === null
+                                          ? null
+                                          : q.capacityOk
+                                            ? 'you can take this'
+                                            : 'no capacity for this right now',
+                                    },
+                                    { label: 'preferred time', value: q.preferredTime },
+                                    {
+                                      label: 'consent',
+                                      value: q.consent
+                                        ? Object.entries(q.consent)
+                                            .map(([channel, ok]) => `${channel}: ${ok ? 'yes' : 'no'}`)
+                                            .join(' · ')
+                                        : null,
+                                    },
+                                    { label: 'attributed to', value: q.sourceAttribution },
+                                    {
+                                      label: 'qualification',
+                                      value: q.outcome
+                                        ? q.outcome === 'qualified'
+                                          ? 'qualified'
+                                          : `not qualified — ${q.outcome}`
+                                        : null,
+                                    },
+                                  ]}
+                                />
+                              )}
+
+                              {lead.nextAction && (
+                                <p className="ws-detail__next">
+                                  <b>next:</b> {lead.nextAction}
+                                </p>
+                              )}
+
+                              <p className="ws-detail__meta mono">
+                                thread {lead.id}
+                                {lead.repliedAt &&
+                                  ` · customer replied ${formatStamp(lead.repliedAt, tz)}`}
+                                {lead.acknowledgedAt &&
+                                  ` · acknowledged ${formatStamp(lead.acknowledgedAt, tz)}`}
+                              </p>
+                            </div>
+                          </td>
+                        </tr>
+                      ),
+                    ];
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {rows.length > visible.length && (
+          <div className="ws-more">
+            <button type="button" className="ws-btn" onClick={() => setShown((n) => n + PAGE)}>
+              show {formatCount(Math.min(PAGE, rows.length - visible.length))} more
+            </button>
+            <span className="mono">
+              {formatCount(visible.length)} of {formatCount(rows.length)} shown
+            </span>
+          </div>
+        )}
+
+        {threadTotal > leads.length && (
+          <p className="ws-note">
+            the {formatCount(leads.length)} most recent of {formatCount(threadTotal)} leads in the
+            window are loaded, and the export covers those. the cap is deliberate — shipping the
+            whole log to draw a table is how a dashboard ends up costing megabytes to show
+            twenty rows. ask and we will pull any window you need in full.
           </p>
         )}
-        <div className="ws-tablewrap">
-          <table className="ws-table">
-            <thead>
-              <tr>
-                <th>received</th>
-                <th>customer</th>
-                <th>source</th>
-                <th>loss type</th>
-                <th className="ws-table__num">response</th>
-                <th>routed to</th>
-                <th>outcome</th>
-                <th aria-label="expand" />
-              </tr>
-            </thead>
-
-            <tbody>
-              {visible.map((thread) => {
-                const isOpen = openId === thread.id;
-
-                return [
-                  <tr
-                    key={thread.id}
-                    className={`ws-table__row${isOpen ? ' is-open' : ''}`}
-                    data-thread={thread.id}
-                    onClick={() => toggleRow(thread.id)}
-                  >
-                    <td className="mono ws-td--time">
-                      {formatStamp(thread.startedAt, tenant.timezone)}
-                    </td>
-                    <td className="ws-td--customer">
-                      <span className="ws-table__strong">{thread.name ?? 'unknown caller'}</span>
-                      <span className="ws-table__sub mono">{formatPhone(thread.phone)}</span>
-                    </td>
-                    <td className="ws-td--source">{thread.sourceLabel}</td>
-                    <td className="ws-table__wide ws-td--loss">{thread.lossType ?? '—'}</td>
-                    <td className="ws-table__num mono ws-td--response" data-label="answered in">
-                      {thread.failed ? '—' : formatDuration(thread.latencyMs)}
-                    </td>
-                    <td className="ws-td--tech" data-label="routed to">{thread.tech ?? '—'}</td>
-                    <td className="ws-td--outcome">
-                      <Pill tone={STATE_TONE[thread.state] ?? 'neutral'}>{thread.state}</Pill>
-                    </td>
-                    <td className="ws-table__chev">
-                      <Icon name="chevron" size={12} />
-                    </td>
-                  </tr>,
-
-                  isOpen && (
-                    <tr key={`${thread.id}-detail`} className="ws-table__detail">
-                      <td colSpan={8}>
-                        <div className="ws-detail">
-                          <div className="ws-detail__steps">
-                            {thread.steps.map((step, i) => (
-                              <div
-                                key={`${step.type}-${step.at}`}
-                                className={`ws-detail__step${
-                                  step.status === 'failure' ? ' is-fail' : ''
-                                }`}
-                              >
-                                {i > 0 && <span className="ws-detail__rule" aria-hidden="true" />}
-                                <span className="ws-detail__dot" aria-hidden="true" />
-                                <span className="ws-detail__step-label">
-                                  {STEP_LABEL[step.type] ?? step.type.replace(/_/g, ' ')}
-                                </span>
-                                <span className="ws-detail__step-time mono">
-                                  {formatStamp(step.at, tenant.timezone)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-
-                          {thread.failureReason && (
-                            <p className="ws-detail__fail">
-                              <b>send failed:</b> {thread.failureReason}
-                            </p>
-                          )}
-
-                          <p className="ws-detail__meta mono">
-                            thread {thread.id}
-                            {thread.repliedAt &&
-                              ` · customer replied ${formatStamp(thread.repliedAt, tenant.timezone)}`}
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
-                  ),
-                ];
-              })}
-            </tbody>
-          </table>
-        </div>
-        </>
-      )}
-
-      {rows.length > visible.length && (
-        <div className="ws-more">
-          <button type="button" className="ws-btn" onClick={() => setShown((n) => n + PAGE)}>
-            show {formatCount(Math.min(PAGE, rows.length - visible.length))} more
-          </button>
-          <span className="mono">
-            {formatCount(visible.length)} of {formatCount(rows.length)} shown
-          </span>
-        </div>
-      )}
-
-      {threadTotal > threads.length && (
-        <p className="ws-note">
-          the {formatCount(threads.length)} most recent of {formatCount(threadTotal)} leads in the
-          window are loaded, and the export covers those. the cap is deliberate — shipping the
-          whole log to draw a table is how a dashboard ends up costing megabytes to show
-          twenty rows. ask and we will pull any window you need in full.
-        </p>
-      )}
-    </Panel>
+      </Panel>
+    </>
   );
 }

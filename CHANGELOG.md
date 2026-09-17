@@ -7,6 +7,145 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-09-17
+
+Needs `supabase/migrations/0009_lifecycle_modules.sql` applied (after 0008),
+and the `ingest` function redeployed so it accepts the new event types. Until
+then the portal runs exactly as it did: the browser detects the missing columns
+and falls back to the old read, and the new pages stay out of the rail for every
+client until an operator lists their modules.
+
+The portal was a speed-to-lead dashboard. It is now the whole revenue
+lifecycle — what came in, what got quoted, what got decided, what got reviewed,
+what got retained, and what still needs a person — without a second architecture
+underneath it. Every figure still comes out of the same `events` log through the
+same derivation chain, and the demo still runs the real product against
+generated data.
+
+### Added
+- **Four new pages: estimate recovery, reviews & service recovery,
+  memberships, and install & warranty.** Each one is the same shell, the same
+  components and the same `ws-*` design language the dashboard already had. The
+  leads page grew into **lead capture** — qualification, routing destination,
+  consent and human handoff — without gaining a column, because it is the page
+  people open from a truck and its phone layout is hand-placed.
+- **The lifecycle strip on the overview**: captured → qualified → estimated →
+  approved → installed → retained, as real record counts, each linking into the
+  table behind it. No percentages between stages: they come from separate
+  systems over different windows, and a conversion rate drawn between two
+  unrelated populations is arithmetic, not a fact.
+- **One needs-attention queue across every module**, sorted by urgency, then by
+  what is already late, then oldest first. Derived from the state of the records
+  rather than stored, so an item leaves the queue the moment the thing it is
+  about stops being true — no write anywhere, nothing to go stale.
+- **Per-module automation health, derived from verification evidence only** —
+  the canary, the schema assert, the volume watermark, delivery failures,
+  authentication failures and silence. A module producing events with nothing
+  checking it reads **not verified**, in its own colour, with the missing check
+  named. A workflow platform reporting a green execution is never enough on its
+  own.
+- **The activity feed spans every module**, filterable by module, by failures,
+  by human actions, and — behind its own filter — by the internal verification
+  rows that are still kept out of the default view.
+- **An event contract at the ingest boundary**: `entity_type`, `entity_id`,
+  `source_system`, `external_id`, `actor` and `error_class`, all optional, all
+  validated. An `entity_type` with no `entity_id` is now a loud 400 rather than
+  a row no page will ever show.
+- **`npm test`** — 122 tests on node's built-in runner, no new dependencies.
+  They test the promises rather than the arithmetic: stop-on-reply, review
+  gating, safety handoff, registration evidence, attribution, tenant isolation,
+  idempotency, and that none of it broke the pipeline that came first.
+- **`npm run smoke`** — renders all fourteen pages in a real browser at desktop
+  and phone widths and fails on an uncaught error, a blank render or a layout
+  that scrolls sideways. Drives an installed Chrome or Edge through
+  `playwright-core`; skips cleanly when it is not installed, so it is not a
+  dependency.
+
+### Changed
+- **The demo now runs all five modules** — an estimate book, completed jobs and
+  reviews, a membership roll and install closeouts for Halstead Restoration, on
+  the same seed and the same deterministic generator. Two things in it are
+  deliberately not clean: one review request withheld for a sentiment reason,
+  and one registration reported complete with no confirmation number. Both are
+  caught, named and queued, which is the product working.
+- **Money is only ever claimed with the whole chain behind it.** "Recovered"
+  needs the original estimate with an amount, a follow-up that actually left,
+  the customer's answer after it, and the approved value from the client's own
+  system. An approval with no follow-up behind it is reported as approved and
+  explicitly **not** attributed. Gross profit additionally needs a margin the
+  client's system sent, and where it covers only some of the jobs the card says
+  how many.
+- **A module that is not connected renders as unknown, never as zero.** Three
+  states — live, awaiting connection, not part of your plan — decided from the
+  tenant's declared modules and what the log actually shows, with observation
+  always winning. A missing tick-box can never hide a client's own data.
+- Estimate flow figures (created, contacted, decided, recovered) are now
+  windowed by when they happened, and state figures (open, held back) are not.
+  Mixing the two had the funnel reporting more approvals than estimates.
+- The rail's module counters show what needs doing, not how much exists.
+- Customer contact details and anything credential-shaped are stripped from the
+  activity feed's metadata before it reaches the browser.
+
+### Fixed
+- A duplicate event can no longer inflate the count of follow-ups sent to a
+  customer. The database's unique index was already the real defence; the fold
+  now dedupes as well, because that count is one of the four links the word
+  "recovered" depends on.
+- `buildDashboardData` drops any event carrying another tenant's id before
+  deriving anything. RLS is still what enforces isolation — this fails closed if
+  a future caller ever assembles events from more than one source.
+
+## [1.15.0] - 2026-09-16
+
+Needs `supabase/migrations/0008_client_services.sql` applied (after 0007).
+Until then the console loads as before, each client page says the checklist
+is not set up, and the Supabase page names the migration.
+
+### Added
+- **Choose what a client bought when adding them.** "Add a client" has a
+  **what we're building** picker listing every service Arc sells (the ids,
+  names and stacks come from `site.js`, core offers first), and the account
+  cannot be created without at least one. The services and their checklists
+  are written right after the account in one transaction
+  (`add_client_services`); if that write fails, the page says so and offers a
+  retry, since the account itself already exists.
+- **A build checklist for every service.** Each client page has a **what
+  we're building** panel: one section per service, with its steps in two
+  phases, **build it** (on Arc's side) and **integrate it** (into their
+  business, on real traffic). Tick steps as the work gets done, add a step
+  just for this client, remove one that doesn't apply, add another service
+  later, or remove one. The stage (not started → building → integrating →
+  delivered), the progress bar and the delivered date all come from the
+  ticked steps, never from a status someone set.
+- **Steps the console can confirm show what it sees.** Under steps like "a
+  real lead answered", "it posts its events to their portal" or "their
+  texting number is live and recorded", the checklist shows what the event
+  log, the ingest tokens or the services panel says. A ticked box the
+  evidence doesn't back up is marked, and the service header counts them
+  ("1 to check"). A service's header also lists the accounts it runs on,
+  marked where they are recorded.
+- The account column on the roster and clients list shows each client's build
+  progress under the status pill: `build 14/30`, `3 delivered` or
+  `no services`.
+- Catalog of checklists for all twelve services in
+  `src/portal/lib/service-catalog.js`. Steps are copied into the database when
+  a service is added, so later catalog edits only affect new builds.
+- Migration 0008: `client_services` and `client_service_steps`, readable and
+  writable only by operators. A composite foreign key stops a step from being
+  attached to another client's service, and a trigger records when a step was
+  ticked and by whom using the database's clock, so the browser cannot
+  backdate a tick.
+
+### Changed
+- Ticking a step refreshes only the checklists rather than the whole roster
+  (`reloadBuilds`). Only the newest refresh is applied, so rapid ticks don't
+  flicker.
+
+### Fixed
+- In the clients table, the leads cell no longer stops short of the row's
+  height. `ws-table__strong` on a `<td>` was `display: block`, the same bug
+  1.14.0 fixed for `ws-table__sub`.
+
 ## [1.14.0] - 2026-09-16
 
 Needs, before the new console features work on the live site:
@@ -170,6 +309,12 @@ says which step is missing, and the pipeline column falls back to the event log.
 ### Fixed
 - Editing a connection no longer resets its `expected_quiet_hours` to empty.
   The form never passed the value back, so every save cleared it.
+
+## [1.10.6] - 2026-09-16
+
+### Removed
+- The "northern utah" location chip from the hero, its ticker entry, and the
+  "Northern Utah" mention in the meta description.
 
 ## [1.10.5] - 2026-09-16
 

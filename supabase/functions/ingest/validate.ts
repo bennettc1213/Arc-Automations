@@ -9,11 +9,44 @@
  */
 
 export const EVENT_TYPES = [
+  // lead capture
   'lead_received',
   'call_missed',
   'sms_sent',
   'routed',
   'reply_received',
+  'lead_qualified',
+  'handoff_requested',
+  // estimate recovery
+  'estimate_created',
+  'estimate_followup_sent',
+  'estimate_reply_received',
+  'estimate_decision',
+  'estimate_suppressed',
+  // reviews & service recovery
+  'job_completed',
+  'review_request_sent',
+  'review_received',
+  'review_response_published',
+  'service_recovery_opened',
+  'service_recovery_resolved',
+  // memberships
+  'membership_recorded',
+  'membership_payment_failed',
+  'membership_payment_recovered',
+  'membership_visit_due',
+  'membership_visit_booked',
+  'membership_cancellation_requested',
+  // install & warranty
+  'install_completed',
+  'install_closeout_updated',
+  'warranty_registration_submitted',
+  'warranty_registration_verified',
+  'warranty_registration_blocked',
+  // cross-cutting human tasks
+  'task_opened',
+  'task_resolved',
+  // verification
   'canary_expectation',
   'canary_check',
   'watermark_check',
@@ -21,6 +54,45 @@ export const EVENT_TYPES = [
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
+
+/* The lifecycle metadata (migration 0009). Every field is optional: the lead pipeline has
+   posted here for two years without any of them and must keep working unchanged. What they
+   buy is a contract at the door rather than a convention inside a jsonb blob — a workflow
+   sending `source_system: "jobbr"` finds out here, once, instead of producing rows that
+   quietly never match anything. */
+export const ENTITY_TYPES = [
+  'lead',
+  'estimate',
+  'job',
+  'review',
+  'membership',
+  'install',
+  'task',
+] as const;
+
+export const SOURCE_SYSTEMS = [
+  'gohighlevel',
+  'jobber',
+  'housecall_pro',
+  'servicetitan',
+  'twilio',
+  'n8n',
+  'manual',
+  'other',
+] as const;
+
+export const ACTORS = ['automation', 'human', 'system'] as const;
+
+export const ERROR_CLASSES = [
+  'auth',
+  'delivery',
+  'schema',
+  'rate_limit',
+  'timeout',
+  'upstream',
+  'config',
+  'unknown',
+] as const;
 
 export interface IncomingEvent {
   event_type: EventType;
@@ -33,6 +105,12 @@ export interface IncomingEvent {
   is_canary: boolean;
   payload: Record<string, unknown>;
   event_key: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  source_system: string | null;
+  external_id: string | null;
+  actor: string | null;
+  error_class: string | null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -136,6 +214,37 @@ export function validateEvent(input: unknown): ValidationResult {
     }
   }
 
+  /* the lifecycle metadata. `entity_id` is free-form on purpose — it carries whatever
+     identifies the record in the client's own system, and forcing a uuid on it would mean
+     every adapter inventing a mapping table to satisfy us. */
+  const entityId = optionalString(input.entity_id, 'entity_id', errors);
+  const externalId = optionalString(input.external_id, 'external_id', errors);
+
+  const oneOf = (
+    value: unknown,
+    allowed: readonly string[],
+    field: string,
+  ): string | null => {
+    const parsed = optionalString(value, field, errors);
+    if (parsed !== null && !allowed.includes(parsed)) {
+      errors.push(`${field} "${parsed}" is not recognised. Known values: ${allowed.join(', ')}`);
+      return null;
+    }
+    return parsed;
+  };
+
+  const entityType = oneOf(input.entity_type, ENTITY_TYPES, 'entity_type');
+  const sourceSystem = oneOf(input.source_system, SOURCE_SYSTEMS, 'source_system');
+  const actor = oneOf(input.actor, ACTORS, 'actor');
+  const errorClass = oneOf(input.error_class, ERROR_CLASSES, 'error_class');
+
+  /* an event carrying an entity type but no id cannot be folded into a record, and would
+     land as a row that no page will ever show. that is the silent-wrongness failure mode
+     this whole boundary exists to make loud. */
+  if (entityType !== null && entityId === null) {
+    errors.push('entity_type was given without entity_id — the record could not be identified');
+  }
+
   if (errors.length > 0) return { ok: false, errors };
 
   return {
@@ -151,6 +260,15 @@ export function validateEvent(input: unknown): ValidationResult {
       is_canary: isCanaryRaw as boolean,
       payload,
       event_key: eventKey,
+      entity_type: entityType,
+      entity_id: entityId,
+      source_system: sourceSystem,
+      external_id: externalId,
+      /* an event with no stated actor came from a workflow. a human action has to say so,
+         because the reviews module treats "approved by a person" as a claim that needs
+         evidence rather than a default. */
+      actor: actor ?? (eventType === 'task_resolved' ? null : 'automation'),
+      error_class: errorClass ?? (statusRaw === 'failure' ? 'unknown' : null),
     },
   };
 }

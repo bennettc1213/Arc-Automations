@@ -11,7 +11,11 @@ import Reliability from '../pages/dash/Reliability';
 import Reports from '../pages/dash/Reports';
 import Account from '../pages/dash/Account';
 import Support from '../pages/dash/Support';
-import { activeItem } from '../lib/nav';
+import Estimates from '../pages/dash/Estimates';
+import Reviews from '../pages/dash/Reviews';
+import Memberships from '../pages/dash/Memberships';
+import Installs from '../pages/dash/Installs';
+import { activeItem, navGroupsFor, navItemsFor } from '../lib/nav';
 import { downloadCsv, threadsToCsv } from '../lib/csv';
 import '../workspace.css';
 
@@ -44,6 +48,12 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
   const [paletteOpen, setPaletteOpen] = useState(false);
   const location = useLocation();
 
+  /* the rail this client gets, and the page list the palette and the title bar resolve
+     against. a module the client does not have is filtered out of the rail — but the full
+     NAV_ITEMS list is what `activeItem` falls back to, so a pasted url to a page they do not
+     have still resolves a title instead of silently rendering the overview's. */
+  const groups = useMemo(() => navGroupsFor(data.availability), [data.availability]);
+  const items = useMemo(() => navItemsFor(data.availability), [data.availability]);
   const page = activeItem(location.pathname, base);
 
   const toggleCollapse = useCallback(() => {
@@ -120,13 +130,21 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
     return list;
   }, [data.threads.length, exportLeads, onSignOut]);
 
-  const counts = useMemo(
-    () => ({
+  /* the rail's counters are what needs doing, not how much exists. "estimates 148" is
+     inventory; "estimates 3" next to three customers waiting on a reply is the number that
+     makes somebody click. leads keeps its volume count because that page is the evidence
+     archive rather than a queue. */
+  const counts = useMemo(() => {
+    const byModule = data.attention?.byModule ?? {};
+    return {
       leads: data.threadTotal,
+      estimates: byModule.estimates || null,
+      reviews: byModule.reviews || null,
+      memberships: byModule.memberships || null,
+      installs: byModule.installs || null,
       reliability: data.incidents.filter((incident) => incident.open).length || null,
-    }),
-    [data],
-  );
+    };
+  }, [data]);
 
   const pageProps = { data, base, live, onExport: exportLeads };
 
@@ -147,6 +165,7 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
         collapsed={railCollapsed}
         onToggleCollapse={toggleCollapse}
         counts={counts}
+        groups={groups}
       />
 
       <div className="ws__main">
@@ -170,6 +189,10 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
           <Routes>
             <Route index element={<Overview {...pageProps} />} />
             <Route path="leads" element={<Leads {...pageProps} />} />
+            <Route path="estimates" element={<Estimates {...pageProps} />} />
+            <Route path="reviews" element={<Reviews {...pageProps} />} />
+            <Route path="memberships" element={<Memberships {...pageProps} />} />
+            <Route path="installs" element={<Installs {...pageProps} />} />
             <Route path="activity" element={<Activity {...pageProps} />} />
             <Route path="automations" element={<Automations {...pageProps} />} />
             <Route path="reliability" element={<Reliability {...pageProps} />} />
@@ -187,6 +210,7 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
         base={base}
         data={data}
         actions={paletteActions}
+        items={items}
       />
     </div>
   );

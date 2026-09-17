@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Icon from '../../components/Icon';
-import { Panel } from '../../components/ui';
+import { Panel, Pill } from '../../components/ui';
 import {
   ActionButton,
   CopyValue,
@@ -11,7 +11,10 @@ import {
   TextArea,
   TextInput,
 } from '../../components/ops-ui';
+import { ServicePicker } from '../../components/BuildPanel';
 import { createClient, linkClientAccount, mintToken } from '../../lib/ops';
+import { addClientServices, buildProgress, STAGE } from '../../lib/builds';
+import { SERVICE_BY_KEY } from '../../lib/service-catalog';
 import { generateClientId, slugify } from '../../lib/client-id';
 
 /**
@@ -23,7 +26,12 @@ import { generateClientId, slugify } from '../../lib/client-id';
  * cannot be part of that conversation. regenerating it is one click and costs
  * nothing — nothing has been written yet.
  *
- * the three steps after the save are separate buttons rather than one "create
+ * arc sells services, not hours, so what they bought is chosen here too and the
+ * account cannot be saved without at least one. each service is written with its
+ * build checklist straight after the account, and the checklists live on the
+ * client's page from then on.
+ *
+ * the steps after the save are separate buttons rather than one "create
  * everything" action. each one touches a different system, each can fail on its
  * own, and a single button that half-worked would leave you guessing which half.
  */
@@ -50,6 +58,7 @@ export default function NewClient({ base, clients, reload }) {
   const [clientId, setClientId] = useState(generateClientId);
   const [created, setCreated] = useState(null);
   const [freshToken, setFreshToken] = useState(null);
+  const [services, setServices] = useState([]);
   const [form, setForm] = useState({
     name: '',
     company: '',
@@ -70,7 +79,8 @@ export default function NewClient({ base, clients, reload }) {
      field you learn not to trust. */
   const slug = form.slug.trim() || slugify(form.name);
   const slugTaken = clients.some((client) => client.tenant.slug === slug);
-  const canSave = form.name.trim().length > 0 && slug.length > 0 && !slugTaken;
+  const canSave = form.name.trim().length > 0 && slug.length > 0 && !slugTaken && services.length > 0;
+  const stepCount = services.reduce((sum, key) => sum + (SERVICE_BY_KEY.get(key)?.steps.length ?? 0), 0);
 
   const welcome = useMemo(
     () =>
@@ -87,6 +97,10 @@ export default function NewClient({ base, clients, reload }) {
   );
 
   if (created) {
+    /* read back from the roster rather than from what was picked, so this lists
+       what was actually written. */
+    const createdBuilds = clients.find((client) => client.tenant.id === created.id)?.builds ?? null;
+
     return (
       <>
         <Notice tone="warn" title={`${created.name} is in the system`}>
@@ -171,11 +185,71 @@ export default function NewClient({ base, clients, reload }) {
           )}
         </Panel>
 
+        <Panel
+          title="step three — build what they bought"
+          note={
+            createdBuilds
+              ? `${createdBuilds.length} service${createdBuilds.length === 1 ? '' : 's'} · ${createdBuilds.reduce(
+                  (sum, build) => sum + build.steps.length,
+                  0,
+                )} steps`
+              : 'not saved'
+          }
+        >
+          {created.servicesError ? (
+            <>
+              <Notice tone="fail" title="the account was saved, but its services were not">
+                <p>
+                  {created.servicesError}. nothing is half-written — the services and their
+                  checklists go in together or not at all — so it is safe to try again.
+                </p>
+              </Notice>
+              <div className="ops-row" style={{ marginTop: 14 }}>
+                <ActionButton
+                  variant="primary"
+                  icon="refresh"
+                  onRun={async () => {
+                    await addClientServices(created.id, created.serviceKeys);
+                    await reload();
+                    setCreated((prev) => ({ ...prev, servicesError: null }));
+                  }}
+                >
+                  save the services again
+                </ActionButton>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="ops-muted">
+                each service has its checklist on {created.name}&rsquo;s page: build it on arc&rsquo;s
+                side, then integrate it into their business. tick it off there as the work gets done
+                — steps can be added or removed for this client without touching anyone else&rsquo;s.
+              </p>
+              {createdBuilds && createdBuilds.length > 0 && (
+                <ul className="bld-created" style={{ marginTop: 14 }}>
+                  {createdBuilds.map((build) => {
+                    const progress = buildProgress(build);
+                    return (
+                      <li key={build.id}>
+                        <span>{build.name}</span>
+                        <Pill tone={STAGE[progress.stage].tone}>{STAGE[progress.stage].label}</Pill>
+                        <span className="mono">
+                          {progress.build.total} build · {progress.integrate.total} integrate
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </>
+          )}
+        </Panel>
+
         <Panel title="then">
           <div className="ops-row">
             <Link className="ws-btn ws-btn--primary" to={`${base}/clients/${created.id}`}>
               <Icon name="chevron" size={13} />
-              open {created.name}
+              open {created.name}&rsquo;s checklist
             </Link>
             <button
               type="button"
@@ -183,6 +257,7 @@ export default function NewClient({ base, clients, reload }) {
               onClick={() => {
                 setCreated(null);
                 setFreshToken(null);
+                setServices([]);
                 setClientId(generateClientId());
                 setForm((prev) => ({
                   ...prev,
@@ -239,12 +314,33 @@ export default function NewClient({ base, clients, reload }) {
       </Panel>
 
       <Panel
+        title="what we’re building"
+        note={
+          services.length
+            ? `${services.length} service${services.length === 1 ? '' : 's'} · ${stepCount} steps to deliver`
+            : 'choose at least one'
+        }
+      >
+        <p className="ops-muted" style={{ marginBottom: 14 }}>
+          what they bought. each service comes with its checklist — build it on arc&rsquo;s side,
+          then integrate it into their business — and more can be added from their page later.
+        </p>
+        <ServicePicker
+          selected={services}
+          onToggle={(key) =>
+            setServices((prev) => (prev.includes(key) ? prev.filter((entry) => entry !== key) : [...prev, key]))
+          }
+        />
+      </Panel>
+
+      <Panel
         title="the account"
         actions={
           <ActionButton
             variant="primary"
             icon="check"
             disabled={!canSave}
+            title={services.length === 0 ? 'choose at least one service first' : undefined}
             onRun={async () => {
               const tenant = await createClient({
                 ...form,
@@ -253,8 +349,18 @@ export default function NewClient({ base, clients, reload }) {
                 name: form.name.trim(),
                 loginEmail: form.loginEmail.trim().toLowerCase(),
               });
+              /* the account is real from here. if the services fail to save, the
+                 page still moves on and says so, with a retry — sending the
+                 operator back to a form whose account already exists would get
+                 the next press refused as a duplicate handle. */
+              let servicesError = null;
+              try {
+                await addClientServices(tenant.id, services);
+              } catch (error) {
+                servicesError = error.message;
+              }
               await reload();
-              setCreated(tenant);
+              setCreated({ ...tenant, serviceKeys: services, servicesError });
               return null;
             }}
           >
@@ -339,8 +445,10 @@ export default function NewClient({ base, clients, reload }) {
 
       <Panel title="what this writes">
         <p className="ops-muted">
-          one row in <code>public.tenants</code>, with the client id above. no events, no
-          connections, no token — those come next and each is its own step. the account will
+          one row in <code>public.tenants</code>, with the client id above, then one row in{' '}
+          <code>client_services</code> per service chosen, each with its checklist in{' '}
+          <code>client_service_steps</code>. no events, no connections, no token — those come
+          next and each is its own step. the account will
           show in the roster immediately with zeroes against it, which is correct: nothing has
           happened for them yet, and a new client showing invented activity would be the one
           unrecoverable lie in a product sold on only printing what it can prove.

@@ -1,7 +1,7 @@
 {
   "name": "ben-portfolio",
   "private": true,
-  "version": "1.14.0",
+  "version": "1.16.0",
   "type": "module",
   "scripts": {
     "predev": "node scripts/build-demo-data.mjs",
@@ -10,7 +10,9 @@
     "build": "vite build",
     "postbuild": "node scripts/spa-fallback.mjs",
     "preview": "vite preview",
-    "demo-data": "node scripts/build-demo-data.mjs"
+    "demo-data": "node scripts/build-demo-data.mjs",
+    "test": "node --test \"tests/**/*.test.js\"",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@fontsource-variable/space-grotesk": "^5.1.0",

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from './Icon';
 import { NAV_ITEMS } from '../lib/nav';
-import { formatDuration, formatPhone, formatStamp } from '../lib/format';
+import { formatDuration, formatMoney, formatPhone, formatStamp } from '../lib/format';
 
 /**
  * ⌘K. one box that searches everything the portal knows about.
@@ -109,6 +109,60 @@ export default function CommandPalette({
           run: () => navigate(`${base}/leads?thread=${encodeURIComponent(thread.id)}`),
         }));
       if (leads.length) groups.push({ label: 'leads', items: leads });
+
+      /* the lifecycle modules, searched through one declaration rather than four copies of
+         the same block. a contractor looking for "kowalczyk" does not know or care whether
+         that name is attached to a lead, an estimate or an install — they want the row. */
+      for (const module of [
+        {
+          key: 'estimates',
+          label: 'estimates',
+          icon: 'reports',
+          records: data?.estimates?.records ?? [],
+          text: (r) => [r.customer, r.workType, r.crmStatus, r.assignedTo],
+          hint: (r) =>
+            `${r.amountCents !== null ? `${formatMoney(r.amountCents)} · ` : ''}${r.stage}`,
+        },
+        {
+          key: 'reviews',
+          label: 'reviews',
+          icon: 'reliability',
+          records: data?.reviews?.records ?? [],
+          text: (r) => [r.customer, r.workType, r.tech, r.review?.platform],
+          hint: (r) => r.state,
+        },
+        {
+          key: 'memberships',
+          label: 'memberships',
+          icon: 'account',
+          records: data?.memberships?.records ?? [],
+          text: (r) => [r.customer, r.plan, r.status],
+          hint: (r) => `${r.plan ?? 'member'} · ${r.status}`,
+        },
+        {
+          key: 'installs',
+          label: 'installs',
+          icon: 'automations',
+          records: data?.installs?.records ?? [],
+          text: (r) => [r.customer, r.manufacturer, r.modelNumber, r.serialNumber, r.address],
+          hint: (r) => `${r.manufacturer ?? 'install'} · ${r.state}`,
+        },
+      ]) {
+        if (module.records.length === 0) continue;
+        const matched = module.records
+          .filter((record) => module.text(record).some((field) => normalise(field).includes(q)))
+          .slice(0, MAX_PER_GROUP)
+          .map((record) => ({
+            id: `${module.key}:${record.id}`,
+            kind: module.key,
+            icon: module.icon,
+            label: record.customer ?? 'unnamed',
+            hint: module.hint(record),
+            run: () =>
+              navigate(`${base}/${module.key}?record=${encodeURIComponent(record.id)}`),
+          }));
+        if (matched.length) groups.push({ label: module.label, items: matched });
+      }
 
       const automations = (data?.automations ?? [])
         .filter((a) => normalise(a.name).includes(q) || normalise(a.id).includes(q))
