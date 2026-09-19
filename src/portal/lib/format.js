@@ -206,6 +206,22 @@ export function eventLabel(eventType, payload = {}) {
       return payload.outcome === 'qualified' ? 'lead qualified' : 'lead did not qualify';
     case 'handoff_requested':
       return `handed to a person${payload.reason ? ` — ${payload.reason}` : ''}`;
+    /* the execution layer (0010). "sent" and "delivered" are deliberately different
+       sentences: the first is what arc did, the second is what the carrier confirmed. */
+    case 'message_delivered':
+      return 'text delivered';
+    case 'message_failed':
+      return `text could not be delivered${payload.provider_code ? ` — carrier code ${payload.provider_code}` : ''}`;
+    case 'lead_booked':
+      return 'lead booked';
+    case 'lead_suppressed':
+      return payload.reason === 'wrong_contact'
+        ? 'wrong number — no further contact'
+        : 'customer opted out — no further contact';
+    case 'automation_completed':
+      return `sequence finished${payload.stop_reason ? ` — ${String(payload.stop_reason).replace(/_/g, ' ')}` : ''}`;
+    case 'automation_failed':
+      return 'sequence stopped on an error';
     case 'estimate_created':
       return 'estimate opened';
     case 'estimate_followup_sent':

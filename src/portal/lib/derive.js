@@ -44,6 +44,15 @@ export const WORKFLOW_CATALOGUE = {
     blurb:
       'when the customer texts back, the reply lands in the feed rather than on a phone nobody is holding.',
   },
+  /* arc's own execution layer, rather than an n8n workflow watching one. it appears in the
+     automations list under its real name because a client asking "what actually sent that
+     text" deserves an answer that is not a raw identifier. */
+  arc_lead_recovery: {
+    name: 'lead recovery',
+    kind: 'client',
+    blurb:
+      'the engine itself: the call is forwarded, an unanswered one becomes a lead, the text goes out, the reply is read, and it stops the moment a person or the customer says so.',
+  },
   wf_canary_emit: {
     name: 'canary — emit',
     kind: 'monitoring',

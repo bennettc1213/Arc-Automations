@@ -1077,12 +1077,21 @@ async function callFunction(name, body, accessToken) {
   }
 
   if (!response.ok) {
-    throw new Error(
+    const error = new Error(
       payload?.error ??
         (response.status === 404
           ? `the ${name} function is not deployed yet`
           : `${name} failed (${response.status})`),
     );
+    /* the whole body, carried on the error.
+     *
+     * some refusals are a list rather than a sentence — activation answers 409 with every
+     * unmet condition at once, and a caller that only ever sees `.message` would show the
+     * operator one of five reasons and make them press the button again to learn the next.
+     * `.message` stays exactly what it was, so nothing that reads only that changes. */
+    error.status = response.status;
+    error.payload = payload ?? null;
+    throw error;
   }
 
   return payload;
@@ -1132,6 +1141,89 @@ export async function acknowledgeAlert(alertId) {
 
 export async function resolveAlert(alertId) {
   return callOps({ action: 'resolve-alert', alert_id: alertId });
+}
+
+/* ── lead recovery (0010) ──────────────────────────────────────
+   the execution layer's operator surface. every one of these is a thin wrapper over an
+   `ops` action; the console holds no logic of its own about what any of them may do,
+   because the browser is the one place in this system whose checks do not count.
+
+   `validateLeadRecoveryConfig` is imported from the edge function's own source rather than
+   reimplemented here — the same object validates on both sides, and the server validates
+   again regardless. the browser's copy exists so an operator sees the problem as they type
+   rather than after a round trip; it is a convenience, never the decision. */
+
+export async function getLeadRecovery(tenantId) {
+  return callOps({ action: 'lead-recovery-get', tenant_id: tenantId });
+}
+
+export async function validateLeadRecoveryRemote(tenantId, config) {
+  return callOps({ action: 'lead-recovery-validate-config', tenant_id: tenantId, config });
+}
+
+export async function saveLeadRecoveryConfig(tenantId, config) {
+  return callOps({ action: 'lead-recovery-save-config', tenant_id: tenantId, config });
+}
+
+export async function setLeadRecoveryStep(tenantId, stepKey, done, note = null) {
+  return callOps({ action: 'lead-recovery-set-step', tenant_id: tenantId, step_key: stepKey, done, note });
+}
+
+export async function activateLeadRecovery(tenantId) {
+  return callOps({ action: 'lead-recovery-activate', tenant_id: tenantId });
+}
+
+export async function pauseLeadRecovery(tenantId, reason = null) {
+  return callOps({ action: 'lead-recovery-pause', tenant_id: tenantId, reason });
+}
+
+/* a computation, not a call. it returns the twiml the voice webhook would produce and
+   tells you whether the number resolves back to this tenant and only this tenant. */
+export async function testLeadRecoveryRouting(tenantId) {
+  return callOps({ action: 'lead-recovery-test-routing', tenant_id: tenantId });
+}
+
+/* a synthetic lead through the whole engine. the sender it is given records instead of
+   sending, and the number it uses is twilio's reserved test number, so there are two
+   independent reasons it cannot reach a member of the public. */
+export async function runLeadRecoveryCanary(tenantId, scenario = null) {
+  return callOps({ action: 'lead-recovery-canary', tenant_id: tenantId, scenario });
+}
+
+export async function retryLeadRecoveryAction(tenantId, actionId) {
+  return callOps({ action: 'lead-recovery-retry-action', tenant_id: tenantId, action_id: actionId });
+}
+
+export async function takeOverLead(tenantId, leadId, { actor = null, note = null } = {}) {
+  return callOps({ action: 'lead-recovery-take-over', tenant_id: tenantId, lead_id: leadId, actor, note });
+}
+
+export async function resolveLeadHandoff(tenantId, handoffId, resolution) {
+  return callOps({ action: 'lead-recovery-resolve-handoff', tenant_id: tenantId, handoff_id: handoffId, resolution });
+}
+
+export async function recordLeadOutcome(tenantId, leadId, outcome, valueCents = null) {
+  return callOps({
+    action: 'lead-recovery-book',
+    tenant_id: tenantId,
+    lead_id: leadId,
+    outcome,
+    value_cents: valueCents,
+  });
+}
+
+export async function suppressLeadContact(tenantId, { channel = 'sms', address, reason = 'staff_suppressed' }) {
+  return callOps({ action: 'lead-recovery-suppress', tenant_id: tenantId, channel, address, reason });
+}
+
+export async function issueIntakeKey(tenantId, { allowedOrigins = [], label = 'website form', rotate = false } = {}) {
+  return callOps({
+    action: 'lead-recovery-issue-intake-key',
+    tenant_id: tenantId,
+    allowed_origins: allowedOrigins,
+    label,
+    rotate,
+  });
 }
 
 /* ── the audit log ─────────────────────────────────────────────

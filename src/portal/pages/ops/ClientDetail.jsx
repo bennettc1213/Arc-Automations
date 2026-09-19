@@ -22,6 +22,7 @@ import {
 import ConnectionForm from '../../components/ConnectionForm';
 import ServicesPanel from '../../components/ServicesPanel';
 import BuildPanel from '../../components/BuildPanel';
+import LeadRecoveryPanel from '../../components/LeadRecoveryPanel';
 import ReportDialog from '../../components/ReportDialog';
 import {
   CONNECTION_KINDS,
@@ -382,6 +383,15 @@ function ClientBody({ client, base, reload, reloadBuilds, probe, runProbe }) {
       {/* ── what we're building ─────────────────────────────── */}
 
       <BuildPanel client={client} reloadBuilds={reloadBuilds} readOnly={archived} />
+
+      {/* the execution layer. placed under the build checklist and above the stat row for
+          the same reason the live pipeline check is at the top: this is the panel an
+          operator opens the page to look at once a client is on lead recovery, and it is
+          the only one on the page that can change what a customer receives.
+
+          hidden for an archived client — nothing should be activatable on a tenant that has
+          been deboarded, and the panel is entirely controls. */}
+      {!archived && <LeadRecoveryPanel client={client} />}
 
       <div className="ws-stats">
         <StatCard

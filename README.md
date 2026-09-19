@@ -22,7 +22,13 @@ The build is a static site — `dist/` deploys anywhere:
   same build settings.
 - **Cloudflare Pages**: same — `npm run build` / `dist`.
 
-No environment variables, no server.
+No environment variables, no server — *for the marketing site*.
+
+The Arc client portal and ops console under `/portal` and `/ops` are a
+different matter: they need Supabase, a set of edge functions and, for ARC
+Lead Recovery, Twilio. The full runbook — migrations, function deploys, every
+environment variable, the exact webhook URLs to paste into the Twilio console,
+and how to test any of it locally — is [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Content
 

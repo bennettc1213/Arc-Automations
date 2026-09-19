@@ -21,6 +21,39 @@ different nav declarations. Every figure on either side is derived by the same
 code from the `events` log — there is one derivation chain, so the console and
 a client's dashboard cannot disagree.
 
+## ARC Lead Recovery (`0010`)
+
+The first module Arc **runs** rather than watches. A call reaches an ARC/Twilio
+number, is forwarded to the contractor, and an unanswered one becomes a lead,
+an automation run and a text back — then the reply is classified, and the lead
+is routed to the contractor or stopped and handed to a person. Website-form
+leads go through the **same** `intakeLead`; there is no second engine.
+
+One shared system: one module, one prompt, one set of templates, one
+deployment. A tenant differs only in `module_configs.config` — validated JSON
+with no executable logic. Never a per-client workflow, schema, branch or deploy.
+
+The split the whole thing rests on: **operational tables** (`leads`,
+`automation_runs`, `scheduled_actions`, …) hold current state and what must
+happen next; **`events`** stays append-only evidence, and no figure on any page
+reads an operational table.
+
+Four rules the code enforces:
+
+- **Safety is decided by deterministic rules, and a model can only add to them**
+  (`_shared/engine/rules.ts`). No path lets a classifier clear a flag a rule set.
+  No AI key means human handoff, never a guess.
+- **A model never writes a customer-facing message.** Reviewed templates, a
+  closed placeholder list, and an opt-out line the engine appends.
+- **Nothing sends without re-reading state first** — the gap between queueing
+  tomorrow's follow-up and sending it is where the STOP arrives.
+- **Two workers cannot send the same message** (`claim_scheduled_actions`,
+  `for update skip locked`), and a canary cannot reach a handset.
+
+Activation is fail-closed against an eleven-step checklist. Deploy and Twilio
+setup: [DEPLOYMENT.md](DEPLOYMENT.md). The event contract:
+[EVENT_CONTRACT.md](EVENT_CONTRACT.md).
+
 Requires `supabase/migrations/0003_client_ids_and_ops.sql` plus the
 `client-login` and `ops` edge functions; the console's Supabase page probes for
 all of it and says what is missing. Deboarding and restore need `0007`; service
@@ -66,9 +99,13 @@ are each counted as breaches from the log, so the portal shows a rule held
 rather than claiming it.
 
 Event vocabulary lives in `lib/types.js` and is mirrored at the ingest boundary
-in `functions/ingest/validate.ts`; an event's **module is derived from its
-`event_type`**, never stored. Run `npm test` (node's runner, no deps) and
-`npm run smoke` (renders every page in a real browser; needs
+in `functions/_shared/event-validation.ts` (which `functions/ingest/validate.ts`
+re-exports, so the documented name still points at the door); an event's
+**module is derived from its `event_type`**, never stored. Arc's own functions
+emit through the same validator — there is one door into `events`, not two.
+Run `npm test` (node's runner, no deps — it strips the edge functions'
+TypeScript natively, which is why `functions/_shared/**` imports nothing from
+`jsr:`) and `npm run smoke` (renders every public page in a real browser; needs
 `npm i --no-save playwright-core`).
 
 A client's pipeline status in the console is `pipelineVerdict` (`lib/ops.js`)

@@ -24,6 +24,37 @@ export const LEAD_CAPTURE_EVENT_TYPES = [
   /* automation stopped and a person was put in front of it. safety cases, angry
      customers, anything the client configured as human-only. */
   'handoff_requested',
+
+  /* ── the execution layer (migration 0010) ──
+     the five events above can all be written by something that *watched* a pipeline. these
+     six can only be written by the thing that ran it, which is why they arrived with ARC
+     Lead Recovery and not before.
+
+     kept to the minimum that makes a new claim. anything derivable from the events above
+     was not added: "the customer replied" is `reply_received`, "it was routed" is `routed`,
+     and a second event saying the same thing in different words would be a second source
+     of truth for one fact. */
+
+  /* `sms_sent` has only ever meant "handed to the provider". whether it arrived is a
+     separate fact that turns up later, by callback, and conflating the two is how a
+     dashboard reports a hundred texts sent on a day the carrier rejected every one. */
+  'message_delivered',
+  'message_failed',
+
+  /* the lead turned into work. the only conversion claim this product makes, and it is
+     only ever written because a person or the client's own system said so — never inferred
+     from an enthusiastic reply. */
+  'lead_booked',
+
+  /* this contact must not be messaged again, and why. the evidence behind the suppression
+     row, so an honoured opt-out is provable rather than merely configured. */
+  'lead_suppressed',
+
+  /* the run reached a terminal state: cleanly, or having exhausted its retries. the second
+     one is what turns a dead sequence into a row in the needs-a-person queue instead of a
+     lead that quietly stopped. */
+  'automation_completed',
+  'automation_failed',
 ];
 
 /* ── estimate recovery ─────────────────────────────────────

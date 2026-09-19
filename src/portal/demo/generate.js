@@ -1193,6 +1193,165 @@ function generateQualification(rng, events, now) {
   return added;
 }
 
+/* ── the execution layer ─────────────────────────────────── */
+
+/* what ARC Lead Recovery writes that an observing adapter never could: the provider's
+ * delivery receipt, the booking, the opt-out and the end of the run.
+ *
+ * a fourth pass over the already-generated threads, for the same reason `generateQualification`
+ * is a second one — the seed is a fixed sales asset, and drawing inside the thread generator
+ * would shift every later draw and move lead counts, response times and incident timing on
+ * pages that existed before this module did. this runs last of all, so it cannot move
+ * anything.
+ *
+ * the split between sent, delivered and failed is the point of the whole pass: a demo in
+ * which every text arrives would demonstrate the wrong thing, because the gap between "we
+ * handed it to the carrier" and "it arrived" is precisely what this module exists to make
+ * visible. so a small share of threads carry a carrier rejection with a real Twilio code on
+ * them, and one thread's sequence ends on an error rather than on an outcome.
+ */
+function generateExecutionLayer(rng, events, now) {
+  const added = [];
+
+  /* the successful sends, oldest first, so the outcomes read as a book rather than a
+     scatter. */
+  const sends = events
+    .filter((e) => e.eventType === 'sms_sent' && !e.isCanary && e.status === 'success' && e.correlationId)
+    .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+
+  const repliedThreads = new Set(
+    events.filter((e) => e.eventType === 'reply_received' && !e.isCanary).map((e) => e.correlationId),
+  );
+  const handedOff = new Set(
+    events.filter((e) => e.eventType === 'handoff_requested' && !e.isCanary).map((e) => e.correlationId),
+  );
+
+  for (const send of sends) {
+    const at = DateTime.fromISO(send.occurredAt, { zone: 'utc' });
+    const id = send.correlationId;
+    const base = {
+      correlationId: id,
+      entityType: 'lead',
+      entityId: id,
+      sourceSystem: 'twilio',
+      workflowId: 'arc_lead_recovery',
+    };
+
+    /* the carrier's answer, seconds later. a 4% rejection rate is the real-world shape for
+       a registered campaign texting consumer handsets — landlines, disconnected numbers and
+       the occasional block. */
+    const rejected = rng.chance(0.04);
+    if (rejected) {
+      added.push(
+        makeEvent(rng, {
+          ...base,
+          eventType: 'message_failed',
+          occurredAt: at.plus({ seconds: rng.int(4, 40) }),
+          status: 'failure',
+          errorClass: 'delivery',
+          payload: {
+            provider_message_id: `SM${rng.uuid().replace(/-/g, '')}`,
+            provider_code: rng.pick(['30003', '30006', '21614']),
+          },
+        }),
+      );
+      /* a text nobody received is a lead nobody is talking to, so the engine hands it to a
+         person and the run ends on the failure rather than on an outcome. */
+      added.push(
+        makeEvent(rng, {
+          ...base,
+          eventType: 'automation_failed',
+          occurredAt: at.plus({ seconds: rng.int(41, 70) }),
+          status: 'failure',
+          errorClass: 'delivery',
+          payload: { stop_reason: 'failed', detail: 'the text could not be delivered', final_state: 'failed' },
+        }),
+      );
+      continue;
+    }
+
+    added.push(
+      makeEvent(rng, {
+        ...base,
+        eventType: 'message_delivered',
+        occurredAt: at.plus({ seconds: rng.int(2, 22) }),
+        payload: { provider_message_id: `SM${rng.uuid().replace(/-/g, '')}` },
+      }),
+    );
+
+    /* a small number of people say stop, and the sequence honours it. that this appears in
+       the demo at all is deliberate: an opt-out rate of zero would read as a product that
+       does not implement one. */
+    if (rng.chance(0.022)) {
+      added.push(
+        makeEvent(rng, {
+          ...base,
+          eventType: 'lead_suppressed',
+          occurredAt: at.plus({ minutes: rng.int(2, 180) }),
+          actor: 'human',
+          payload: { reason: 'opt_out', channel: 'sms', cancelled_actions: rng.int(1, 2) },
+        }),
+      );
+      added.push(
+        makeEvent(rng, {
+          ...base,
+          eventType: 'automation_completed',
+          occurredAt: at.plus({ minutes: rng.int(181, 200) }),
+          payload: { stop_reason: 'opted_out', detail: 'customer replied opt_out', final_state: 'suppressed' },
+        }),
+      );
+      continue;
+    }
+
+    /* booked, and only for a lead that actually answered. the number is recorded because
+       somebody in the office recorded it — never inferred from the tone of a reply. */
+    const replied = repliedThreads.has(id);
+    if (replied && rng.chance(0.46)) {
+      added.push(
+        makeEvent(rng, {
+          ...base,
+          eventType: 'lead_booked',
+          occurredAt: at.plus({ hours: rng.int(1, 30) }),
+          actor: 'human',
+          payload: {
+            outcome: 'booked',
+            value_cents: rng.int(28000, 940000),
+            recorded_by: rng.pick(TECHS),
+          },
+        }),
+      );
+      added.push(
+        makeEvent(rng, {
+          ...base,
+          eventType: 'automation_completed',
+          occurredAt: at.plus({ hours: rng.int(31, 36) }),
+          payload: { stop_reason: 'booked', detail: 'the lead turned into work', final_state: 'booked' },
+        }),
+      );
+      continue;
+    }
+
+    /* everything else closes itself after the quiet period — except the ones a person is
+       still holding, which must stay open or the queue would empty itself. */
+    if (!handedOff.has(id) && at < now.minus({ hours: 80 })) {
+      added.push(
+        makeEvent(rng, {
+          ...base,
+          eventType: 'automation_completed',
+          occurredAt: at.plus({ hours: 72, minutes: rng.int(1, 50) }),
+          payload: {
+            stop_reason: 'closed',
+            detail: 'closed after the quiet period with no further contact',
+            final_state: 'closed',
+          },
+        }),
+      );
+    }
+  }
+
+  return added;
+}
+
 /* ── per-module verification ─────────────────────────────── */
 
 /* the hourly canary traverses the lead pipeline and is generated above. the other four
@@ -1282,6 +1441,9 @@ export function generateDemoData(seed = 20260828, at = DateTime.now()) {
   events.push(...generateMemberships(rng, now, DEMO_HISTORY_DAYS));
   events.push(...generateInstalls(rng, now, DEMO_HISTORY_DAYS));
   events.push(...generateModuleChecks(rng, now, zone, DEMO_HISTORY_DAYS));
+  /* last of all. it reads the finished threads back and adds the execution layer's own
+     evidence to them, so not one draw above it moves. */
+  events.push(...generateExecutionLayer(rng, events, now));
 
   const alerts = DEMO_INCIDENTS.map((incident) => {
     const start = incidentStart(incident, now, zone);

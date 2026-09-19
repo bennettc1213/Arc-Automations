@@ -11,6 +11,7 @@ import { SAFETY_FLAG_LABEL } from '../../lib/lifecycle';
 import {
   formatCount,
   formatDuration,
+  formatMoney,
   formatPct,
   formatPhone,
   formatStamp,
@@ -53,8 +54,12 @@ const OUTCOMES = [
   { key: 'all', label: 'all' },
   { key: 'needs-you', label: 'needs you' },
   { key: 'replied', label: 'replied' },
+  { key: 'booked', label: 'booked' },
   { key: 'routed', label: 'routed' },
-  { key: 'send failed', label: 'failed' },
+  /* one chip for "the customer never got it", whether the provider refused it at the door
+     or the carrier refused it later. from the owner's side those are the same problem. */
+  { key: 'undelivered', label: 'not delivered' },
+  { key: 'suppressed', label: 'opted out' },
 ];
 
 /* revealed in pages rather than paginated. an owner scanning for "the tuesday one" reads
@@ -80,8 +85,13 @@ const SORTS = {
 function matchesOutcome(lead, outcome) {
   if (outcome === 'all') return true;
   if (outcome === 'needs-you') {
-    return Boolean(lead.safetyBreach || lead.unacknowledged || (lead.handoff && !lead.handoff.resolvedAt));
+    return Boolean(
+      lead.safetyBreach || lead.unacknowledged || lead.automationFailed || (lead.handoff && !lead.handoff.resolvedAt),
+    );
   }
+  if (outcome === 'booked') return Boolean(lead.booked);
+  if (outcome === 'suppressed') return Boolean(lead.suppressed);
+  if (outcome === 'undelivered') return Boolean(lead.failed || lead.deliveryFailed);
   return lead.state === outcome;
 }
 
@@ -189,61 +199,85 @@ export default function Leads({ data }) {
           sub={
             m.withinSlaPct === null
               ? 'nothing answered in this window yet'
-              : `${formatPct(m.withinSlaPct)} inside your ${formatDuration(m.slaMs)} target`
+              : `${formatPct(m.withinSlaPct)} of ${formatCount(m.answered)} inside your ${formatDuration(m.slaMs)} target`
           }
         />
 
         <StatCard
-          label="qualified"
-          value={m.qualificationSeen ? m.qualified : '—'}
-          animate={m.qualificationSeen}
+          label="customers who replied"
+          value={m.replied}
+          animate
           format={formatCount}
-          compact={!m.qualificationSeen}
           sub={
-            m.qualificationSeen ? (
-              'passed job type, service area and capacity'
+            m.answered === 0
+              ? 'nothing has been answered in this window yet'
+              : `${formatPct((m.replied / m.answered) * 100)} of the people we texted back wrote something`
+          }
+        />
+
+        {/* booked is the only conversion claim this product makes, and it is only ever
+            written because a person or the client's own system recorded it. when nothing is
+            recording it, the card says so rather than printing a zero that reads as "you
+            won nothing". */}
+        <StatCard
+          label="booked"
+          value={m.executionSeen ? m.booked : '—'}
+          animate={m.executionSeen}
+          format={formatCount}
+          compact={!m.executionSeen}
+          sub={
+            m.executionSeen ? (
+              m.bookedValueCents > 0 ? (
+                `${formatMoney(m.bookedValueCents)} recorded against them`
+              ) : (
+                'recorded by your team as they book them'
+              )
             ) : (
               <Withheld>
-                qualification is not running yet — leads are captured and routed without it, so
-                this is not zero, it is unknown
+                nothing is recording outcomes yet — leads are captured and answered, so this is
+                not zero booked, it is unknown
               </Withheld>
             )
           }
-        />
-
-        <StatCard
-          label="handed to a person"
-          value={m.escalations}
-          animate
-          format={formatCount}
-          sub="safety cases, distressed callers and anything your own rules mark human-only"
         />
       </div>
 
       <div className="ws-stats ws-stats--four">
         <StatCard
-          label="nobody picked up"
-          value={m.unacknowledged}
+          label="qualified"
+          value={m.qualificationSeen ? m.qualified : '—'}
           compact
-          sub="routed more than two hours ago with no acknowledgement and no reply"
+          sub={
+            m.qualificationSeen
+              ? 'passed job type, service area and capacity'
+              : 'qualification is not running yet — this is unknown, not zero'
+          }
+        />
+        <StatCard
+          label="handed to a person"
+          value={m.escalations}
+          compact
+          sub={`safety cases and anything your rules mark human-only · ${formatCount(m.unacknowledged)} routed and never picked up`}
         />
         <StatCard
           label="messages that failed"
-          value={m.failedSends}
+          value={m.failedSends + m.deliveryFailures}
           compact
-          sub="carrier or provider rejections in this window"
+          sub={
+            m.executionSeen
+              ? `${formatCount(m.delivered)} confirmed delivered · ${formatCount(m.deliveryFailures)} rejected by the carrier`
+              : 'carrier or provider rejections in this window'
+          }
         />
         <StatCard
-          label="inside target"
-          value={formatPct(m.withinSlaPct)}
+          label="opted out"
+          value={m.executionSeen ? m.suppressedContacts : '—'}
           compact
-          sub={`answered within ${formatDuration(m.slaMs)}`}
-        />
-        <StatCard
-          label="answered"
-          value={m.answered}
-          compact
-          sub="leads that got a text back at all"
+          sub={
+            m.executionSeen
+              ? 'people who asked us to stop. they are never messaged again'
+              : 'no opt-out record is reaching us yet — unknown, not zero'
+          }
         />
       </div>
 
@@ -425,10 +459,21 @@ export default function Leads({ data }) {
                           {lead.routingDestination ?? '—'}
                         </td>
                         <td className="ws-td--outcome">
-                          {lead.safetyBreach ? (
+                          {/* ordered by what supersedes what, strongest claim first: a booked
+                              lead is the end of the story whatever happened on the way, and a
+                              safety case outranks every other kind of "needs looking at". */}
+                          {lead.booked ? (
+                            <Pill tone="ok">booked</Pill>
+                          ) : lead.safetyBreach ? (
                             <Pill tone="fail">needs a person</Pill>
+                          ) : lead.deliveryFailed ? (
+                            <Pill tone="fail">not delivered</Pill>
                           ) : lead.handoff && !lead.handoff.resolvedAt ? (
                             <Pill tone="warn">with a person</Pill>
+                          ) : lead.suppressed ? (
+                            <Pill tone="neutral">opted out</Pill>
+                          ) : lead.automationFailed ? (
+                            <Pill tone="fail">stopped on an error</Pill>
                           ) : lead.unacknowledged ? (
                             <Pill tone="warn">not picked up</Pill>
                           ) : (
@@ -480,6 +525,30 @@ export default function Leads({ data }) {
                               {lead.failureReason && (
                                 <p className="ws-detail__fail">
                                   <b>send failed:</b> {lead.failureReason}
+                                </p>
+                              )}
+
+                              {/* the carrier's answer, which arrives after the send and is a
+                                  separate fact from it. worth saying out loud on the row,
+                                  because "we texted them" and "they got it" are the two
+                                  sentences an owner most often assumes are the same one. */}
+                              {lead.deliveryFailed && (
+                                <p className="ws-detail__fail">
+                                  <b>the carrier did not deliver this.</b> they never received the
+                                  text{lead.deliveryError ? ` — code ${lead.deliveryError}` : ''}. a
+                                  person was given the job of reaching them another way.
+                                </p>
+                              )}
+
+                              {lead.suppressed && (
+                                <p className="ws-detail__next">
+                                  <b>
+                                    {lead.suppressionReason === 'wrong_contact'
+                                      ? 'wrong number.'
+                                      : 'they opted out.'}
+                                  </b>{' '}
+                                  every scheduled message was cancelled and this number will not be
+                                  contacted again.
                                 </p>
                               )}
 
@@ -547,10 +616,13 @@ export default function Leads({ data }) {
 
                               <p className="ws-detail__meta mono">
                                 thread {lead.id}
+                                {lead.deliveredAt && ` · delivered ${formatStamp(lead.deliveredAt, tz)}`}
                                 {lead.repliedAt &&
                                   ` · customer replied ${formatStamp(lead.repliedAt, tz)}`}
                                 {lead.acknowledgedAt &&
                                   ` · acknowledged ${formatStamp(lead.acknowledgedAt, tz)}`}
+                                {lead.bookedAt && ` · booked ${formatStamp(lead.bookedAt, tz)}`}
+                                {lead.bookedValueCents ? ` · ${formatMoney(lead.bookedValueCents)}` : ''}
                               </p>
                             </div>
                           </td>

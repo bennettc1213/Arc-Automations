@@ -60,6 +60,27 @@
  *     facts; the console decides what they add up to (lib/ops.js,
  *     pipelineVerdict), so the verdict has one definition.
  *
+ * Lead Recovery — the execution layer's operator surface (migration 0010). Every
+ * one of these is documented in ./lead-recovery.ts; the list is:
+ *
+ *   lead-recovery-get               everything the panel draws, in one round trip
+ *   lead-recovery-validate-config   validate without writing (the console calls this
+ *                                   as the operator types)
+ *   lead-recovery-save-config       validate, then store the NORMALISED object
+ *   lead-recovery-set-step          tick or reopen an onboarding step
+ *   lead-recovery-activate          fail-closed: refuses until every required step and
+ *                                   every compliance condition is satisfied
+ *   lead-recovery-pause             switch off, and cancel what is already queued
+ *   lead-recovery-test-routing      a dry run of the voice webhook. no call is placed
+ *   lead-recovery-canary            a synthetic lead through the whole engine, with a
+ *                                   sender that records instead of sending
+ *   lead-recovery-retry-action      put a permanently failed action back on the queue
+ *   lead-recovery-take-over         a person takes a lead; automation stops
+ *   lead-recovery-resolve-handoff   close a human escalation
+ *   lead-recovery-book              record the outcome of a lead
+ *   lead-recovery-suppress          add a contact to the do-not-message list
+ *   lead-recovery-issue-intake-key  issue or rotate a website form's public key
+ *
  *   { "action": "capabilities" }
  *     which of the above this deployment knows. The console asks, so a stale
  *     deploy is reported as "redeploy the ops function" rather than as a
@@ -82,6 +103,7 @@
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { handleLeadRecoveryAction, LEAD_RECOVERY_ACTIONS } from './lead-recovery.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -93,6 +115,15 @@ const SITE_URL = (Deno.env.get('ARC_SITE_URL') ?? '').replace(/\/+$/, '');
    credential in the account handed to whoever opens devtools. */
 const N8N_API_URL = (Deno.env.get('N8N_API_URL') ?? '').replace(/\/+$/, '');
 const N8N_API_KEY = Deno.env.get('N8N_API_KEY') ?? '';
+
+/* Lead Recovery's own secrets. Read here only so `capabilities` can report whether they
+   are set, and so the operator actions can hand them to the engine — never returned. */
+const TWILIO_ACCOUNT_SID = Deno.env.get('TWILIO_ACCOUNT_SID') ?? '';
+const TWILIO_AUTH_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN') ?? '';
+const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
+const PUBLIC_FUNCTIONS_BASE = (
+  Deno.env.get('ARC_PUBLIC_FUNCTIONS_URL') ?? `${SUPABASE_URL}/functions/v1`
+).replace(/\/+$/, '');
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -110,7 +141,13 @@ const ACCOUNT_ACTIONS = ['link-client', 'unlink-client'];
 const ALERT_ACTIONS = ['raise-alert', 'acknowledge-alert', 'resolve-alert'];
 const LIFECYCLE_ACTIONS = ['deboard-client', 'restore-client'];
 const PROBE_ACTIONS = ['probe-pipelines', 'capabilities'];
-const ACTIONS = [...ACCOUNT_ACTIONS, ...ALERT_ACTIONS, ...LIFECYCLE_ACTIONS, ...PROBE_ACTIONS];
+const ACTIONS = [
+  ...ACCOUNT_ACTIONS,
+  ...ALERT_ACTIONS,
+  ...LIFECYCLE_ACTIONS,
+  ...PROBE_ACTIONS,
+  ...LEAD_RECOVERY_ACTIONS,
+];
 
 const RESTORE_STATUSES = ['onboarding', 'active', 'paused'];
 
@@ -134,6 +171,9 @@ type Body = {
   status?: string;
   delete_logins?: boolean;
   tenants?: { tenant_id?: string; workflow_ids?: unknown }[];
+  /* the lead-recovery actions carry their own fields; they are read and validated in
+     ./lead-recovery.ts rather than restated here. */
+  [key: string]: unknown;
 };
 
 /* ── the live check's plumbing ───────────────────────────────────────── */
@@ -248,6 +288,28 @@ Deno.serve(async (request) => {
     return !error;
   }
 
+  // ── lead recovery (0010) ──────────────────────────────────────────────
+
+  /* delegated whole. the admin check, the audit helper and the service-role client above
+     are the things this function exists to own; what a lead-recovery action *does* belongs
+     next to the engine it drives. */
+  if (LEAD_RECOVERY_ACTIONS.includes(action)) {
+    const result = await handleLeadRecoveryAction(action, {
+      db,
+      body: body as unknown as Record<string, unknown>,
+      actorId,
+      audit,
+      env: {
+        twilioAccountSid: TWILIO_ACCOUNT_SID,
+        twilioAuthToken: TWILIO_AUTH_TOKEN,
+        anthropicKey: ANTHROPIC_API_KEY,
+        publicFunctionsBase: PUBLIC_FUNCTIONS_BASE,
+        siteUrl: SITE_URL,
+      },
+    });
+    return json(result.body, result.status);
+  }
+
   // ── alerts ────────────────────────────────────────────────────────────
 
   if (action === 'raise-alert') {
@@ -339,6 +401,14 @@ Deno.serve(async (request) => {
         n8n: {
           configured: Boolean(N8N_API_URL && N8N_API_KEY),
           host: N8N_API_URL ? new URL(N8N_API_URL).host : null,
+        },
+        /* booleans and a hostname only — the console needs to know whether a secret is
+           set, never what it is. */
+        lead_recovery: {
+          twilio: Boolean(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN),
+          classifier: Boolean(ANTHROPIC_API_KEY),
+          dispatch_key: Boolean(Deno.env.get('ARC_DISPATCH_KEY')),
+          functions_base: PUBLIC_FUNCTIONS_BASE,
         },
       },
       200,

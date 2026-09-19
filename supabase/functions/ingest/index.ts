@@ -18,6 +18,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { validateBody } from './validate.ts';
+import { supabaseEventSink, writeEvents } from '../_shared/event-writer.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -115,31 +116,13 @@ Deno.serve(async (request) => {
     return json({ error: 'validation failed', details: validation.errors }, 400);
   }
 
-  const rows = validation.events.map((e) => ({ ...e, tenant_id: tenantId }));
-
-  /* idempotency. n8n retries on transient failure, and a double-counted lead makes every
-     number on the dashboard indefensible. Rows carrying an event_key collide on the unique
-     index and are ignored; rows without one cannot be deduplicated and are inserted as-is.
-     This depends on migration 0002 having been applied — the partial index from 0001 is not
-     usable as an ON CONFLICT target and every upsert fails against it. */
-  const keyed = rows.filter((r) => r.event_key !== null);
-  const unkeyed = rows.filter((r) => r.event_key === null);
-  let written = 0;
-
-  if (keyed.length > 0) {
-    const { data, error } = await db
-      .from('events')
-      .upsert(keyed, { onConflict: 'tenant_id,event_key', ignoreDuplicates: true })
-      .select('id');
-    if (error) return json({ error: 'insert failed', details: error.message }, 500);
-    written += data?.length ?? 0;
-  }
-
-  if (unkeyed.length > 0) {
-    const { data, error } = await db.from('events').insert(unkeyed).select('id');
-    if (error) return json({ error: 'insert failed', details: error.message }, 500);
-    written += data?.length ?? 0;
-  }
+  /* idempotency, and the write itself, both live in ../_shared/event-writer.ts. They moved
+     there when the Lead Recovery engine started emitting events of its own: this endpoint
+     and Arc's own functions must deduplicate the same way, or a retried Twilio callback
+     counts as a second text sent to a customer. */
+  const sink = supabaseEventSink(db);
+  const result = await writeEvents(sink, tenantId, validation.events);
+  if (result.error) return json({ error: 'insert failed', details: result.error }, 500);
 
   // fire and forget: a failed bookkeeping update must not fail the ingest.
   db.from('ingest_tokens')
@@ -147,5 +130,5 @@ Deno.serve(async (request) => {
     .eq('id', tokenId)
     .then(() => {});
 
-  return json({ accepted: rows.length, written, duplicates: rows.length - written }, 202);
+  return json({ accepted: result.accepted, written: result.written, duplicates: result.duplicates }, 202);
 });

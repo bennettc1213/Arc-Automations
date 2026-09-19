@@ -178,6 +178,52 @@ export function buildLeadCapture(events, threads, tenant, now, days = 30) {
     routedAck.set(event.correlationId, event);
   }
 
+  /* ── the execution layer's own events (0010) ──
+     lead recovery is the first module arc *runs* rather than watches, and these are the
+     four facts only the thing running it can state: the provider confirmed delivery or
+     refused it, the lead turned into work, the contact opted out, the sequence ended.
+     folded on by correlation id exactly as qualification and handoff already are, so the
+     leads table gains columns rather than the portal gaining a second lead list. */
+  const delivered = new Map();
+  const deliveryFailed = new Map();
+  const booked = new Map();
+  const suppressed = new Map();
+  const runEnded = new Map();
+
+  for (const event of events) {
+    if (event.isCanary || !event.correlationId) continue;
+    const id = event.correlationId;
+    switch (event.eventType) {
+      case 'message_delivered':
+        if (!delivered.has(id)) delivered.set(id, event);
+        break;
+      case 'message_failed':
+        /* the last one: a thread that failed, retried and failed again is described by its
+           most recent attempt, not its first. */
+        deliveryFailed.set(id, event);
+        break;
+      case 'lead_booked':
+        booked.set(id, event);
+        break;
+      case 'lead_suppressed':
+        suppressed.set(id, event);
+        break;
+      case 'automation_completed':
+      case 'automation_failed':
+        runEnded.set(id, event);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /* is the execution layer running for this client at all? the same question
+     `qualificationSeen` asks of the qualifier, and for the same reason: a client whose
+     leads arrive through an observing adapter has no bookings and no suppressions because
+     nothing is recording them, which is not the same fact as zero. */
+  const executionSeen =
+    delivered.size > 0 || deliveryFailed.size > 0 || booked.size > 0 || suppressed.size > 0 || runEnded.size > 0;
+
   const leads = threads.map((thread) => {
     const q = qualifications.get(thread.id)?.payload ?? null;
     const handoffEvent = handoffs.get(thread.id) ?? null;
@@ -230,6 +276,21 @@ export function buildLeadCapture(events, threads, tenant, now, days = 30) {
       routingDestination: thread.tech ?? routedEvent?.payload?.queue ?? null,
       acknowledgedAt,
       unacknowledged,
+
+      /* delivery is a separate claim from sending, so it reads as three states rather than
+         a boolean: confirmed, refused, or nobody has told us. */
+      deliveredAt: delivered.get(thread.id)?.occurredAt ?? null,
+      deliveryFailed: deliveryFailed.has(thread.id),
+      deliveryError: deliveryFailed.get(thread.id)?.payload?.provider_code
+        ?? deliveryFailed.get(thread.id)?.payload?.reason
+        ?? null,
+      booked: booked.has(thread.id),
+      bookedAt: booked.get(thread.id)?.occurredAt ?? null,
+      bookedValueCents: cents(booked.get(thread.id)?.payload?.value_cents ?? null),
+      suppressed: suppressed.has(thread.id),
+      suppressionReason: suppressed.get(thread.id)?.payload?.reason ?? null,
+      automationFailed: runEnded.get(thread.id)?.eventType === 'automation_failed',
+      stopReason: runEnded.get(thread.id)?.payload?.stop_reason ?? null,
       /* the breach that matters: something on the safety list came in and the pipeline
          handled it without ever involving a person. */
       safetyBreach: requiresHuman && !handoffEvent,
@@ -240,9 +301,11 @@ export function buildLeadCapture(events, threads, tenant, now, days = 30) {
           ? 'waiting on a person'
           : unacknowledged
             ? 'nobody has picked this up'
-            : thread.failed
-              ? 'the text did not send'
-              : null,
+            : thread.failed || deliveryFailed.has(thread.id)
+              ? 'the text did not reach them'
+              : runEnded.get(thread.id)?.eventType === 'automation_failed'
+                ? 'the sequence stopped on an error'
+                : null,
     };
   });
 
@@ -277,6 +340,28 @@ export function buildLeadCapture(events, threads, tenant, now, days = 30) {
       unacknowledged: leads.filter((lead) => lead.unacknowledged).length,
       failedSends,
       safetyBreaches: windowed.filter((lead) => lead.safetyBreach).length,
+
+      /* ── the execution layer's figures (0010) ── */
+      replied: windowed.filter((lead) => lead.replied).length,
+      /* `executionSeen` gates every figure below it. without it the leads page would print
+         "0 booked" for a client whose leads arrive through an observing adapter that has no
+         way to know — which is the exact zero-for-unknown substitution `modules.js` exists
+         to prevent, one level further down. */
+      executionSeen,
+      booked: windowed.filter((lead) => lead.booked).length,
+      bookedValueCents: sum(
+        windowed.filter((lead) => lead.booked).map((lead) => lead.bookedValueCents ?? 0),
+      ),
+      /* delivery confirmations, counted separately from sends: "we handed 40 texts to the
+         carrier" and "38 arrived" are different sentences and the gap is the interesting
+         one. */
+      delivered: windowed.filter((lead) => lead.deliveredAt !== null).length,
+      deliveryFailures: windowed.filter((lead) => lead.deliveryFailed).length,
+      /* not windowed. a suppression is a standing fact about a contact, not an event that
+         happened in the last thirty days, and expiring it out of the count would suggest
+         somebody had become contactable again. */
+      suppressedContacts: leads.filter((lead) => lead.suppressed).length,
+      automationFailures: windowed.filter((lead) => lead.automationFailed).length,
     },
   };
 }
