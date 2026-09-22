@@ -7,6 +7,13 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+
+- Site moves off the `github.io/Arc-Automations` subpath onto the custom
+  domain `arcautomation.site`: `vite.config.js` builds from `/` instead of
+  `/Arc-Automations/`, and `public/CNAME` tells GitHub Pages the new domain on
+  every deploy.
+
 ## [1.17.0] - 2026-09-19
 
 Needs `supabase/migrations/0010_lead_recovery.sql` applied (after 0009), the
