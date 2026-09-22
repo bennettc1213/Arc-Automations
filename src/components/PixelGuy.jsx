@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useInView, useMedia, useReducedMotion } from '../lib/hooks';
+import { useAnimate, useInView, useMedia, useReducedMotion } from '../lib/hooks';
 import './PixelGuy.css';
 
 const ACCENT = '#ff4d00';
@@ -65,8 +65,12 @@ function Sprite({ rects, size }) {
 export default function PixelGuy({ size = 24, className = '', autoHop = false }) {
   const reduced = useReducedMotion();
   const fine = useMedia('(pointer: fine)');
-  const live = !reduced;
   const rootRef = useRef(null);
+  /* he blinks, he turns, he ducks on a fast scroll — none of which is worth a
+     timer or a mousemove listener while he is off screen, and there is one of him
+     in the nav, the footer, the toolkit and the pilot overlay at once. */
+  const onScreen = useInView(rootRef, '120px');
+  const live = !reduced;
   const [facing, setFacing] = useState('center');
   const [blink, setBlink] = useState(false);
   const [squash, setSquash] = useState(false);
@@ -75,7 +79,7 @@ export default function PixelGuy({ size = 24, className = '', autoHop = false })
 
   // idle blink every 4–7s, randomized so it never feels metronomic
   useEffect(() => {
-    if (!live) return undefined;
+    if (!live || !onScreen) return undefined;
     let t1;
     let t2;
     let on = true;
@@ -94,35 +98,52 @@ export default function PixelGuy({ size = 24, className = '', autoHop = false })
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, [live]);
+  }, [live, onScreen]);
 
-  // face the cursor — three discrete states, snapping between them
+  /* face the cursor — three discrete states, snapping between them.
+     the guy's own box is measured on scroll and resize and cached, never inside
+     the mousemove handler. reading getBoundingClientRect there forced the browser
+     to lay the page out again on every frame the mouse moved, once per guy, and
+     there are up to four of them on screen at a time. */
   useEffect(() => {
-    if (!live || !fine) return undefined;
+    if (!live || !fine || !onScreen) return undefined;
     let raf = 0;
     let mx = null;
+    let box = null;
+
+    const measure = () => {
+      box = rootRef.current?.getBoundingClientRect() ?? null;
+    };
     const update = () => {
       raf = 0;
-      const el = rootRef.current;
-      if (!el || mx == null) return;
-      const r = el.getBoundingClientRect();
-      const c = r.left + r.width / 2;
-      setFacing(mx < c - r.width ? 'left' : mx > c + r.width ? 'right' : 'center');
+      if (!box || mx == null) return;
+      const c = box.left + box.width / 2;
+      setFacing(mx < c - box.width ? 'left' : mx > c + box.width ? 'right' : 'center');
     };
     const onMove = (e) => {
       mx = e.clientX;
       if (!raf) raf = requestAnimationFrame(update);
     };
+    const remeasure = () => {
+      measure();
+      if (!raf) raf = requestAnimationFrame(update);
+    };
+
+    measure();
     window.addEventListener('mousemove', onMove, { passive: true });
+    window.addEventListener('scroll', remeasure, { passive: true });
+    window.addEventListener('resize', remeasure);
     return () => {
       window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('scroll', remeasure);
+      window.removeEventListener('resize', remeasure);
       cancelAnimationFrame(raf);
     };
-  }, [live, fine]);
+  }, [live, fine, onScreen]);
 
   // compress one pixel-row on fast scroll, spring back
   useEffect(() => {
-    if (!live) return undefined;
+    if (!live || !onScreen) return undefined;
     let lastY = window.scrollY;
     let t;
     const onScroll = () => {
@@ -140,7 +161,7 @@ export default function PixelGuy({ size = 24, className = '', autoHop = false })
       window.removeEventListener('scroll', onScroll);
       clearTimeout(t);
     };
-  }, [live]);
+  }, [live, onScreen]);
 
   // hop once on click, land with a 1px overshoot
   const hop = () => {
@@ -207,7 +228,7 @@ const ROAM_HOP = 7; // frames in a roaming hop
 export function PixelRoamer({ size = 30 }) {
   const reduced = useReducedMotion();
   const wrapRef = useRef(null);
-  const inView = useInView(wrapRef, '60px');
+  const active = useAnimate(wrapRef, '60px');
   const [f, setF] = useState({
     x: 40,
     dir: 1,
@@ -219,7 +240,7 @@ export function PixelRoamer({ size = 30 }) {
   });
 
   useEffect(() => {
-    if (reduced || !inView) return undefined;
+    if (!active) return undefined;
     const id = setInterval(() => {
       setF((s) => {
         const w = wrapRef.current?.clientWidth ?? 800;
@@ -263,7 +284,7 @@ export function PixelRoamer({ size = 30 }) {
       });
     }, 110);
     return () => clearInterval(id);
-  }, [reduced, inView, size]);
+  }, [active, size]);
 
   if (reduced) return null;
 
@@ -292,11 +313,11 @@ export function PixelWalker({ size = 22 }) {
   const reduced = useReducedMotion();
   const wrapRef = useRef(null);
   const guyRef = useRef(null);
-  const inView = useInView(wrapRef, '40px');
+  const active = useAnimate(wrapRef, '40px');
   const [frame, setFrame] = useState(false);
 
   useEffect(() => {
-    if (reduced || !inView) return undefined;
+    if (!active) return undefined;
     let x = -40;
     const id = setInterval(() => {
       const w = wrapRef.current?.clientWidth ?? window.innerWidth;
@@ -306,7 +327,7 @@ export function PixelWalker({ size = 22 }) {
       setFrame((f) => !f);
     }, 90);
     return () => clearInterval(id);
-  }, [reduced, inView]);
+  }, [active]);
 
   if (reduced) return null;
 

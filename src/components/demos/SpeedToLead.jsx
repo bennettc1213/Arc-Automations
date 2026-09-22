@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useInView, useReducedMotion } from '../../lib/hooks';
+import { useAnimate, useReducedMotion } from '../../lib/hooks';
 import './demos.css';
 
 const NODES = [
@@ -17,19 +17,18 @@ const CLOCK = ['00:00', '00:02', '00:05', '00:09', '00:17', '00:31', '00:43'];
 export default function SpeedToLead() {
   const rootRef = useRef(null);
   const trackRef = useRef(null);
-  const inView = useInView(rootRef, '80px');
+  const active = useAnimate(rootRef, '80px');
   const reduced = useReducedMotion();
   const [phase, setPhase] = useState(reduced ? NODES.length : 0);
 
   useEffect(() => {
-    if (reduced) return undefined;
-    if (!inView) return undefined;
+    if (!active) return undefined;
     const t = setTimeout(
       () => setPhase((p) => (p >= NODES.length ? 0 : p + 1)),
       phase >= NODES.length ? 2000 : phase === 0 ? 900 : 750
     );
     return () => clearTimeout(t);
-  }, [phase, inView, reduced]);
+  }, [phase, active]);
 
   // pan the strip so the active node stays in frame — reads like following the flow
   useEffect(() => {
@@ -52,7 +51,7 @@ export default function SpeedToLead() {
   const done = phase >= NODES.length;
 
   return (
-    <div className="demo demo-stl" ref={rootRef}>
+    <div className={`demo demo-stl ${active ? '' : 'is-idle'}`} ref={rootRef}>
       <div className="demo__chrome mono">
         <span>speed-to-lead.json</span>
         <span className="demo-stl__clock">

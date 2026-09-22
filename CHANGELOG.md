@@ -7,7 +7,70 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.17.1] - 2026-09-22
+
+The marketing site was smooth on a desktop and heavy on everything else. The
+cause was not one expensive animation — it was cheap ones that never stopped.
+Three marquees wrote a transform every frame for the life of the tab; the nav's
+two glow rings and the film's live dot ran their keyframes whether or not
+anyone could see them; five demos kept their CSS going after their JavaScript
+had correctly stopped; and the speed-to-lead spark travelled by animating
+`left`, which lays the whole document out again sixty times a second.
+
+Measured on a 390×844 viewport, sitting still at five points down the page,
+median of five alternating runs against the previous build:
+
+| | before | after |
+|---|---|---|
+| style recalculation | 175 ms/s | 77 ms/s (−56%) |
+| script | 65 ms/s | 30 ms/s (−54%) |
+| layout | 20 ms/s | 5 ms/s (−75%) |
+| forced layouts, projects section | 170 /s | 9 /s (−95%) |
+
+Nothing was removed from the design. Every animation that was there is still
+there, on the devices that were already running it well.
+
 ### Changed
+
+- Every decorative loop on the site now runs behind one gate (`useAnimate` in
+  `src/lib/hooks.js`): on screen, in a tab someone is looking at, and not
+  overridden by a motion preference. Marquees, the headline cycler, the pixel
+  guy's blink and cursor-tracking, the roamer, the walker and all five project
+  demos were each holding a timer or a frame request open permanently.
+- CSS keyframes are parked alongside the JavaScript that drives them. A demo
+  that scrolls away pauses its caret, chip scan and call ring (`.demo.is-idle`);
+  the portal film parks its live dot (`.pf.is-idle`). Paused, not removed — a
+  demo that comes back carries on rather than snapping.
+- `WarmGrid` draws its dot grid as one repeating pattern instead of seventeen
+  hundred `fillStyle`/`fillRect` pairs per frame, caps the backing store below
+  the panel's pixel ratio, and parks its frame loop when the grid has settled
+  rather than asking for frames forever.
+- Lenis is not built on a touch device. It never smoothed touch scrolling —
+  that is off by default and deliberately so — but it held a `gsap.ticker`
+  frame loop open and routed every scroll event through `ScrollTrigger.update`.
+- The glow button's ring and dot get their own compositor layers, and the ring
+  stops spinning on a coarse pointer, where the nav is on screen the whole way
+  down the page and nobody is hovering to see it.
+- On a device that reports few cores, little memory, data saver or a coarse
+  pointer (`useWeakDevice`), the portal film moves its hand with a CSS
+  transition instead of a framer-motion spring, and steps its nine counters
+  with a CSS keyframe instead of a measured `popLayout` swap. The demos that
+  type lay down three characters per tick over the same wall-clock time rather
+  than one, cutting their render rate by two thirds.
+- `PixelGuy` measures its own box on scroll and resize and caches it, instead
+  of calling `getBoundingClientRect` inside a `mousemove` handler — which
+  forced a layout every frame the mouse moved, once per guy, with up to four
+  on screen at a time.
+
+### Fixed
+
+- The speed-to-lead spark animated `left`, a layout property, so every frame of
+  every spark laid out the whole document. It now travels on `transform`, which
+  the compositor owns: 170 forced layouts a second in that section became 9.
+- The missed-call ring pulsed on `box-shadow` spread, which cannot be
+  composited. It is a scaling ring now — same picture, no main-thread paint.
+
+### Changed (deployment)
 
 - Site moves off the `github.io/Arc-Automations` subpath onto the custom
   domain `arcautomation.site`: `vite.config.js` builds from `/` instead of
@@ -253,6 +316,28 @@ no per-client workflow, schema, branch or deploy anywhere in it.
   it. The header now wraps, and on a phone the summary drops under the title,
   indented past the chevron so the two lines read as one header.
 
+
+## [1.16.1] - 2026-09-18
+
+### Changed
+- **The hero's portal film shows the portal as it is now.** It was still
+  cutting the speed-to-lead dashboard from before 1.16.0 — a five-item rail, an
+  overview of four cards and a feed, a leads table with no routing — so the
+  loop on the homepage no longer matched the demo it links to. It now walks the
+  revenue-lifecycle workspace: the rail's six modules with their needs-you
+  counts on hairline tiles, the top bar, "all systems operational", the
+  needs-a-person queue, both stat rows (open quoted work, recovered revenue),
+  the lifecycle strip, and the chart beside the activity feed. The page scrolls
+  as a person would; the demo's own newest lead lands in the feed and steps
+  captured and then qualified up to the demo's figures; then lead capture is
+  opened, narrowed to "needs you", and an emergency is opened to show it was
+  texted back in 6.8s and handed to a person 92 seconds later. Every figure is
+  the one `/demo` renders, so the film finishes on the dashboard a visitor
+  lands on when they click through. Reduced motion still gets the last frame.
+- The film's rail and table columns are sized off its type scale rather than
+  fixed pixels, so nothing truncates at 1920 that fits at 1440, and on short
+  (≤800px) screens the queue shows two items so the first frame keeps the stat
+  row.
 
 ## [1.16.0] - 2026-09-17
 

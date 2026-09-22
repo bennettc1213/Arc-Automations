@@ -2,20 +2,34 @@
    PortalFilm.css — the hero's product film
 
    Self-contained on purpose. workspace.css is loaded by the workspace route and
-   nothing else, and pulling nineteen hundred lines of dashboard css into the
+   nothing else, and pulling twenty-seven hundred lines of dashboard css into the
    marketing bundle to draw a sixteen-second loop is the same mistake as pulling
    in the dashboard itself. Everything here is scoped under `.pf`, inherits its
    colour from base.css, and re-declares only the three status tokens the film
    needs — the real ones live on `.portal`, which is not an ancestor out here.
+
+   The rules below are the real workspace's, redrawn at one scale factor: the
+   same hairline tiles, the same orange tick for "you are here", the same glyph
+   on every pill. When the portal's look changes, this is the file that has to
+   follow it.
    ──────────────────────────────────────────────── */
 
 .pf {
   --pf-ok: #2fd07a;
+  --pf-warn: #ffd400;
   --pf-fail: #ff2e63;
   /* the whole film is drawn at one scale factor. the card has to read on a 1280
      laptop and on a 1800 monitor, and a dashboard that grows its type with the
      viewport stops looking like a screenshot of software. */
-  --pf-fs: clamp(10px, 0.72vw, 12.5px);
+  --pf-fs: clamp(9.5px, 0.7vw, 12px);
+  --pf-xs: calc(var(--pf-fs) - 1.5px);
+  --pf-md: calc(var(--pf-fs) + 1px);
+  --pf-pad: 12px;
+  /* the table's fixed columns, in the type's own units: a clock, a duration and
+     the widest pill ("▲ with a person") have to fit at 12px as well as at 10. */
+  --pf-col-at: calc(var(--pf-fs) * 5.4);
+  --pf-col-resp: calc(var(--pf-fs) * 4.8);
+  --pf-col-out: calc(var(--pf-fs) * 10);
 
   position: relative;
   width: 100%;
@@ -37,7 +51,7 @@
 .pf-win {
   position: relative;
   border: 1px solid var(--line-strong);
-  background: var(--bg-2);
+  background: var(--bg);
   overflow: hidden;
   box-shadow: 0 1px 0 rgba(237, 237, 239, 0.05) inset, 0 30px 80px rgba(0, 0, 0, 0.55);
 }
@@ -86,15 +100,40 @@
   color: var(--muted);
 }
 
+/* the rail is sized off the type rather than fixed, so "install & warranty" fits
+   at 1920 for the same reason it fits at 1440. */
 .pf-win__body {
+  --pf-rail: clamp(156px, calc(var(--pf-fs) * 14.2), 176px);
+
   display: grid;
-  grid-template-columns: 152px minmax(0, 1fr);
-  height: clamp(400px, 52svh, 560px);
+  grid-template-columns: var(--pf-rail) minmax(0, 1fr);
+  height: clamp(420px, 56svh, 600px);
 }
 
-.pf-pane {
-  min-width: 0;
-  overflow: hidden;
+/* a figure that steps rather than swaps. the parent clips it and anchors the
+   outgoing digit while the incoming one rises into place. */
+.pf-tick {
+  display: inline-block;
+}
+
+/* the same step, as one compositor-owned keyframe rather than a measured swap.
+   the outgoing digit is simply replaced instead of sliding out under the new
+   one — at four tenths of a second, on the device this is for, that is a trade
+   worth making nine times over. */
+.pf-tick--css {
+  animation: pf-tick-step 0.4s var(--ease-out) both;
+  will-change: transform, opacity;
+}
+
+@keyframes pf-tick-step {
+  from {
+    transform: translateY(70%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 /* ── rail ────────────────────────────────────── */
@@ -105,17 +144,21 @@
   border-right: 1px solid var(--line);
   background: var(--bg-2);
   min-width: 0;
+  overflow: hidden;
 }
 
+/* the same height as the top bar beside it, as in the real workspace, so the
+   rail's first hairline and the page's run as one line across the window. */
 .pf-rail__brand {
   display: flex;
   align-items: center;
   gap: 7px;
-  height: 38px;
+  height: 40px;
   padding-inline: 12px;
   border-bottom: 1px solid var(--line);
-  font-size: calc(var(--pf-fs) + 1px);
-  letter-spacing: -0.01em;
+  font-family: var(--font-mono);
+  font-size: var(--pf-fs);
+  letter-spacing: 0.02em;
   color: var(--text);
   flex: none;
 }
@@ -125,14 +168,16 @@
 }
 
 .pf-rail__tenant {
-  padding: 11px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
   display: grid;
   gap: 1px;
+  flex: none;
 }
 
 .pf-rail__tenant-name {
-  font-size: calc(var(--pf-fs) + 1px);
+  font-size: var(--pf-md);
+  font-weight: 500;
   color: var(--text);
   letter-spacing: -0.01em;
   overflow: hidden;
@@ -140,32 +185,38 @@
   white-space: nowrap;
 }
 
-.pf-rail__tenant-sub,
-.pf-nav__label {
+.pf-rail__tenant-sub {
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
-  letter-spacing: 0.1em;
+  font-size: var(--pf-xs);
+  letter-spacing: 0.08em;
   color: var(--faint);
 }
 
 .pf-rail__scroll {
   flex: 1;
   min-height: 0;
-  padding-bottom: 6px;
+  overflow: hidden;
+  padding: 0 6px 6px;
 }
 
 .pf-nav__label {
-  padding: 13px 12px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+  padding: 11px 6px 5px;
 }
 
 .pf-nav__item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
-  font-size: calc(var(--pf-fs) + 1px);
+  gap: 7px;
+  padding: 3px 6px 3px 5px;
+  font-size: var(--pf-fs);
   color: var(--muted);
+  transition: color 0.25s, background 0.25s;
 }
 
 .pf-nav__item.is-active {
@@ -184,13 +235,23 @@
   background: var(--accent);
 }
 
-.pf-nav__item .ws-icon {
-  color: var(--faint);
+/* each icon on its own hairline tile, as the real rail draws them */
+.pf-nav__glyph {
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
   flex: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  transition: color 0.25s, border-color 0.25s, background 0.25s;
 }
 
-.pf-nav__item.is-active .ws-icon {
+.pf-nav__item.is-active .pf-nav__glyph {
   color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line-strong));
+  background: var(--bg-2);
 }
 
 .pf-nav__text {
@@ -200,60 +261,431 @@
 }
 
 .pf-nav__count {
+  position: relative;
+  overflow: hidden;
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
-  color: var(--faint);
-}
-
-.pf-rail__foot {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--line);
-  font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
-  letter-spacing: 0.05em;
-  color: var(--pf-ok);
-  flex: none;
-}
-
-/* ── pages ───────────────────────────────────── */
-
-.pf-page {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.pf-statusbar {
-  display: flex;
-  align-items: baseline;
-  gap: 9px;
-  padding: 10px 15px;
-  border-bottom: 1px solid var(--line);
-  font-size: calc(var(--pf-fs) + 1px);
+  font-size: var(--pf-xs);
   color: var(--muted);
   flex: none;
 }
 
-.pf-statusbar b {
-  color: var(--text);
-  font-weight: 500;
-}
-
-.pf-statusbar span:last-child {
+.pf-rail__foot {
+  display: grid;
+  gap: 7px;
+  padding: 9px 12px 10px;
+  border-top: 1px solid var(--line);
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
-  color: var(--faint);
-  margin-left: auto;
+  font-size: var(--pf-xs);
+  letter-spacing: 0.09em;
+  flex: none;
 }
 
-.pf-statusbar__glyph {
+.pf-rail__status,
+.pf-rail__collapse {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.pf-rail__status {
+  color: var(--pf-ok);
+}
+
+.pf-rail__collapse {
+  color: var(--muted);
+}
+
+/* ── top bar ─────────────────────────────────── */
+
+.pf-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pf-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding-inline: var(--pf-pad);
+  border-bottom: 1px solid var(--line);
+  background: rgba(10, 10, 11, 0.86);
+  flex: none;
+}
+
+.pf-top__title {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pf-top__title b {
+  font-size: calc(var(--pf-fs) + 1.5px);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.pf-top__title span {
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-top__search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 200px;
+  min-width: 0;
+  padding: 4px 7px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-2);
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.pf-top__search span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-top__search kbd {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: calc(var(--pf-fs) - 2px);
+  color: var(--faint);
+  border: 1px solid var(--line);
+  padding: 0 4px;
+  flex: none;
+}
+
+.pf-top__window {
+  font-family: var(--font-mono);
+  font-size: calc(var(--pf-fs) - 2px);
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  white-space: nowrap;
+  flex: none;
+}
+
+.pf-top__icon,
+.pf-top__avatar {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  color: var(--text);
+}
+
+.pf-top__icon {
+  border: 1px solid var(--line);
+}
+
+.pf-top__avatar {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  letter-spacing: 0.04em;
+}
+
+/* ── the page, and its scroll ────────────────── */
+
+.pf-pane {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* positioned, so its children's offsetTop is measured from here — that is what
+   the scroll distance is read off. */
+.pf-scroll {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: var(--pf-pad);
+}
+
+.pf-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  flex: none;
+}
+
+.pf-status__glyph {
   color: var(--pf-ok);
   font-size: 8px;
+  flex: none;
+}
+
+.pf-status b {
+  color: var(--pf-ok);
+  font-weight: 500;
+  font-size: calc(var(--pf-fs) + 2.5px);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.pf-status__check {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* ── panels ──────────────────────────────────── */
+
+.pf-panel {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 10px 12px 12px;
+  min-width: 0;
+  flex: none;
+}
+
+.pf-panel__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 9px;
+  min-width: 0;
+}
+
+.pf-panel--bare {
+  padding: 0;
+}
+
+.pf-panel--bare .pf-panel__head {
+  align-items: center;
+  margin: 0;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* the site's signature eyebrow: orange tick, then a mono label */
+.pf-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.pf-eyebrow::before {
+  content: '';
+  width: 13px;
+  height: 1px;
+  background: var(--accent);
+  flex: none;
+}
+
+.pf-panel__note {
+  margin-left: auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  letter-spacing: 0.03em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* ── pills ───────────────────────────────────── */
+
+.pf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  font-style: normal;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.pf-pill b {
+  font-weight: 400;
+  font-size: 7px;
+  line-height: 1;
+}
+
+.pf-pill--ok {
+  color: var(--pf-ok);
+  border-color: rgba(47, 208, 122, 0.35);
+  background: rgba(47, 208, 122, 0.12);
+}
+
+.pf-pill--warn {
+  color: var(--pf-warn);
+  border-color: rgba(255, 212, 0, 0.35);
+  background: rgba(255, 212, 0, 0.12);
+}
+
+.pf-pill--fail {
+  color: var(--pf-fail);
+  border-color: rgba(255, 46, 99, 0.35);
+  background: rgba(255, 46, 99, 0.12);
+}
+
+/* ── the needs-a-person queue ────────────────── */
+
+.pf-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+/* only urgent carries the failure edge, as in the real queue */
+.pf-queue__item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 11px;
+  background: var(--surface);
+  box-shadow: inset 2px 0 0 var(--pf-fail);
+}
+
+.pf-queue__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pf-queue__head .pf-pill {
+  min-width: 58px;
+  justify-content: center;
+}
+
+.pf-queue__who {
+  font-size: calc(var(--pf-fs) + 1.5px);
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.pf-queue__module {
+  font-family: var(--font-mono);
+  font-size: calc(var(--pf-fs) - 2px);
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+.pf-queue__reason {
+  font-size: var(--pf-fs);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* the customer's own words, on the reason's line rather than under it — the real
+   queue has the height for two lines here and the film does not. */
+.pf-queue__reason em {
+  font-style: normal;
+  color: var(--faint);
+  margin-left: 8px;
+}
+
+.pf-queue__meta {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.pf-queue__meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.pf-queue__meta .is-overdue {
+  color: var(--pf-fail);
+}
+
+.pf-queue__state {
+  color: var(--muted);
+}
+
+.pf-queue__link {
+  margin-left: auto;
+  color: var(--accent);
+}
+
+.pf-queue__counts {
+  display: inline-flex;
+  gap: 9px;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  white-space: nowrap;
+}
+
+.pf-queue__counts b {
+  font-weight: 400;
+  color: var(--faint);
+}
+
+.pf-queue__counts .is-urgent {
+  color: var(--pf-fail);
+}
+
+.pf-queue__counts .is-high {
+  color: var(--pf-warn);
 }
 
 /* ── stat cards ──────────────────────────────── */
@@ -263,24 +695,24 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   background: var(--line);
-  border-bottom: 1px solid var(--line);
+  border: 1px solid var(--line);
   flex: none;
 }
 
 .pf-stat {
-  background: var(--surface);
-  padding: 13px 14px 14px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
-  min-height: 118px;
+  min-height: 108px;
+  padding: 10px 11px 11px;
+  background: var(--surface);
 }
 
 .pf-stat__label {
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
-  letter-spacing: 0.06em;
+  font-size: var(--pf-xs);
+  letter-spacing: 0.08em;
   color: var(--faint);
   line-height: 1.35;
 }
@@ -289,15 +721,11 @@
   position: relative;
   overflow: hidden;
   font-family: var(--font-mono);
-  font-size: clamp(1.25rem, 1.75vw, 1.95rem);
+  font-size: clamp(1.2rem, 1.7vw, 1.9rem);
   font-weight: 500;
   letter-spacing: -0.03em;
   line-height: 1.1;
   color: var(--text);
-}
-
-.pf-stat__value span {
-  display: inline-block;
 }
 
 /* the one figure the client opened the portal to read, in the brand orange —
@@ -306,51 +734,220 @@
   color: var(--accent);
 }
 
+/* the second row carries phrases and money rather than headline counts, so it
+   sits quieter, as the real `ws-stats--four` row does. */
+.pf-stats--compact .pf-stat {
+  min-height: 0;
+}
+
+.pf-stats--compact .pf-stat__value {
+  font-size: clamp(0.95rem, 1.15vw, 1.25rem);
+  letter-spacing: -0.01em;
+}
+
 .pf-stat__sub {
   margin-top: auto;
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
+  font-size: var(--pf-xs);
   color: var(--faint);
   line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pf-delta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  letter-spacing: 0.03em;
+  color: var(--pf-ok);
+  white-space: nowrap;
+}
+
+.pf-delta i {
+  font-style: normal;
+  font-size: 7px;
+  line-height: 1;
+}
+
+.pf-delta em {
+  font-style: normal;
+  color: var(--faint);
 }
 
 .pf-spark {
   width: 100%;
-  height: 24px;
+  height: 18px;
   color: var(--accent);
-  opacity: 0.55;
 }
 
-/* ── live feed ───────────────────────────────── */
+/* ── the lifecycle strip ─────────────────────── */
 
-.pf-feed {
-  flex: 1;
-  min-height: 0;
+.pf-life {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.pf-life__stage {
+  position: relative;
   display: flex;
   flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface);
+  transition: background 0.4s var(--ease-out);
+}
+
+/* the chevron between stages is drawn, as in the real strip */
+.pf-life__stage + .pf-life__stage::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 50%;
+  z-index: 1;
+  width: 6px;
+  height: 6px;
+  border-top: 1px solid var(--line-strong);
+  border-right: 1px solid var(--line-strong);
+  rotate: 45deg;
+  translate: -50% -50%;
+  background: var(--surface);
+}
+
+.pf-life__value {
+  position: relative;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: clamp(1rem, 1.35vw, 1.45rem);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--text);
+  transition: color 0.4s var(--ease-out);
+  transition-delay: inherit;
+}
+
+.pf-life__label {
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  letter-spacing: 0.09em;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-life__note {
+  margin-top: auto;
+  font-size: var(--pf-xs);
+  line-height: 1.45;
+  color: var(--faint);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* the stages the arriving lead moves light up while it moves them — the same
+   treatment the real strip gives a stage under the pointer. */
+.pf-life__stage.is-hot {
+  background: var(--bg-2);
+}
+
+.pf-life__stage.is-hot .pf-life__value {
+  color: var(--accent);
+}
+
+/* ── chart and feed ──────────────────────────── */
+
+.pf-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+}
+
+.pf-bars {
+  display: grid;
+  grid-template-columns: repeat(30, minmax(0, 1fr));
+  align-items: end;
+  height: clamp(70px, 7vw, 120px);
+  border-bottom: 1px solid var(--line);
+}
+
+.pf-bars span {
+  display: block;
+  margin-inline: 19%;
+  background: var(--accent-dim);
+  transition: height 0.5s var(--ease-out), background 0.4s;
+}
+
+.pf-bars.is-hot span:last-child {
+  background: var(--accent);
+}
+
+.pf-axis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-top: 5px;
+  font-family: var(--font-mono);
+  font-size: calc(var(--pf-fs) - 2px);
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.pf-feed {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
 }
 
 .pf-feed__head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 11px 15px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--line);
   flex: none;
 }
 
-.pf-panel__title {
+.pf-feed__live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
-  letter-spacing: 0.12em;
-  color: var(--muted);
+  font-size: calc(var(--pf-fs) - 2px);
+  letter-spacing: 0.1em;
+  color: var(--faint);
 }
 
-.pf-feed__dot {
+.pf-feed__live i {
   width: 5px;
   height: 5px;
   background: var(--pf-ok);
   animation: pf-pulse 2.4s var(--ease-inout) infinite;
+  will-change: opacity;
+}
+
+/* scrolled away, or a motion preference: the film holds its last frame and
+   nothing inside it ticks. */
+.pf.is-idle *,
+.pf.is-idle *::before,
+.pf.is-idle *::after {
+  animation-play-state: paused !important;
+  will-change: auto;
 }
 
 @keyframes pf-pulse {
@@ -363,24 +960,13 @@
   }
 }
 
-.pf-feed__list {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .pf-feed__list li {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr) auto;
-  align-items: baseline;
-  gap: 12px;
-  padding: 9px 15px;
+  min-width: 0;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--line);
-  font-size: calc(var(--pf-fs) + 1px);
-  white-space: nowrap;
 }
 
-/* the arriving entry keeps a hairline of accent down its edge for one loop. an
+/* the arriving thread keeps a hairline of accent down its edge for one loop. an
    item that slides in and instantly looks like every other item has told you
    something moved but not what. */
 .pf-feed__list li.is-new {
@@ -388,45 +974,94 @@
   background: var(--accent-dim);
 }
 
-.pf-feed__name {
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
+.pf-thread__top {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
 }
 
-.pf-feed__line {
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pf-feed__at {
+.pf-thread__time {
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
+  font-size: var(--pf-xs);
   color: var(--faint);
-  margin-left: auto;
+  flex: none;
 }
 
-/* ── leads table ─────────────────────────────── */
+.pf-thread__src {
+  min-width: 0;
+  font-size: var(--pf-fs);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-thread__ms {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
+  color: var(--pf-ok);
+  flex: none;
+}
+
+/* lead → text → routed, as connected ticks, the way the real feed draws it */
+.pf-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 3px;
+  margin-top: 5px;
+}
+
+.pf-step {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: calc(var(--pf-fs) - 2px);
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.pf-step__dot {
+  width: 4px;
+  height: 4px;
+  background: var(--muted);
+  flex: none;
+}
+
+.pf-step__line {
+  width: 9px;
+  height: 1px;
+  background: var(--line-strong);
+  margin-inline: 5px;
+  flex: none;
+}
+
+/* ── lead capture ────────────────────────────── */
 
 .pf-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 15px;
+  gap: 8px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--line);
-  flex: none;
 }
 
 .pf-search {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 1;
+  flex: 1 1 140px;
+  max-width: 230px;
   min-width: 0;
-  border: 1px solid var(--line);
-  padding: 6px 10px;
-  font-size: var(--pf-fs);
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-2);
+  font-family: var(--font-mono);
+  font-size: var(--pf-xs);
   color: var(--faint);
   white-space: nowrap;
   overflow: hidden;
@@ -440,11 +1075,12 @@
 
 .pf-chip {
   border: 1px solid var(--line);
-  padding: 4px 10px;
+  padding: 3px 7px;
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
-  letter-spacing: 0.04em;
-  color: var(--faint);
+  font-size: var(--pf-xs);
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  white-space: nowrap;
   transition: color 0.25s, border-color 0.25s, background 0.25s;
 }
 
@@ -454,38 +1090,40 @@
   background: var(--accent-dim);
 }
 
-.pf-table {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .pf-table__head,
 .pf-row {
   display: grid;
-  grid-template-columns: 62px minmax(0, 1.35fr) minmax(0, 1.4fr) 64px 94px 22px;
-  gap: 12px;
+  grid-template-columns: var(--pf-col-at) minmax(0, 0.9fr) minmax(0, 1.4fr) var(--pf-col-resp) minmax(0, 0.85fr) var(--pf-col-out) 10px;
+  gap: 9px;
   align-items: start;
-  padding: 9px 15px;
+  padding: 7px 12px;
   border-bottom: 1px solid var(--line);
 }
 
 .pf-table__head {
+  padding-block: 6px;
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
-  letter-spacing: 0.09em;
+  font-size: calc(var(--pf-fs) - 2px);
+  letter-spacing: 0.1em;
   color: var(--faint);
   background: var(--bg-2);
 }
 
-.pf-row {
-  font-size: calc(var(--pf-fs) + 1px);
-  color: var(--muted);
-  transition: background 0.3s;
+.pf-table__head > span {
+  white-space: nowrap;
+  overflow: hidden;
 }
 
+.pf-row {
+  font-size: var(--pf-fs);
+  color: var(--muted);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+/* the accent rule the real table draws down an opened row */
 .pf-row.is-open {
-  background: rgba(237, 237, 239, 0.035);
+  background: rgba(237, 237, 239, 0.03);
+  box-shadow: inset 2px 0 0 var(--accent);
   border-bottom-color: transparent;
 }
 
@@ -504,20 +1142,21 @@
   text-overflow: ellipsis;
 }
 
-.pf-row em,
-.pf-row__at,
-.pf-row__resp {
+.pf-row em {
   display: block;
+  margin-top: 2px;
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
+  font-size: var(--pf-xs);
   font-style: normal;
   color: var(--faint);
-  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pf-row__at,
 .pf-row__resp {
-  margin-top: 0;
+  font-family: var(--font-mono);
+  font-size: calc(var(--pf-fs) - 0.5px);
   color: var(--muted);
 }
 
@@ -526,7 +1165,7 @@
 }
 
 .pf-row__chev {
-  color: var(--faint);
+  color: var(--muted);
   transition: transform 0.35s var(--ease-out), color 0.35s;
 }
 
@@ -535,90 +1174,117 @@
   color: var(--accent);
 }
 
-.pf-pill {
-  display: inline-block;
-  border: 1px solid;
-  padding: 1px 6px;
-  font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
-  font-style: normal;
-  letter-spacing: 0.04em;
-}
-
-.pf-pill--ok {
-  color: var(--pf-ok);
-  border-color: rgba(47, 208, 122, 0.35);
-  background: rgba(47, 208, 122, 0.12);
-}
-
-.pf-pill--fail {
-  color: var(--pf-fail);
-  border-color: rgba(255, 46, 99, 0.35);
-  background: rgba(255, 46, 99, 0.12);
-}
-
-/* ── the expanded row — the point of the film ── */
+/* ── the opened row ──────────────────────────── */
 
 .pf-detail {
   overflow: hidden;
-  background: rgba(237, 237, 239, 0.02);
+  background: var(--bg-2);
   border-bottom: 1px solid var(--line);
 }
 
 .pf-detail__inner {
-  padding: 13px 15px 15px;
+  padding: 10px 12px 11px;
 }
 
 .pf-detail__steps {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 0;
+  gap: 5px 0;
 }
 
 .pf-detail__step {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
+  font-size: var(--pf-xs);
   color: var(--muted);
   white-space: nowrap;
 }
 
+/* a handoff is drawn in the failure colour in the real timeline too: it is the
+   step where the automation stopped on purpose. */
+.pf-detail__step.is-fail {
+  color: var(--pf-fail);
+}
+
 .pf-detail__rule {
-  width: 14px;
+  width: 12px;
   height: 1px;
   background: var(--line-strong);
-  margin-inline: 8px;
+  margin-inline: 7px;
   flex: none;
 }
 
 .pf-detail__dot {
   width: 4px;
   height: 4px;
-  background: var(--accent);
+  background: var(--muted);
   flex: none;
+}
+
+.pf-detail__step.is-fail .pf-detail__dot {
+  background: var(--pf-fail);
 }
 
 .pf-detail__time {
   color: var(--faint);
 }
 
-.pf-detail__meta {
+.pf-detail__time i {
+  font-style: normal;
+}
+
+.pf-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
   margin-top: 9px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+
+.pf-facts div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pf-facts dt {
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
+  font-size: calc(var(--pf-fs) - 2px);
+  letter-spacing: 0.08em;
   color: var(--faint);
 }
 
-.pf-tablefoot {
-  padding: 10px 15px;
-  border-top: 1px solid var(--line);
+.pf-facts dd {
+  font-size: var(--pf-fs);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pf-detail__next {
+  margin-top: 8px;
+  font-size: var(--pf-fs);
+  color: var(--muted);
+}
+
+.pf-detail__next b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.pf-detail__meta {
+  margin-top: 5px;
   font-family: var(--font-mono);
-  font-size: calc(var(--pf-fs) - 1px);
+  font-size: calc(var(--pf-fs) - 2px);
   color: var(--faint);
-  flex: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── the hand ────────────────────────────────── */
@@ -635,6 +1301,20 @@
   pointer-events: none;
 }
 
+/* the spring, approximated by a curve that overshoots. the hand still arrives a
+   little past its mark and settles back, which is the whole reason it was a
+   spring — it just costs the main thread nothing to get there. */
+.pf-cursor--css {
+  transition: transform 0.62s cubic-bezier(0.34, 1.32, 0.48, 1), opacity 0.3s var(--ease-out);
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-cursor--css {
+    transition: none;
+  }
+}
+
 .pf-ring {
   position: absolute;
   z-index: 3;
@@ -645,32 +1325,94 @@
   pointer-events: none;
 }
 
-/* ── narrower cards ──────────────────────────── */
+/* ── shorter screens ─────────────────────────── */
 
-/* the container query, not a media query: this card is ~46% of the viewport in
-   the split hero and 100% of it when the hero stacks, so viewport width says
-   nothing useful about how much room the table has. */
-@container (max-width: 660px) {
-  .pf-win__body {
-    grid-template-columns: 46px minmax(0, 1fr);
-    height: clamp(340px, 46svh, 430px);
+/* the one query here that reads the viewport, because it is the viewport's height
+   the pane is sized from. on a 720px-tall laptop three queue items push the stat
+   row out of the first frame, and the rail's last item off its bottom — so the
+   queue shows two and the rail drops the collapse control, which the film never
+   presses. */
+@media (max-height: 800px) {
+  .pf-queue__item:nth-child(3),
+  .pf-rail__collapse {
+    display: none;
   }
 
-  /* the rail collapses to glyphs, exactly as the real one does */
+  .pf-nav__label {
+    padding-top: 8px;
+  }
+}
+
+/* ── narrower cards ──────────────────────────── */
+
+/* container queries, not media queries: this card is ~46% of the viewport in
+   the split hero and 100% of it when the hero stacks, so viewport width says
+   nothing useful about how much room the table has. */
+@container (max-width: 820px) {
+  .pf-top__window {
+    display: none;
+  }
+}
+
+/* "routed to" is the first column to go — the pill beside it already says the
+   lead reached somebody. */
+@container (max-width: 760px) {
+  .pf-table__head,
+  .pf-row {
+    grid-template-columns: var(--pf-col-at) minmax(0, 0.9fr) minmax(0, 1.4fr) var(--pf-col-resp) var(--pf-col-out) 10px;
+  }
+
+  .pf-table__head > :nth-child(5),
+  .pf-row > :nth-child(5) {
+    display: none;
+  }
+}
+
+@container (max-width: 660px) {
+  .pf-win__body {
+    grid-template-columns: 44px minmax(0, 1fr);
+    height: clamp(380px, 52svh, 480px);
+  }
+
+  /* the rail collapses to its tiles, exactly as the real one does */
   .pf-rail__tenant,
   .pf-nav__label,
   .pf-nav__text,
   .pf-nav__count,
   .pf-rail__brand span,
-  .pf-rail__foot span:last-child {
+  .pf-rail__status span:last-child,
+  .pf-rail__collapse span {
     display: none;
+  }
+
+  .pf-rail__scroll {
+    padding: 8px 0 0;
+  }
+
+  .pf-nav + .pf-nav {
+    margin-top: 8px;
   }
 
   .pf-rail__brand,
   .pf-nav__item,
-  .pf-rail__foot {
+  .pf-rail__status,
+  .pf-rail__collapse {
     justify-content: center;
     padding-inline: 0;
+  }
+
+  .pf-rail__foot {
+    padding-inline: 0;
+  }
+
+  .pf-top__search span,
+  .pf-top__search kbd {
+    display: none;
+  }
+
+  .pf-top__search {
+    flex: none;
+    padding: 4px 6px;
   }
 
   .pf-stats {
@@ -681,40 +1423,65 @@
     display: none;
   }
 
+  .pf-queue__state,
+  .pf-life__note,
+  .pf-search,
+  .pf-chart {
+    display: none;
+  }
+
+  .pf-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .pf-table__head,
   .pf-row {
-    grid-template-columns: 58px minmax(0, 1.3fr) 58px 88px;
+    grid-template-columns: var(--pf-col-at) minmax(0, 1fr) var(--pf-col-resp) var(--pf-col-out) 10px;
   }
 
   .pf-table__head > :nth-child(3),
-  .pf-row > :nth-child(3),
-  .pf-table__head > :nth-child(6),
-  .pf-row > :nth-child(6),
-  .pf-search {
+  .pf-row > :nth-child(3) {
     display: none;
   }
 
-  .pf-feed__list li {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .pf-feed__line {
-    display: none;
+  .pf-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @container (max-width: 460px) {
   .pf-win__body {
-    height: clamp(300px, 40svh, 360px);
+    height: clamp(340px, 48svh, 420px);
   }
 
-  .pf-table__head > :nth-child(5),
-  .pf-row > :nth-child(5) {
+  .pf-top__title span,
+  .pf-top__icon,
+  .pf-status__check,
+  .pf-queue__module,
+  .pf-queue__meta > span:not(:first-child):not(.pf-queue__link),
+  .pf-btn,
+  .pf-panel__note,
+  .pf-detail__time i {
+    display: none;
+  }
+
+  .pf-life {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* the fourth stage starts the second row; a chevron pointing into the left
+     edge of the strip would point at nothing. */
+  .pf-life__stage:nth-child(4)::before {
     display: none;
   }
 
   .pf-table__head,
   .pf-row {
-    grid-template-columns: 58px minmax(0, 1fr) 58px;
+    grid-template-columns: var(--pf-col-at) minmax(0, 1fr) var(--pf-col-out) 10px;
+  }
+
+  .pf-table__head > :nth-child(4),
+  .pf-row > :nth-child(4) {
+    display: none;
   }
 }

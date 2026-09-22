@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import Lenis from 'lenis';
 import { gsap, ScrollTrigger } from './gsap';
-import { useReducedMotion } from './hooks';
+import { useMedia, useReducedMotion } from './hooks';
 
 /** shared handle so Nav links can lenis.scrollTo */
 export const lenisRef = { current: null };
@@ -16,11 +16,20 @@ export function scrollToId(id) {
   }
 }
 
+/**
+ * Lenis smooths the wheel. It does not smooth touch — that is off by default and
+ * deliberately left off, because fighting a phone's own scroll physics is how a
+ * site starts feeling broken. Which means that on a touch device lenis was doing
+ * nothing at all while holding a requestAnimationFrame loop open through the gsap
+ * ticker for the entire life of the tab, and routing every scroll event through
+ * ScrollTrigger.update on top. So it does not get built there.
+ */
 export default function SmoothScroll({ children }) {
   const reduced = useReducedMotion();
+  const coarse = useMedia('(pointer: coarse)');
 
   useEffect(() => {
-    if (reduced) return undefined;
+    if (reduced || coarse) return undefined;
 
     const lenis = new Lenis({
       duration: 1.1,
@@ -39,7 +48,7 @@ export default function SmoothScroll({ children }) {
       lenis.destroy();
       lenisRef.current = null;
     };
-  }, [reduced]);
+  }, [reduced, coarse]);
 
   return children;
 }

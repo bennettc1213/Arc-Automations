@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useInView, useReducedMotion } from '../../lib/hooks';
+import { useAnimate, useReducedMotion, useWeakDevice } from '../../lib/hooks';
+import { advance, typeStep } from './typing';
 import './demos.css';
 
 const QUERY = 'hail took out half my roof — how fast can someone come out?';
@@ -10,20 +11,22 @@ const SOURCES = ['service-area.md', 'lead-score: storm', 'jobs/roofing.md'];
 // phases: 0 idle · 1 typing · 2 retrieving · 3 answering · 4 hold
 export default function SupportAgent() {
   const rootRef = useRef(null);
-  const inView = useInView(rootRef, '80px');
+  const active = useAnimate(rootRef, '80px');
   const reduced = useReducedMotion();
+  const weak = useWeakDevice();
   const [phase, setPhase] = useState(reduced ? 4 : 0);
   const [qChars, setQChars] = useState(reduced ? QUERY.length : 0);
   const [aChars, setAChars] = useState(reduced ? ANSWER.length : 0);
 
   useEffect(() => {
-    if (reduced || !inView) return undefined;
+    if (!active) return undefined;
     let t;
     if (phase === 0) {
       t = setTimeout(() => setPhase(1), 700);
     } else if (phase === 1) {
       if (qChars < QUERY.length) {
-        t = setTimeout(() => setQChars((c) => c + 1), 34);
+        const step = typeStep(weak, 34);
+        t = setTimeout(() => setQChars((c) => advance(c, step.chars, QUERY.length)), step.delay);
       } else {
         t = setTimeout(() => setPhase(2), 350);
       }
@@ -31,7 +34,8 @@ export default function SupportAgent() {
       t = setTimeout(() => setPhase(3), 1900);
     } else if (phase === 3) {
       if (aChars < ANSWER.length) {
-        t = setTimeout(() => setAChars((c) => c + 1), 16);
+        const step = typeStep(weak, 16);
+        t = setTimeout(() => setAChars((c) => advance(c, step.chars, ANSWER.length)), step.delay);
       } else {
         t = setTimeout(() => setPhase(4), 400);
       }
@@ -43,10 +47,10 @@ export default function SupportAgent() {
       }, 3600);
     }
     return () => clearTimeout(t);
-  }, [phase, qChars, aChars, inView, reduced]);
+  }, [phase, qChars, aChars, active, weak]);
 
   return (
-    <div className="demo demo-agent" ref={rootRef}>
+    <div className={`demo demo-agent ${active ? '' : 'is-idle'}`} ref={rootRef}>
       <div className="demo__chrome mono">
         <span>lead-qualification — live</span>
         <span className={`demo-agent__state ${phase === 2 ? 'is-busy' : ''}`}>

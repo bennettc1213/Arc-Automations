@@ -1,18 +1,26 @@
 import { useEffect, useRef } from 'react';
-import { useReducedMotion } from '../lib/hooks';
+import { useAnimate } from '../lib/hooks';
 import { PixelMark } from './PixelGuy';
 import './Marquee.css';
 
 /**
  * Infinite marquee. Base direction via `reverse`; flips with scroll direction
  * and gets a small velocity kick, both eased back to cruise speed.
+ *
+ * It runs only while it is on screen. That sounds obvious and was not true: the
+ * three marquees on this page each wrote a transform every frame for as long as
+ * the tab was open, which measured at 180 style recalculations a second while
+ * parked at the footer, nine thousand pixels from the nearest one. Desktops
+ * absorbed it; laptops and phones wore it as a permanent tax on every other
+ * animation on the page.
  */
 export default function Marquee({ items, separator = '✦', reverse = false, className = '' }) {
+  const rootRef = useRef(null);
   const trackRef = useRef(null);
-  const reduced = useReducedMotion();
+  const active = useAnimate(rootRef);
 
   useEffect(() => {
-    if (reduced) return undefined;
+    if (!active) return undefined;
     const track = trackRef.current;
     if (!track) return undefined;
 
@@ -41,6 +49,11 @@ export default function Marquee({ items, separator = '✦', reverse = false, cla
     };
     window.addEventListener('scroll', onScroll, { passive: true });
 
+    /* the transform is only written when it would actually move the strip by a
+       visible amount. at cruise speed on a 120hz panel a frame is half a pixel,
+       and a sub-pixel rewrite costs a full style recalculation to render the same
+       thing twice. */
+    let written = -1;
     const tick = (t) => {
       const dt = Math.min((t - lastT) / 1000, 0.05);
       lastT = t;
@@ -50,7 +63,11 @@ export default function Marquee({ items, separator = '✦', reverse = false, cla
       if (half > 0) {
         // wrap into (-half, 0]
         pos = ((pos % half) + half) % half;
-        track.style.transform = `translate3d(${pos - half}px,0,0)`;
+        const next = Math.round(pos);
+        if (next !== written) {
+          written = next;
+          track.style.transform = `translate3d(${next - half}px,0,0)`;
+        }
       }
       raf = requestAnimationFrame(tick);
     };
@@ -61,7 +78,7 @@ export default function Marquee({ items, separator = '✦', reverse = false, cla
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onResize);
     };
-  }, [reduced, reverse]);
+  }, [active, reverse]);
 
   const row = items.map((item, i) => (
     <span className="marquee__item" key={i}>
@@ -73,7 +90,7 @@ export default function Marquee({ items, separator = '✦', reverse = false, cla
   ));
 
   return (
-    <div className={`marquee ${className}`} aria-hidden="true">
+    <div className={`marquee ${className}`} ref={rootRef} aria-hidden="true">
       <div className="marquee__track" ref={trackRef}>
         <div className="marquee__group">{row}</div>
         <div className="marquee__group">{row}</div>

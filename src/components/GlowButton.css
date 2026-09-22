@@ -21,6 +21,13 @@
      hub of the gradient shows through the rim as a dead spot. */
   inset: -250%;
   animation: glowbtn-spin 4s linear infinite;
+  /* the ring is an oversized conic gradient under a rounded, overflow-hidden
+     pill. without its own layer the rounded clip drags the rotation back onto
+     the main thread, and it then repaints that gradient sixty times a second
+     for as long as the tab is open — the nav is fixed, so these two never go
+     off screen and never stop. a layer makes it a compositor transform, which
+     is what the effect was always supposed to be. */
+  will-change: transform;
 }
 
 .glowbtn__face {
@@ -106,6 +113,9 @@
   background: var(--accent);
   box-shadow: 0 0 8px var(--accent-glow);
   animation: glowbtn-pulse 2.4s ease-in-out infinite;
+  /* same reason as the ring: an opacity keyframe on an unpromoted element is a
+     style recalculation every frame, forever. */
+  will-change: opacity;
   flex: none;
 }
 
@@ -143,5 +153,24 @@
   .glowbtn__ring,
   .glowbtn__dot {
     animation: none;
+  }
+}
+
+/* a phone or a tablet holds the nav on screen the whole way down the page, and
+   pays for the rim's rotation in frames it needs for the scroll. it keeps the
+   rim — that is the button's shape — and loses only the sweep going round it,
+   which nobody on a touch screen is hovering to see anyway. */
+@media (pointer: coarse) {
+  .glowbtn__ring {
+    animation: none;
+    will-change: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glowbtn__ring,
+  .glowbtn__dot {
+    animation: none;
+    will-change: auto;
   }
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { gsap } from '../lib/gsap';
-import { useReducedMotion } from '../lib/hooks';
+import { useAnimate, useReducedMotion } from '../lib/hooks';
 import { openPilot } from '../lib/pilot';
 import { scrollToId } from '../lib/SmoothScroll';
 import { site } from '../data/site';
@@ -12,15 +12,21 @@ import './Hero.css';
 
 function Cycler({ items }) {
   const reduced = useReducedMotion();
+  const ref = useRef(null);
+  /* no margin: the word is one line of the headline, and there is no reason to
+     keep swapping it while the reader is six sections down. it held its timer
+     open for the life of the tab before this. */
+  const active = useAnimate(ref, '0px');
   const [i, setI] = useState(0);
 
   useEffect(() => {
+    if (!active) return undefined;
     const t = setTimeout(() => setI((n) => (n + 1) % items.length), items[i].hold);
     return () => clearTimeout(t);
-  }, [i, items]);
+  }, [active, i, items]);
 
   return (
-    <span className="cycler">
+    <span className="cycler" ref={ref}>
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.span
           key={items[i].word}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useInView, useReducedMotion } from '../../lib/hooks';
+import { useAnimate, useReducedMotion } from '../../lib/hooks';
 import './demos.css';
 
 const ROWS = [
@@ -17,12 +17,12 @@ const TODAY = [
 // phases: 0 idle · 1 new lead routed · 2 booked · 3 reminder · 4 hold · 5 loop
 export default function CrmDemo() {
   const rootRef = useRef(null);
-  const inView = useInView(rootRef, '80px');
+  const active = useAnimate(rootRef, '80px');
   const reduced = useReducedMotion();
   const [phase, setPhase] = useState(reduced ? 4 : 0);
 
   useEffect(() => {
-    if (reduced || !inView) return undefined;
+    if (!active) return undefined;
     let t;
     if (phase === 0) t = setTimeout(() => setPhase(1), 900);
     else if (phase === 1) t = setTimeout(() => setPhase(2), 1500);
@@ -30,7 +30,7 @@ export default function CrmDemo() {
     else if (phase === 3) t = setTimeout(() => setPhase(4), 1600);
     else if (phase === 4) t = setTimeout(() => setPhase(0), 2800);
     return () => clearTimeout(t);
-  }, [phase, inView, reduced]);
+  }, [phase, active]);
 
   const hot = phase >= 1;
   const routed = phase >= 2;
@@ -42,7 +42,7 @@ export default function CrmDemo() {
   };
 
   return (
-    <div className="demo demo-crm" ref={rootRef}>
+    <div className={`demo demo-crm ${active ? '' : 'is-idle'}`} ref={rootRef}>
       <div className="demo__chrome mono">
         <span>home-service crm — live</span>
         <span className={`demo-crm__state ${routed ? 'is-synced' : ''}`}>

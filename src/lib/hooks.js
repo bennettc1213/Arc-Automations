@@ -62,3 +62,55 @@ export function useLoop(callback, delay, active) {
     return () => clearInterval(id);
   }, [delay, active]);
 }
+
+/** true while the tab is actually being looked at. a decorative loop that keeps
+    writing transforms in a background tab is pure battery burn — browsers throttle
+    rAF there but not timers, and the wake-up repaint when you come back is worse
+    for having kept the work queued. */
+export function usePageVisible() {
+  const [visible, setVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState === 'visible',
+  );
+  useEffect(() => {
+    const onChange = () => setVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', onChange);
+    return () => document.removeEventListener('visibilitychange', onChange);
+  }, []);
+  return visible;
+}
+
+/** the gate every decorative loop on the site runs behind: on screen, in a tab
+    somebody is looking at, and not overridden by a motion preference.
+
+    this exists because the cost we measured was not any one animation being
+    expensive — it was cheap animations running everywhere at once, forever. three
+    marquees writing a transform per frame cost 180 style recalcs a second at the
+    *footer*, nine thousand pixels from the nearest marquee. a phone pays for that
+    in frames it never had to spare. */
+export function useAnimate(ref, rootMargin = '200px') {
+  const inView = useInView(ref, rootMargin);
+  const visible = usePageVisible();
+  const reduced = useReducedMotion();
+  return inView && visible && !reduced;
+}
+
+/** a device that will struggle with the decorative layer: a phone or tablet, a
+    machine that told us to send less, or one with too few cores to spare any for
+    an ornament. read once — none of it changes mid-session.
+
+    deliberately NOT keyed on viewport width. a narrow window on a desktop is still
+    a desktop, and a 1280px laptop with four cores is the machine that complained. */
+export function useWeakDevice() {
+  const [weak] = useState(() => {
+    if (typeof navigator === 'undefined') return false;
+    const c = navigator.connection;
+    if (c && (c.saveData || /^(slow-2g|2g|3g)$/.test(c.effectiveType ?? ''))) return true;
+    if ((navigator.hardwareConcurrency ?? 8) <= 4) return true;
+    if ((navigator.deviceMemory ?? 8) <= 4) return true;
+    if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) {
+      return true;
+    }
+    return false;
+  });
+  return weak;
+}

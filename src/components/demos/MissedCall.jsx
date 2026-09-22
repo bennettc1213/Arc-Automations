@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { useInView, useReducedMotion } from '../../lib/hooks';
+import { useAnimate, useReducedMotion, useWeakDevice } from '../../lib/hooks';
+import { advance, typeStep } from './typing';
 import './demos.css';
 
 const CALLER = { name: 'west valley roofing', number: '(801) 555-0144', time: '2:14pm' };
@@ -10,14 +11,15 @@ const START = 42;
 // phases: 0 armed · 1 missed · 2 replying · 3 booked · 4 hold
 export default function MissedCall() {
   const rootRef = useRef(null);
-  const inView = useInView(rootRef, '80px');
+  const active = useAnimate(rootRef, '80px');
   const reduced = useReducedMotion();
+  const weak = useWeakDevice();
   const [phase, setPhase] = useState(reduced ? 4 : 0);
   const [tick, setTick] = useState(reduced ? 0 : START);
   const [replyChars, setReplyChars] = useState(reduced ? ARC_REPLY.length : 0);
 
   useEffect(() => {
-    if (reduced || !inView) return undefined;
+    if (!active) return undefined;
     let t;
     if (phase === 0) {
       t = setTimeout(() => setPhase(1), 900);
@@ -27,7 +29,8 @@ export default function MissedCall() {
       if (tick > 0) {
         t = setTimeout(() => setTick((v) => v - 1), 60);
       } else if (replyChars < ARC_REPLY.length) {
-        t = setTimeout(() => setReplyChars((c) => c + 1), 14);
+        const step = typeStep(weak, 14);
+        t = setTimeout(() => setReplyChars((c) => advance(c, step.chars, ARC_REPLY.length)), step.delay);
       } else {
         t = setTimeout(() => setPhase(3), 400);
       }
@@ -41,7 +44,7 @@ export default function MissedCall() {
       }, 3200);
     }
     return () => clearTimeout(t);
-  }, [phase, tick, replyChars, inView, reduced]);
+  }, [phase, tick, replyChars, active, weak]);
 
   const missed = phase >= 1;
   const replying = phase >= 2;
@@ -49,7 +52,7 @@ export default function MissedCall() {
   const doneTyping = replying && replyChars >= ARC_REPLY.length;
 
   return (
-    <div className="demo demo-mc" ref={rootRef}>
+    <div className={`demo demo-mc ${active ? '' : 'is-idle'}`} ref={rootRef}>
       <div className="demo__chrome mono">
         <span>missed-call text-back — live</span>
         <span className={`demo-mc__state ${booked ? 'is-synced' : ''}`}>

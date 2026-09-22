@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useInView, useLoop, useReducedMotion } from '../../lib/hooks';
+import { useAnimate, useLoop, useReducedMotion } from '../../lib/hooks';
 import { media } from '../../lib/media';
 import './demos.css';
 
@@ -18,16 +18,16 @@ const FRAMES = ['rue-noir-01.jpg', 'rue-noir-02.jpg', 'rue-noir-03.jpg', 'rue-no
 
 export default function RueNoir() {
   const rootRef = useRef(null);
-  const inView = useInView(rootRef, '80px');
+  const active = useAnimate(rootRef, '80px');
   const reduced = useReducedMotion();
   const [i, setI] = useState(0);
 
-  useLoop(() => setI((n) => (n + 1) % PLATES.length), 3200, inView && !reduced);
+  useLoop(() => setI((n) => (n + 1) % PLATES.length), 3200, active);
 
   const hasFrames = FRAMES.some(Boolean);
 
   return (
-    <div className="demo demo-rn" ref={rootRef}>
+    <div className={`demo demo-rn ${active ? '' : 'is-idle'}`} ref={rootRef}>
       {hasFrames &&
         FRAMES.map(
           (url, f) =>
