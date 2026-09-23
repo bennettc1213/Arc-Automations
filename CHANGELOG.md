@@ -7,6 +7,20 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-09-23
+
+### Added
+
+- Finished prompts now ship to the live site on their own. A `PostToolUse` hook
+  records each file a Claude session edits; a `Stop` hook then runs `npm test`
+  and, only if it passes, commits and pushes exactly those files to `main`,
+  which is what `deploy.yml` publishes to GitHub Pages. The `ship-to-live`
+  skill and `scripts/autoship.mjs` hold the logic.
+- Staging is scoped to the session's own files rather than `git add -A`, because
+  several sessions share this checkout and the repo is public. Secret-shaped
+  paths (`.env*`, `n8n.env`, keys) and gitignored files are never staged, and a
+  failing test or a branch other than `main` stops the push and says why.
+
 ## [1.17.2] - 2026-09-23
 
 ### Fixed

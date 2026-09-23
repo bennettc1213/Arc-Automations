@@ -31,3 +31,6 @@ ARC_FIX_CHECKLIST.md
 # the repo entirely.
 n8n.env
 **/n8n.env/
+
+# per-session lists of the files Claude edited, read by scripts/autoship.mjs
+.claude/autoship/

@@ -113,6 +113,16 @@ and nothing else: green only on evidence from the live check or the event log,
 never from a status somebody typed. Past (archived) clients are split off in
 `OpsWorkspace` and left out of every total.
 
+## Shipping
+
+Pushing `main` **is** the deploy (`.github/workflows/deploy.yml`), and this repo
+is public. A `Stop` hook (`.claude/settings.json` → `scripts/autoship.mjs`, see
+the `ship-to-live` skill) runs after every finished prompt: it runs `npm test`
+and, only if that passes, commits and pushes just the files this session edited.
+So don't push by hand at the end of a turn, and never `git add -A` here — other
+sessions share this working tree. Edit through Write/Edit; files changed via Bash
+are not tracked. If the hook reports `NOT pushed`, fix the failure first.
+
 ## Versioning
 
 This repo is versioned with [SemVer](https://semver.org/), tracked in the
