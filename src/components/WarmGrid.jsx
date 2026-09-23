@@ -123,6 +123,12 @@ export default function WarmGrid() {
       const y1 = Math.min(H, mouse.y + R);
       if (x1 <= x0 || y1 <= y0) return;
       ctx.clearRect(x0, y0, x1 - x0, y1 - y0);
+      /* clearing takes the bloom out with the dots, and a 400px square with no
+         warmth in it follows the cursor around the page as a dark block. the
+         gradient is in canvas coordinates, so painting it back over just this box
+         lands exactly on the bloom around it. */
+      ctx.fillStyle = g;
+      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
 
       const startX = spacing / 2 + Math.ceil((x0 - spacing / 2) / spacing) * spacing;
       const startY = oy + Math.ceil((y0 - oy) / spacing) * spacing;

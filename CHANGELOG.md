@@ -7,6 +7,18 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.17.2] - 2026-09-23
+
+### Fixed
+
+- A dark 400px square followed the cursor around the marketing site on
+  desktop. 1.17.1's WarmGrid rewrite draws the dot grid as one pattern fill and
+  clears a box around the cursor to lay the reactive dots in by hand — but the
+  clear also erased the heat bloom underneath, so the box showed no warmth
+  against the tinted page around it. The bloom is now painted back into the box
+  after the clear; measured on the canvas, its alpha is 12 both inside the box
+  and just outside it.
+
 ## [1.17.1] - 2026-09-22
 
 The marketing site was smooth on a desktop and heavy on everything else. The
