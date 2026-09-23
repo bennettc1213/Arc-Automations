@@ -7,6 +7,71 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- **Every finished prompt now says whether the change is visible on
+  arcautomation.site or is backend only.** `scripts/site-impact.mjs` reads the answer
+  off the import graph, walked from `index.html`, from each route's page and from each
+  edge function, not off folder names, because the site imports files that live under
+  `supabase/` and the `/ops` door prints `package.json`'s version. It reports where to
+  look (and whether that page needs a sign-in), and for backend files, which deploy they
+  wait on: `supabase db push`, or the named functions to redeploy. `autoship` appends the
+  verdict to its message whether the push succeeded, was held by a failing test, or was
+  skipped, and a fault in the report can never stop a deploy. The `site-impact` skill and a
+  line in CLAUDE.md make the closing reply of each turn say the same.
+- `tests/site-impact.test.js`, against a throwaway repo built in a temp directory, so it
+  says nothing about, and is not broken by, whatever else is being edited.
+
+## [1.20.0] - 2026-09-23
+
+A tenant's configuration was one mutable row with a counter and no history. It
+is now drafts and immutable, numbered versions, published and rolled back by an
+operator in one database transaction, resolved by one function, and recorded on
+every run's snapshot.
+
+### Added
+
+- **Versioned tenant configuration (`0014`, `_shared/config/`, ARC-110).**
+  Tenant-wide settings (`tenant_settings@1`: company name, timezone) and
+  per-module configuration each have drafts and published versions. The current
+  configuration is the highest version number; published versions cannot be
+  updated or deleted, even by the service role. Draft edits and publication
+  carry the revision and version the writer read, and a stale one is a 409, not
+  an overwrite. Rollback publishes older content as the next version. Every
+  field is validated by the registered schema and authorised by the registry's
+  field permissions, and every publication reports the registry's change impact
+  and writes an audit row with no configuration values in it.
+- **One resolver.** `resolveEffectiveConfig` composes the current tenant
+  settings and module version, and is the only thing that reads configuration.
+  Each run's snapshot now records the two versions it came from; once a tenant
+  is versioned, the database refuses an unversioned snapshot or run.
+- **`ops` actions** for drafts, publication, rollback, history, resolution and
+  the legacy import (`config-*`).
+- **Twilio number uniqueness (G-P5).** A number another tenant's current
+  configuration holds cannot be published.
+- **Real-Postgres tests.** `tests/pglite-harness.js` applies every migration to
+  PGlite (no Docker) and gives the real store adapter a PostgREST-shaped client;
+  `tests/config-db.test.js` tests 0014's invariants, RLS and the canary end to
+  end against it when `ARC_PGLITE_DIR` is set, and reports skipped otherwise.
+
+### Changed
+
+- The Lead Recovery panel's **save** now publishes the changed scopes as new
+  versions and sends the versions its form was loaded from; a stale form is
+  refused. Activation, the routing test and the panel read the resolved
+  published configuration.
+- Twilio routing reads each tenant's current published version.
+- Snapshot identity is the version pair for versioned snapshots (so a rollback's
+  runs record the rollback), and the content hash for legacy ones.
+- `module_configs.config` is frozen; the row keeps the module switch.
+
+### Migration
+
+- 0014 copies existing configuration into drafts and publishes nothing. Run the
+  `config-import-legacy` ops action straight after deploying — see
+  DEPLOYMENT.md §2. A tenant whose old configuration does not validate stays as
+  open drafts with its field errors, and fails closed until corrected.
+
 ## [1.19.0] - 2026-09-23
 
 Lead Recovery could send a text twice, drain another tenant's queue from the

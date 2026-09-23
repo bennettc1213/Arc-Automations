@@ -13,6 +13,14 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'nod
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// loaded dynamically so a fault in the impact report can never stop the hook itself
+let describeImpact = null
+try {
+  ;({ describeImpact } = await import('./site-impact.mjs'))
+} catch {
+  // impact() below reports it as unavailable
+}
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const STATE_DIR = path.join(ROOT, '.claude', 'autoship')
 const BRANCH = 'main'
@@ -45,6 +53,18 @@ function git(args, timeout = 30_000) {
 
 function say(message) {
   process.stdout.write(JSON.stringify({ systemMessage: `autoship: ${message}` }))
+}
+
+// Whether the shipped files are visible on arcautomation.site or backend-only. Never
+// allowed to stop a deploy: if the classifier itself breaks, the message loses the
+// verdict and the push goes ahead.
+function impact(files, state) {
+  try {
+    if (!describeImpact) throw new Error('scripts/site-impact.mjs failed to load')
+    return `\n${describeImpact(files, { root: ROOT, state })}`
+  } catch (err) {
+    return `\n(site impact unavailable: ${err.message})`
+  }
 }
 
 function tail(text, lines) {
@@ -108,7 +128,7 @@ function ship(input) {
 
   const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']).stdout.trim()
   if (branch !== BRANCH) {
-    say(`not shipping ${files.length} file(s): on "${branch}", and only ${BRANCH} deploys.`)
+    say(`not shipping ${files.length} file(s): on "${branch}", and only ${BRANCH} deploys.${impact(files, 'held')}`)
     return
   }
 
@@ -122,13 +142,17 @@ function ship(input) {
   if (tests.status !== 0) {
     say(
       `NOT pushed. npm test failed, so ${files.length} file(s) stay local. Fix and finish another prompt to ship.\n` +
-        tail(`${tests.stdout}\n${tests.stderr}`, 15),
+        tail(`${tests.stdout}\n${tests.stderr}`, 15) +
+        impact(files, 'held'),
     )
     return
   }
 
   if (DRY) {
-    say(`dry run: tests pass; would commit and push ${files.length} file(s):\n${files.join('\n')}`)
+    say(
+      `dry run: tests pass; would commit and push ${files.length} file(s):\n${files.join('\n')}` +
+        impact(files, 'shipped'),
+    )
     return
   }
 
@@ -146,13 +170,13 @@ function ship(input) {
   if (push.status !== 0) {
     return say(
       `committed ${sha} locally but the push FAILED (${files.length} file(s) not live yet). ` +
-        `The next successful ship pushes it.\n${tail(push.stderr, 8)}`,
+        `The next successful ship pushes it.\n${tail(push.stderr, 8)}${impact(files, 'held')}`,
     )
   }
 
   rmSync(file, { force: true })
   const remote = git(['remote', 'get-url', 'origin']).stdout.trim().replace(/\.git$/, '')
-  say(`shipped ${files.length} file(s) as ${sha}. GitHub Pages is deploying: ${remote}/actions`)
+  say(`shipped ${files.length} file(s) as ${sha}. GitHub Pages is deploying: ${remote}/actions${impact(files, 'shipped')}`)
 }
 
 const input = readInput()

@@ -30,8 +30,10 @@ is routed to the contractor or stopped and handed to a person. Website-form
 leads go through the **same** `intakeLead`; there is no second engine.
 
 One shared system: one module, one prompt, one set of templates, one
-deployment. A tenant differs only in `module_configs.config` — validated JSON
-with no executable logic. Never a per-client workflow, schema, branch or deploy.
+deployment. A tenant differs only in its published configuration versions
+(`0014`, `_shared/config/`) — validated JSON with no executable logic, read only
+through `resolveEffectiveConfig`; `module_configs.config` is frozen legacy. Never a
+per-client workflow, schema, branch or deploy.
 
 The split the whole thing rests on: **operational tables** (`leads`,
 `automation_runs`, `scheduled_actions`, …) hold current state and what must
@@ -122,6 +124,14 @@ and, only if that passes, commits and pushes just the files this session edited.
 So don't push by hand at the end of a turn, and never `git add -A` here — other
 sessions share this working tree. Edit through Write/Edit; files changed via Bash
 are not tracked. If the hook reports `NOT pushed`, fix the failure first.
+
+**Say what a change means for arcautomation.site.** Whenever a turn edited files,
+end the reply with a line stating whether it is **visible on the live site** (and
+which page) or **backend only** (a migration or edge function, which reaches GitHub
+but not the database or Supabase until deployed). Get it from
+`node scripts/site-impact.mjs <files you edited>` — never from the folder name,
+because `src/` imports files under `supabase/` — see the `site-impact` skill.
+`autoship` prints the same verdict after it pushes.
 
 ## Versioning
 

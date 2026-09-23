@@ -42,6 +42,11 @@ The hook prints one `autoship:` line at the end of the turn.
 | `committed <sha> locally but the push FAILED` | Usually the remote moved. `git pull --rebase`, then finish a prompt. |
 | (nothing) | Nothing this session edited had changed. |
 
+Under it, a second line says what the change means for the live site:
+`arcautomation.site: VISIBLE`, or `NO VISIBLE CHANGE. This is backend code.` (which also
+names the `supabase db push` or function redeploy it waits on). "Shipped" only means
+the code reached GitHub; backend code is not deployed by it. See the `site-impact` skill.
+
 ## Limits worth knowing
 
 - Files created or changed through Bash (`mv`, `sed -i`, generators) are not
