@@ -589,7 +589,7 @@ describe('a missed call becomes exactly one lead and exactly one response', () =
     const sender = new RecordingSender();
     const d = deps(store, { liveSender: sender });
     await intakeLead(d, missedCall());
-    const summary = await runDueActions(d);
+    const summary = await runDueActions(d, { tenantId: null });
 
     assert.equal(summary.done, 1);
     assert.equal(sender.sent.length, 1);
@@ -603,7 +603,7 @@ describe('a missed call becomes exactly one lead and exactly one response', () =
     const store = setup();
     const d = deps(store);
     await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     const types = store.actions.map((a) => a.actionType).sort();
     assert.deepEqual(types, ['close_run', 'send_first_response', 'send_followup']);
   });
@@ -669,7 +669,7 @@ describe('safety language creates a mandatory handoff', () => {
     const sender = new RecordingSender();
     const d = deps(store, { liveSender: sender });
     const result = await intakeLead(d, missedCall({ serviceRequest: 'smell of gas in the basement' }));
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     const handoff = await store.getOpenHandoff(TENANT_A, result.lead.id);
     assert.ok(handoff);
@@ -684,7 +684,7 @@ describe('safety language creates a mandatory handoff', () => {
     const sender = new RecordingSender();
     const d = deps(store, { liveSender: sender });
     await intakeLead(d, missedCall({ serviceRequest: 'gas leak' }));
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     const alert = sender.sent.find((m) => m.to === '+16145550188');
     assert.ok(alert);
@@ -699,7 +699,7 @@ describe('a reply stops the automation', () => {
     const sender = new RecordingSender();
     const d = deps(store, { liveSender: sender, ...options });
     const intake = await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     return { store, d, sender, lead: intake.lead, run: intake.run };
   }
 
@@ -745,7 +745,7 @@ describe('a reply stops the automation', () => {
     followup.runAt = new Date(NOW.getTime() - 1000).toISOString();
 
     const before = sender.sent.length;
-    const summary = await runDueActions(d);
+    const summary = await runDueActions(d, { tenantId: null });
     assert.equal(sender.sent.length, before, 'nothing further was sent');
     assert.ok(summary.cancelled >= 1);
   });
@@ -779,7 +779,7 @@ describe('STOP creates a suppression and cancels everything', () => {
     const store = setup();
     const d = deps(store);
     const intake = await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     const result = await handleInboundMessage(d, {
       tenantId: TENANT_A,
@@ -838,7 +838,7 @@ describe('STOP creates a suppression and cancels everything', () => {
       expiresAt: null,
     });
 
-    const summary = await runDueActions(d);
+    const summary = await runDueActions(d, { tenantId: null });
     assert.equal(sender.sent.length, 0);
     assert.equal(summary.cancelled, 1);
   });
@@ -1037,7 +1037,7 @@ describe('the classifier can add caution and never remove it', () => {
       classifier: new FakeClassifier({ confidence: 0.3, service_type: 'furnace repair' }),
     });
     const intake = await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     await handleInboundMessage(d, {
       tenantId: TENANT_A,
       from: CUSTOMER,
@@ -1045,8 +1045,8 @@ describe('the classifier can add caution and never remove it', () => {
       body: 'furnace repair please',
       providerMessageId: 'SMlow',
     });
-    await runDueActions(d);
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
+    await runDueActions(d, { tenantId: null });
 
     const run = await store.getRunForLead(TENANT_A, intake.lead.id);
     assert.equal(run.state, 'handoff_required');
@@ -1062,7 +1062,7 @@ describe('the classifier can add caution and never remove it', () => {
       classifier: new FakeClassifier({ confidence: 0.95, service_type: 'furnace repair', zip: '43215' }),
     });
     const intake = await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     await handleInboundMessage(d, {
       tenantId: TENANT_A,
       from: CUSTOMER,
@@ -1070,8 +1070,8 @@ describe('the classifier can add caution and never remove it', () => {
       body: 'furnace repair at 43215 please',
       providerMessageId: 'SMgood',
     });
-    await runDueActions(d);
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
+    await runDueActions(d, { tenantId: null });
 
     const run = await store.getRunForLead(TENANT_A, intake.lead.id);
     assert.equal(run.state, 'qualified');
@@ -1083,7 +1083,7 @@ describe('the classifier can add caution and never remove it', () => {
     const store = setup();
     const d = deps(store, { classifier: new FakeClassifier({ confidence: 0.95, service_type: 'furnace repair' }) });
     await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     await handleInboundMessage(d, {
       tenantId: TENANT_A,
       from: CUSTOMER,
@@ -1091,7 +1091,7 @@ describe('the classifier can add caution and never remove it', () => {
       body: 'furnace repair at 43215',
       providerMessageId: 'SMmeta',
     });
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     const qualified = store.eventsOfType('lead_qualified')[0].event;
     assert.deepEqual(Object.keys(qualified.payload.classifier).sort(), ['confidence', 'model', 'ms', 'provider']);
@@ -1106,7 +1106,7 @@ describe('delivery is a separate fact from sending', () => {
     const sender = new RecordingSender();
     const d = deps(store, { liveSender: sender });
     const intake = await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     const outbound = store.messages.find((m) => m.direction === 'outbound');
     return { store, d, sender, lead: intake.lead, sid: outbound.providerMessageId };
   }
@@ -1181,7 +1181,7 @@ describe('a transient failure retries, a permanent one fetches a person', () => 
     const d = deps(store, { liveSender: flaky });
     await intakeLead(d, missedCall());
 
-    const summary = await runDueActions(d);
+    const summary = await runDueActions(d, { tenantId: null });
     assert.equal(summary.retried, 1);
     const action = store.actions[0];
     assert.equal(action.status, 'pending');
@@ -1195,7 +1195,7 @@ describe('a transient failure retries, a permanent one fetches a person', () => 
     const d = deps(store, { liveSender: dead });
     const intake = await intakeLead(d, missedCall());
 
-    const summary = await runDueActions(d);
+    const summary = await runDueActions(d, { tenantId: null });
     assert.equal(summary.failed, 1);
     assert.equal(store.actions[0].status, 'failed');
     assert.equal(store.actions[0].attempts, 1, 'no retries were burned on something that cannot succeed');
@@ -1214,7 +1214,7 @@ describe('a transient failure retries, a permanent one fetches a person', () => 
       for (const action of store.actions) {
         if (action.status === 'pending') action.runAt = NOW.toISOString();
       }
-      await runDueActions(d);
+      await runDueActions(d, { tenantId: null });
     }
 
     const action = store.actions.find((a) => a.actionType === 'send_first_response');
@@ -1232,8 +1232,8 @@ describe('two dispatchers cannot execute the same action', () => {
     const d = deps(store);
     await intakeLead(d, missedCall());
 
-    const first = await store.claimActions(10, 'worker-a', NOW.toISOString());
-    const second = await store.claimActions(10, 'worker-b', NOW.toISOString());
+    const first = await store.claimActions({ limit: 10, worker: 'worker-a', nowIso: NOW.toISOString(), tenantId: null });
+    const second = await store.claimActions({ limit: 10, worker: 'worker-b', nowIso: NOW.toISOString(), tenantId: null });
 
     assert.equal(first.length, 1);
     assert.equal(second.length, 0, 'the second worker finds nothing to take');
@@ -1247,19 +1247,19 @@ describe('two dispatchers cannot execute the same action', () => {
     const b = deps(store, { liveSender: sender });
     await intakeLead(a, missedCall());
 
-    const [first, second] = await Promise.all([runDueActions(a, { worker: 'a' }), runDueActions(b, { worker: 'b' })]);
+    const [first, second] = await Promise.all([runDueActions(a, { worker: 'a', tenantId: null }), runDueActions(b, { worker: 'b', tenantId: null })]);
     assert.equal(first.claimed + second.claimed, 1);
     assert.equal(sender.sent.length, 1);
   });
 
-  test('an expired lease is re-offered, and the idempotency key is what stops a second send', async () => {
+  test('an expired lease is re-offered, and re-queueing the same action is a no-op', async () => {
     const store = setup();
     const d = deps(store);
     await intakeLead(d, missedCall());
 
-    await store.claimActions(10, 'dead-worker', NOW.toISOString());
+    await store.claimActions({ limit: 10, worker: 'dead-worker', nowIso: NOW.toISOString(), tenantId: null });
     const later = new Date(NOW.getTime() + 10 * 60_000).toISOString();
-    const reoffered = await store.claimActions(10, 'live-worker', later);
+    const reoffered = await store.claimActions({ limit: 10, worker: 'live-worker', nowIso: later, tenantId: null });
 
     assert.equal(reoffered.length, 1, 'a worker that died does not strand the queue');
     assert.equal(store.actions[0].lockedBy, 'live-worker');
@@ -1312,7 +1312,7 @@ describe('a tenant that may not send, does not send', () => {
     await intakeLead(d, missedCall());
 
     store.configs[0].enabled = false;
-    const summary = await runDueActions(d);
+    const summary = await runDueActions(d, { tenantId: null });
 
     assert.equal(sender.sent.length, 0);
     assert.equal(summary.cancelled, 1);
@@ -1336,7 +1336,7 @@ describe('a canary can never contact a real customer', () => {
     const d = deps(store, { liveSender: live, canarySender: canary });
 
     await intakeLead(d, missedCall({ externalRef: 'canary-1', isCanary: true }));
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     assert.equal(live.sent.length, 0, 'the live sender was never touched');
     assert.equal(canary.sent.length, 1);
@@ -1348,7 +1348,7 @@ describe('a canary can never contact a real customer', () => {
     const d = deps(store, { liveSender: live, canarySender: null });
 
     await intakeLead(d, missedCall({ externalRef: 'canary-2', isCanary: true }));
-    const summary = await runDueActions(d);
+    const summary = await runDueActions(d, { tenantId: null });
 
     assert.equal(live.sent.length, 0);
     assert.equal(summary.failed, 1, 'refusing is a failure, not a silent skip');
@@ -1358,7 +1358,7 @@ describe('a canary can never contact a real customer', () => {
     const store = setup();
     const d = deps(store, { canarySender: new RecordingSender() });
     await intakeLead(d, missedCall({ externalRef: 'canary-3', isCanary: true }));
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     assert.ok(store.events.length > 0);
     for (const row of store.events) {
@@ -1373,7 +1373,7 @@ describe('a canary can never contact a real customer', () => {
     const d = deps(store, { liveSender: live, canarySender: canary });
 
     const result = await intakeLead(d, missedCall({ externalRef: 'canary-4', isCanary: true }));
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     assert.equal(result.ok, true, 'proving the pipeline is what the canary is for');
     assert.equal(live.sent.length, 0);
@@ -1436,7 +1436,7 @@ describe('one tenant can never reach another tenant’s records', () => {
     const d = deps(store);
     await intakeLead(d, missedCall({ tenantId: TENANT_A, externalRef: 'CAa' }));
     await intakeLead(d, missedCall({ tenantId: TENANT_B, externalRef: 'CAb' }));
-    await runDueActions(d, { limit: 50 });
+    await runDueActions(d, { limit: 50, tenantId: null });
 
     const a = store.events.filter((e) => e.tenantId === TENANT_A);
     const b = store.events.filter((e) => e.tenantId === TENANT_B);
@@ -1463,7 +1463,7 @@ describe('one tenant can never reach another tenant’s records', () => {
     const store = twoTenants();
     const d = deps(store);
     const intake = await intakeLead(d, missedCall({ serviceRequest: 'gas smell' }));
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     const handoff = await store.getOpenHandoff(TENANT_A, intake.lead.id);
 
     const wrong = await resolveHandoffFor(d, { tenantId: TENANT_B, handoffId: handoff.id, resolution: 'x' });
@@ -1483,7 +1483,7 @@ describe('a person taking over stops the automation', () => {
     const sender = new RecordingSender();
     const d = deps(store, { liveSender: sender });
     const intake = await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     assert.ok(store.pendingActions().length >= 2);
 
     const result = await takeOverLead(d, { tenantId: TENANT_A, leadId: intake.lead.id, actor: 'Dana' });
@@ -1500,7 +1500,7 @@ describe('a person taking over stops the automation', () => {
     const sender = new RecordingSender();
     const d = deps(store, { liveSender: sender });
     const intake = await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     await takeOverLead(d, { tenantId: TENANT_A, leadId: intake.lead.id, actor: 'Dana' });
     /* put one back on the queue as if a worker had claimed it just before the takeover. */
@@ -1509,7 +1509,7 @@ describe('a person taking over stops the automation', () => {
     followup.runAt = NOW.toISOString();
 
     const before = sender.sent.length;
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     assert.equal(sender.sent.length, before);
   });
 
@@ -1517,7 +1517,7 @@ describe('a person taking over stops the automation', () => {
     const store = setup();
     const d = deps(store);
     const intake = await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     const result = await markBooked(d, { tenantId: TENANT_A, leadId: intake.lead.id, outcome: 'booked', valueCents: 42000, actor: 'Dana' });
     assert.equal(result.ok, true);
@@ -1536,7 +1536,7 @@ describe('a person taking over stops the automation', () => {
     const store = setup();
     const d = deps(store);
     const intake = await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     /* pull the self-closing deadline forward. */
     const close = store.actions.find((a) => a.actionType === 'close_run');
@@ -1544,7 +1544,7 @@ describe('a person taking over stops the automation', () => {
     const followup = store.actions.find((a) => a.actionType === 'send_followup');
     followup.status = 'cancelled';
 
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     const run = await store.getRunForLead(TENANT_A, intake.lead.id);
     assert.equal(run.state, 'closed');
     assert.equal(store.eventsOfType('automation_completed').length >= 1, true);
@@ -1555,7 +1555,7 @@ describe('a person taking over stops the automation', () => {
     const store = setup();
     const d = deps(store);
     const intake = await intakeLead(d, missedCall({ serviceRequest: 'gas smell' }));
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     await store.scheduleAction({
       tenantId: TENANT_A,
@@ -1565,7 +1565,7 @@ describe('a person taking over stops the automation', () => {
       idempotencyKey: 'force-close',
       payload: {},
     });
-    const summary = await runDueActions(d);
+    const summary = await runDueActions(d, { tenantId: null });
     assert.ok(summary.cancelled >= 1);
     const run = await store.getRunForLead(TENANT_A, intake.lead.id);
     assert.equal(run.state, 'handoff_required');
@@ -1580,7 +1580,7 @@ describe('the execution layer writes through the same door as everything else', 
     const d = deps(store, { classifier: new FakeClassifier({ confidence: 0.95, service_type: 'furnace repair', zip: '43215' }) });
 
     await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     await handleInboundMessage(d, {
       tenantId: TENANT_A,
       from: CUSTOMER,
@@ -1588,8 +1588,8 @@ describe('the execution layer writes through the same door as everything else', 
       body: 'furnace repair at 43215',
       providerMessageId: 'SMvalid',
     });
-    await runDueActions(d);
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
+    await runDueActions(d, { tenantId: null });
     await markBooked(d, { tenantId: TENANT_A, leadId: store.leads[0].id, outcome: 'booked', valueCents: 1000 });
 
     assert.deepEqual(store.invalidEvents, [], 'an internal event that fails validation is a bug in Arc');
@@ -1600,7 +1600,7 @@ describe('the execution layer writes through the same door as everything else', 
     const store = setup();
     const d = deps(store);
     await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     for (const { event } of store.events) {
       assert.ok(event.occurred_at, `${event.event_type} has no occurred_at`);
@@ -1615,7 +1615,7 @@ describe('the execution layer writes through the same door as everything else', 
     const store = setup();
     const d = deps(store, { classifier: new FakeClassifier({ confidence: 0.95, service_type: 'furnace repair' }) });
     const intake = await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     await handleInboundMessage(d, {
       tenantId: TENANT_A,
       from: CUSTOMER,
@@ -1623,7 +1623,7 @@ describe('the execution layer writes through the same door as everything else', 
       body: 'furnace repair at 43215',
       providerMessageId: 'SMthread',
     });
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     const ids = new Set(store.events.map((e) => e.event.correlation_id));
     assert.equal(ids.size, 1);
@@ -1635,7 +1635,7 @@ describe('the execution layer writes through the same door as everything else', 
     const dead = new RecordingSender({ ok: false, errorCode: '21211', errorMessage: 'invalid To number', permanent: true, sid: null });
     const d = deps(store, { liveSender: dead });
     await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     const failures = store.events.filter((e) => e.event.status === 'failure');
     assert.ok(failures.length > 0);
@@ -1714,7 +1714,7 @@ describe('a secret never reaches an event, a payload or a response', () => {
     const store = setup();
     const d = deps(store, { classifier: new FakeClassifier({ confidence: 0.95, service_type: 'furnace repair' }) });
     await intakeLead(d, missedCall());
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
     await handleInboundMessage(d, {
       tenantId: TENANT_A,
       from: CUSTOMER,
@@ -1722,7 +1722,7 @@ describe('a secret never reaches an event, a payload or a response', () => {
       body: 'furnace repair at 43215',
       providerMessageId: 'SMsecret',
     });
-    await runDueActions(d);
+    await runDueActions(d, { tenantId: null });
 
     const serialised = JSON.stringify(store.events);
     for (const pattern of FORBIDDEN) {

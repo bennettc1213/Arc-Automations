@@ -21,75 +21,53 @@
  */
 
 import { MODULE_EVENT_TYPES, MODULES, moduleForEvent } from './types.js';
+import {
+  canonicalModuleKey,
+  isSelectable,
+  modulesInPortalOrder,
+} from '../../../supabase/functions/_shared/registry/modules.ts';
 import { utc } from './metrics.js';
 
-/* per-module presentation and the one number that is a judgement rather than a count: how
-   long a module may go silent before the portal says so. these differ by an order of
-   magnitude between modules and a single flat threshold would be wrong for all of them —
-   lead capture going quiet for two days is an outage, warranty registration going quiet for
-   two days is a tuesday. */
-export const MODULE_META = {
-  lead_capture: {
-    key: 'lead_capture',
-    label: 'lead capture',
-    nav: 'lead capture',
-    icon: 'leads',
-    blurb: 'every opportunity that came in, and how fast it was answered',
-    entity: 'lead',
-    /* the pipeline fires on customer behaviour, several times a day for a working shop. */
-    quietAfterHours: 48,
-    awaiting:
-      'lead capture is being wired up. nothing has come through it yet — the first call or form will appear here within seconds of it happening.',
-  },
-  estimates: {
-    key: 'estimates',
-    label: 'estimate recovery',
-    nav: 'estimates',
-    icon: 'reports',
-    blurb: 'open quotes waiting on a decision, and what came back',
-    entity: 'estimate',
-    /* follow-up sequences are scheduled daily, so three days of silence is a stopped
-       scheduler rather than a slow week. */
-    quietAfterHours: 72,
-    awaiting:
-      'estimate recovery is being wired up. once your estimates are syncing, every open quote and the follow-up against it will show here.',
-  },
-  reviews: {
-    key: 'reviews',
-    label: 'reviews & recovery',
-    nav: 'reviews',
-    icon: 'reliability',
-    blurb: 'review requests, what came back, and the cases that need a person',
-    entity: 'job',
-    quietAfterHours: 120,
-    awaiting:
-      'review requests are being wired up. once completed jobs are syncing, every request and the review it earned will show here.',
-  },
-  memberships: {
-    key: 'memberships',
-    label: 'memberships',
-    nav: 'memberships',
-    icon: 'account',
-    blurb: 'renewals, failed payments and the visits still owed',
-    entity: 'membership',
-    /* a membership book is checked daily but only speaks when something changes, so it is
-       allowed a genuinely quiet week. */
-    quietAfterHours: 168,
-    awaiting:
-      'memberships are being wired up. once your service agreements are syncing, renewals and payment exceptions will show here.',
-  },
-  installs: {
-    key: 'installs',
-    label: 'install & warranty',
-    nav: 'install & warranty',
-    icon: 'automations',
-    blurb: 'closeout, serial capture and registration proof',
-    entity: 'install',
-    quietAfterHours: 168,
-    awaiting:
-      'install closeout is being wired up. once completed installs are syncing, each one and its registration state will show here.',
-  },
-};
+/* per-module presentation, derived from the module registry rather than declared here.
+ *
+ * This used to be a hand-written object, and it was one of the two module vocabularies
+ * the repository audit found: the portal knew `lead_capture` / `estimates` / `reviews` /
+ * `memberships` / `installs` while the execution engine knew only `lead_recovery`, and
+ * nothing reconciled them. The registry is now the single source
+ * (`supabase/functions/_shared/registry/modules.ts`) and this is a projection of it.
+ *
+ * Still keyed by the **event-module key** (`lead_capture`, not `lead_recovery`), because
+ * that is what `tenants.modules` stores, what `moduleForEvent` derives, and what every
+ * historical event row already says. The canonical key is reachable through
+ * `canonicalModuleKey()` when a caller needs it; nothing stored is renamed.
+ *
+ * `quietAfterHours` is the one number here that is a judgement rather than a count: how
+ * long a module may go silent before the portal says so. These differ by an order of
+ * magnitude between modules and a single flat threshold would be wrong for all of them —
+ * lead capture going quiet for two days is an outage, warranty registration going quiet
+ * for two days is a tuesday.
+ */
+export const MODULE_META = Object.freeze(Object.fromEntries(
+  modulesInPortalOrder().map((module) => [
+    module.eventModuleKey,
+    Object.freeze({
+      key: module.eventModuleKey,
+      canonicalKey: module.key,
+      routeKey: module.portal.routeKey,
+      label: module.portal.label,
+      nav: module.portal.navLabel,
+      icon: module.portal.icon,
+      blurb: module.portal.blurb,
+      entity: module.portal.entity,
+      quietAfterHours: module.portal.quietAfterHours,
+      awaiting: module.portal.awaiting,
+      /* whether ARC runs this module, as opposed to reporting on events somebody else
+         posts. false for the four observation-only modules, and the reason the portal
+         must never offer to switch one of them on. */
+      selectable: isSelectable(module.key),
+    }),
+  ]),
+));
 
 /* the tenant column is text[] and arrives from postgrest as an array, but a tenant row
    written before the column existed reads as null. treated as "nothing declared" rather
@@ -166,3 +144,8 @@ export function isLive(availability, key) {
 }
 
 export const MODULE_ORDER = MODULES;
+
+/* the compatibility boundary, re-exported so portal code has one import site for it.
+   a route param, a `tenants.modules` value and an event's derived bucket are all
+   accepted spellings; everything downstream of this call works in canonical keys. */
+export { canonicalModuleKey };

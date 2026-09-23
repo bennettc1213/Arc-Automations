@@ -432,9 +432,24 @@ export async function handleLeadRecoveryAction(
           isCanary: true,
         });
 
-        /* drain the queue so the operator sees the whole path in one press rather than
-           waiting a minute for the scheduler. */
-        const dispatched = await runDueActions(deps, { limit: 10, worker: 'ops-canary' });
+        /* run the canary's own work, and nothing else.
+ 
+           This call used to be `runDueActions(deps, { limit: 10 })` over a claim
+           function that took no tenant — so pressing "run canary" for one client
+           claimed whatever was due for *every* client and pushed it through a
+           recording sender. Those customers' texts were never delivered, the actions
+           were marked done, and a successful `sms_sent` was written against their
+           dashboards (audit S-C1).
+ 
+           Both guards are needed. `tenantId` keeps the claim inside this client, and
+           `canaryOnly` keeps it to synthetic leads, so even this tenant's own real
+           queue is untouched by a test. */
+        const dispatched = await runDueActions(deps, {
+          limit: 10,
+          worker: 'ops-canary',
+          tenantId,
+          canaryOnly: true,
+        });
 
         const run = intake.run ? await deps.store.getRun(tenantId, intake.run.id) : null;
         const actions = intake.run ? await deps.store.listActionsForRun(tenantId, intake.run.id) : [];
@@ -474,7 +489,12 @@ export async function handleLeadRecoveryAction(
 
         const store = supabaseStore(db);
         const retried = await store.retryAction(tenantId, actionId, new Date().toISOString());
-        if (!retried) return bad('that action is not in a failed state for this client', 409);
+        if (!retried) {
+          return bad(
+            'that action is not a failed action for this client, or it was queued before configuration pinning and can never run — resolve its lead by hand instead',
+            409,
+          );
+        }
 
         const logged = await context.audit('lead_recovery.action_retried', 'tenant', tenantId, {
           action_id: actionId,

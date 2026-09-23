@@ -216,6 +216,17 @@ export interface SendResult {
   errorCode: string | null;
   errorMessage: string | null;
   permanent: boolean;
+  /**
+   * We do not know whether the provider accepted this (ARC-015).
+   *
+   * The distinction this draws is the one that stops duplicate texts. A provider
+   * that answers "no" is a failure and retrying it is safe. A provider that does not
+   * answer at all may well have queued the message — the request reached Twilio and
+   * the response was lost — and retrying *that* is how one customer gets two texts.
+   *
+   * Before ARC-015 both shapes returned `permanent: false` and were retried alike.
+   */
+  ambiguous: boolean;
   ms: number;
 }
 
@@ -303,6 +314,8 @@ export class TwilioRestSender implements TwilioSender {
           /* the provider's words, truncated. never the request, which carries the body. */
           errorMessage: (body.message ?? `Twilio answered ${response.status}`).slice(0, 300),
           permanent: isPermanentFailure(code) || response.status === 400,
+          /* the provider answered. whatever it said, it did not queue the message. */
+          ambiguous: false,
           ms,
         };
       }
@@ -314,6 +327,7 @@ export class TwilioRestSender implements TwilioSender {
         errorCode: null,
         errorMessage: null,
         permanent: false,
+        ambiguous: false,
         ms,
       };
     } catch (error) {
@@ -325,6 +339,9 @@ export class TwilioRestSender implements TwilioSender {
         errorCode: null,
         errorMessage: controller.signal.aborted ? `no answer in ${this.timeoutMs / 1000}s` : (error as Error)?.message ?? 'request failed',
         permanent: false,
+        /* no response came back, so Twilio may or may not have taken it. this is the
+           case ARC-015 exists for: it is quarantined, never blindly retried. */
+        ambiguous: true,
         ms,
       };
     } finally {
@@ -360,6 +377,7 @@ export class RecordingSender implements TwilioSender {
       errorCode: null,
       errorMessage: null,
       permanent: false,
+      ambiguous: false,
       ms: 0,
       ...this.outcome,
     };

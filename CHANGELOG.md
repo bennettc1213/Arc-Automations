@@ -7,6 +7,47 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-09-23
+
+Lead Recovery could send a text twice, drain another tenant's queue from the
+canary, and — once the first fix landed — run nothing at all in production. This
+release closes those and gives the modules a registry to be named from.
+
+### Added
+
+- **Execution safety (`0011`).** Claiming due work is tenant-scoped, so the
+  operator canary can no longer take another tenant's actions into a recording
+  sender. Completion is fenced by lease, so a stale worker cannot close out a row
+  another worker reclaimed. An external effect is reserved durably before the
+  provider is called, and each run pins an immutable configuration snapshot so
+  "which config did this run use" has an answer.
+- **Snapshot pinning in the database (`0013`).** A new run must carry a snapshot
+  of its own tenant and module, an action carries exactly its run's snapshot, and
+  neither pin can change once set. The production store's insert had been leaving
+  `config_snapshot_id` out, so every claim refused its work; the adapter is fixed
+  and the migration makes the rule the database's, so the next adapter that drops
+  a column fails at the insert instead of at the claim.
+- **Module, connector and capability registry (`0012`, `_shared/registry/`).** One
+  typed vocabulary for what Arc sells and what a module needs to run, with a SQL
+  catalog whose identity and immutable published versions are held in step with
+  the code by `tests/registry.test.js`. Nothing in it stores a secret.
+- Tests for each of the above, including `tests/supabase-double.js`, a stand-in
+  for the Supabase client so the real store adapter is exercised rather than the
+  in-memory one.
+
+### Changed
+
+- An ambiguous provider result — a request that reached Twilio and whose response
+  was lost — is now quarantined rather than retried, which is how one customer
+  gets two texts. A definite "no" is still a safe retry.
+- The dispatcher asks for every tenant's work by writing `tenantId: null`
+  explicitly instead of by omission.
+- `lib/modules.js` reads its module list from the registry instead of keeping a
+  second hard-coded one.
+- `automation_completed` with `stop_reason: not_permitted` and `started: false`
+  now documents a run that never began because the tenant had no valid
+  configuration to pin one to (`EVENT_CONTRACT.md`).
+
 ## [1.18.0] - 2026-09-23
 
 ### Added

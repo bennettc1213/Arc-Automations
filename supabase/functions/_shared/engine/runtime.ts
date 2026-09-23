@@ -36,7 +36,8 @@ import {
   type ClassificationDecision,
 } from '../classifier.ts';
 import { eventKey } from '../event-writer.ts';
-import { validateLeadRecoveryConfig, type LeadRecoveryConfig } from '../lead-recovery-config.ts';
+import { type LeadRecoveryConfig } from '../lead-recovery-config.ts';
+import { resolveModuleRuntime, validatorFor } from '../registry/index.ts';
 import { normaliseEmail, normalisePhone, maskPhone } from '../phone.ts';
 import { isMissedCall, type SendResult, type TwilioSender } from '../twilio.ts';
 import { assessSafety } from './rules.ts';
@@ -54,9 +55,38 @@ import {
   type RunState,
   type StopReason,
 } from './state-machine.ts';
-import type { ActionRow, ActionType, EngineStore, LeadRow, RunRow } from './store.ts';
+import {
+  AMBIGUOUS_EFFECT_STATES,
+  type ActionLease,
+  type ActionRow,
+  type ActionType,
+  type ConfigSnapshotRow,
+  type EffectAttemptRow,
+  type EffectType,
+  type EngineStore,
+  type LeadRow,
+  type RunRow,
+} from './store.ts';
 
 export const MODULE_KEY = 'lead_recovery';
+
+/**
+ * The trusted validator for this module, resolved through the registry (ARC-100).
+ *
+ * The engine used to import `validateLeadRecoveryConfig` by name. It now asks the
+ * registry which validator belongs to `lead_recovery`, and the registry answers with
+ * that same function — so nothing about what is accepted or rejected changes, and the
+ * registry is load-bearing rather than decorative. A module with no registered
+ * validator resolves to null and its configuration is refused outright; there is
+ * deliberately no permissive fallback.
+ */
+function validateConfig(input: unknown) {
+  const validate = validatorFor(MODULE_KEY);
+  if (!validate) {
+    return { ok: false as const, errors: [`no validator is registered for ${MODULE_KEY}`] };
+  }
+  return validate(input);
+}
 
 /** How long after the first response we chase, if nothing came back. One follow-up, once. */
 export const FOLLOWUP_AFTER_MINUTES = 60;
@@ -132,6 +162,97 @@ export interface LoadedConfig {
   config: LeadRecoveryConfig;
 }
 
+/* ── configuration snapshots (ARC-015) ──────────────────── */
+
+/**
+ * Stable serialisation, so the same configuration always hashes to the same string.
+ *
+ * `JSON.stringify` preserves insertion order, which means two identical rule sets
+ * written by different code paths would hash differently and every run would mint a
+ * fresh snapshot. Keys are sorted and `undefined` dropped.
+ */
+export function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+}
+
+/** The snapshot's identity. Sixty-four hex characters, as the column's check demands. */
+export async function configHash(config: unknown): Promise<string> {
+  const data = new TextEncoder().encode(canonicalJson(config));
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+  return [...digest].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Freeze the configuration a run is about to begin under.
+ *
+ * Before ARC-015 a run stored `config_version`, a counter, and then every action
+ * reloaded whatever `module_configs` currently held — so the pin recorded a number
+ * and proved nothing. This writes the payload itself, hashed, and the run points at
+ * it. Identical configuration across a thousand runs is one row.
+ */
+export async function snapshotConfig(
+  store: EngineStore,
+  tenantId: string,
+  loaded: LoadedConfig,
+): Promise<ConfigSnapshotRow> {
+  const config = loaded.config as unknown as Record<string, unknown>;
+  /* the schema version is the registry's answer, not a literal: it is what 0013
+     checks a new run's snapshot against, so the two cannot quietly disagree. */
+  const resolved = resolveModuleRuntime(MODULE_KEY);
+  if (!resolved) throw new Error(`no configuration schema is registered for ${MODULE_KEY}`);
+  return await store.createConfigSnapshot({
+    tenantId,
+    moduleKey: MODULE_KEY,
+    configVersion: loaded.row.configVersion,
+    schemaVersion: resolved.schema.version,
+    config,
+    configHash: await configHash(config),
+  });
+}
+
+/**
+ * Resolve the configuration a *running* sequence is bound to.
+ *
+ * This is the half of the pinning rule that controls ordinary behaviour: templates,
+ * hours, service area, forwarding. It reads the run's frozen snapshot and never the
+ * mutable row. The other half — live suppression, replies, takeover, tenant status —
+ * is re-read fresh in `authorizeLeadRecoveryEffect`, and it overrides this.
+ *
+ * A run with no snapshot cannot be executed. The claim functions already refuse to
+ * offer one, so this is the second line rather than the first.
+ */
+export async function loadPinnedConfig(
+  store: EngineStore,
+  run: RunRow,
+): Promise<{ ok: true; config: LeadRecoveryConfig; snapshot: ConfigSnapshotRow } | { ok: false; reason: string }> {
+  if (!run.configSnapshotId) {
+    return {
+      ok: false,
+      reason: 'this run has no configuration snapshot — it predates ARC-015 and may not send',
+    };
+  }
+  const snapshot = await store.getConfigSnapshot(run.tenantId, run.configSnapshotId);
+  if (!snapshot) {
+    return { ok: false, reason: 'the configuration snapshot this run was pinned to is missing' };
+  }
+  /* validated on read, exactly as `loadConfig` validates the mutable row. a snapshot
+     written by an older validator must not be able to put the engine into a state
+     today's validator would refuse. */
+  const result = validateConfig(snapshot.config);
+  if (!result.ok) {
+    return {
+      ok: false,
+      reason: `the pinned configuration is not valid: ${result.errors.slice(0, 3).join('; ')}`,
+    };
+  }
+  return { ok: true, config: result.config, snapshot };
+}
+
 /**
  * Load and validate a tenant's configuration.
  *
@@ -147,7 +268,7 @@ export async function loadConfig(
   const row = await store.getConfig(tenantId, MODULE_KEY);
   if (!row) return { ok: false, reason: 'this tenant has no lead_recovery configuration', enabled: false };
 
-  const result = validateLeadRecoveryConfig(row.config);
+  const result = validateConfig(row.config);
   if (!result.ok) {
     return {
       ok: false,
@@ -162,6 +283,192 @@ export async function loadConfig(
 /** The one place a sender is chosen. A canary cannot be given the live one. */
 function senderFor(deps: EngineDeps, lead: { isCanary: boolean }): TwilioSender | null {
   return lead.isCanary ? deps.canarySender : deps.liveSender;
+}
+
+/** The lease a claimed action carries, in the shape the fenced writes want. */
+export function leaseOf(action: ActionRow): ActionLease | null {
+  if (!action.leaseToken) return null;
+  return { actionId: action.id, tenantId: action.tenantId, leaseToken: action.leaseToken };
+}
+
+/* ── just-in-time authorisation (ARC-015) ───────────────── */
+
+/** Why an effect was refused. Every one of these is a fact read fresh, not a pin. */
+export type EffectDenial =
+  | 'no_lease'
+  | 'tenant_missing'
+  | 'tenant_archived'
+  | 'tenant_paused'
+  | 'run_terminal'
+  | 'run_not_sendable'
+  | 'action_not_claimed'
+  | 'suppressed'
+  | 'customer_replied'
+  | 'handoff_open'
+  | 'module_off'
+  | 'lead_closed'
+  | 'lead_booked'
+  | 'no_consent'
+  | 'compliance_not_approved'
+  | 'no_destination'
+  | 'no_sender'
+  | 'already_attempted'
+  | 'ambiguous_outcome'
+  | 'config_unpinned';
+
+export interface EffectPermit {
+  attempt: EffectAttemptRow;
+  lease: ActionLease;
+  sender: TwilioSender;
+  config: LeadRecoveryConfig;
+}
+
+export type AuthorizeResult =
+  | { ok: true; permit: EffectPermit }
+  | { ok: false; denial: EffectDenial; detail: string; terminal: boolean };
+
+const deny = (denial: EffectDenial, detail: string, terminal = true): AuthorizeResult =>
+  ({ ok: false, denial, detail, terminal });
+
+/**
+ * The one gate every outbound message passes through.
+ *
+ * Two things happen here and they happen in this order for a reason.
+ *
+ * **First, the live re-read.** Everything the engine believed when it queued the
+ * action is treated as stale: the tenant may have been archived, the customer may
+ * have texted STOP, a person may have taken the lead over. `CLAUDE.md` puts it as
+ * "nothing sends without re-reading state first", and the gap between queueing
+ * tomorrow's follow-up and sending it is exactly where the STOP arrives. Pinned
+ * configuration governs *what* the message says; it never governs *whether* it goes.
+ *
+ * **Then, the reservation.** Only after every guard passes does the effect get
+ * reserved, and only the caller that wins the reservation may call the provider. A
+ * second worker — a lease race, a redelivery, a retry after an ambiguous timeout —
+ * finds the row already held and is refused. That is the send-once boundary, and it
+ * is a unique index rather than a promise.
+ *
+ * Returning a permit that *contains* the sender is deliberate: a provider adapter
+ * cannot be called with a bare action, so there is no path that sends without having
+ * come through here.
+ */
+export async function authorizeLeadRecoveryEffect(
+  deps: EngineDeps,
+  args: {
+    action: ActionRow;
+    run: RunRow;
+    lead: LeadRow;
+    config: LeadRecoveryConfig;
+    effectType: EffectType;
+    /** stable identity of the side effect — never varies by attempt. */
+    effectKey: string;
+    destination: string | null;
+    now: Date;
+    /** a staff alert is not gated on the customer's reply or the lead's closure. */
+    customerFacing?: boolean;
+  },
+): Promise<AuthorizeResult> {
+  const { store } = deps;
+  const { action, run, lead, config, now } = args;
+  const customerFacing = args.customerFacing !== false;
+
+  const lease = leaseOf(action);
+  if (!lease) return deny('no_lease', 'this action is not held under a lease — refusing to send');
+  if (action.status !== 'claimed') {
+    return deny('action_not_claimed', `the action is ${action.status}, not claimed`);
+  }
+
+  /* ── the tenant. 0010 never asked, so a deboarded client kept being messaged. ── */
+  const tenant = await store.getTenant(action.tenantId);
+  if (!tenant) return deny('tenant_missing', 'this tenant no longer exists');
+  if (tenant.status === 'archived') {
+    return deny('tenant_archived', 'this client has been archived — nothing further is sent on their behalf');
+  }
+  if (tenant.status === 'paused') {
+    return deny('tenant_paused', 'this client is paused — nothing is sent while they are');
+  }
+
+  /* ── the run ── */
+  if (isTerminal(run.state)) return deny('run_terminal', `the run is ${run.state} — nothing further is sent`);
+  if (!maySend(run.state)) {
+    return deny('run_not_sendable', `the run is ${run.state} — a person has this, so the automation stays quiet`);
+  }
+
+  /* ── the module's master switch. a canary is exempt from this and only this. ── */
+  const current = await store.getConfig(action.tenantId, MODULE_KEY);
+  if (!lead.isCanary && !current?.enabled) {
+    return deny('module_off', 'lead recovery was switched off for this tenant before this action fired');
+  }
+
+  /* ── the customer's own state ── */
+  if (customerFacing) {
+    if (lead.status === 'closed') return deny('lead_closed', 'this lead is closed');
+    if (lead.bookingOutcome === 'booked' && action.actionType === 'send_followup') {
+      return deny('lead_booked', 'this lead is already booked — no follow-up is sent');
+    }
+    if (!lead.consentSms) {
+      return deny('no_consent', 'there is no recorded SMS consent for this lead');
+    }
+    const openHandoff = await store.getOpenHandoff(action.tenantId, lead.id);
+    if (openHandoff) return deny('handoff_open', 'a person has taken this lead over');
+
+    /* a reply stops the sequence. checked for first responses too, not only
+       follow-ups: a customer who texts in during the queue delay has still replied. */
+    const conversation = await store.getOrCreateConversation(action.tenantId, lead.id);
+    if (conversation.lastInboundAt) {
+      return deny('customer_replied', 'the customer replied before this message fired');
+    }
+  }
+
+  if (config.compliance.status !== 'approved') {
+    return deny('compliance_not_approved', `messaging compliance is "${config.compliance.status}"`);
+  }
+
+  const destination = args.destination;
+  if (!destination) return deny('no_destination', 'there is no number to send to');
+
+  /* suppression last among the reads, so it is the freshest thing checked before the
+     reservation. applies to staff alerts too — somebody who left and texted STOP
+     does not keep getting lead alerts. */
+  const suppression = await store.isSuppressed(action.tenantId, 'sms', destination, iso(now));
+  if (suppression) {
+    return deny('suppressed', `this number is suppressed (${suppression.reason}) — nothing was sent`);
+  }
+
+  const sender = senderFor(deps, lead);
+  if (!sender) {
+    return deny('no_sender', 'no sender is configured for a synthetic run — refusing to fall back to the live one');
+  }
+
+  /* ── the reservation ── */
+  const { attempt, reserved } = await store.reserveEffect({
+    tenantId: action.tenantId,
+    effectKey: args.effectKey,
+    effectType: args.effectType,
+    /* stable across attempts. the provider gets this where it supports idempotency,
+       and it is what stops ARC and a provider-side retry duplicating each other. */
+    idempotencyKey: args.effectKey,
+    worker: action.lockedBy ?? deps.worker ?? 'dispatcher',
+    leaseToken: lease.leaseToken,
+    runId: run.id,
+    leadId: lead.id,
+    actionId: action.id,
+    conversationId: null,
+    destinationRef: maskPhone(destination),
+    isCanary: lead.isCanary,
+  });
+
+  if (!reserved) {
+    if (AMBIGUOUS_EFFECT_STATES.includes(attempt.state)) {
+      return deny(
+        'ambiguous_outcome',
+        `an earlier attempt at this message is ${attempt.state} — refusing to send again until it is resolved`,
+      );
+    }
+    return deny('already_attempted', `this message has already been ${attempt.state}`);
+  }
+
+  return { ok: true, permit: { attempt, lease, sender, config } };
 }
 
 function baseEvent(lead: LeadRow, overrides: Record<string, unknown>): Record<string, unknown> {
@@ -271,19 +578,6 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
 
   await store.getOrCreateConversation(input.tenantId, lead.id);
 
-  const run = await store.createRun({
-    id: deps.uuid(),
-    tenantId: input.tenantId,
-    leadId: lead.id,
-    moduleKey: MODULE_KEY,
-    state: 'new',
-    configVersion: loaded.ok ? loaded.loaded.row.configVersion : 0,
-    stoppedAt: null,
-    completedAt: null,
-    stopReason: null,
-    lastError: null,
-  });
-
   /* the evidence, in the shape the portal has always read. `call_missed` first so the
      thread's first step is the call, not the lead it produced. */
   const events: Record<string, unknown>[] = [];
@@ -311,13 +605,48 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
       },
     }),
   );
+
+  /* ── may we speak at all? ──
+     no valid configuration means there is nothing to pin, and a run that cannot prove
+     which configuration it began under is refused outright (0013). so the lead and its
+     evidence are recorded — somebody did try to reach this business — and no run is
+     started for it. the ending is still written down, keyed on the lead, so the thread
+     says why nothing happened. */
+  if (!loaded.ok) {
+    events.push(
+      baseEvent(lead, {
+        event_type: 'automation_completed',
+        occurred_at: iso(deps.now()),
+        status: 'success',
+        event_key: eventKey('lr', 'run_end', correlationId, 'not_permitted'),
+        payload: { stop_reason: 'not_permitted', detail: loaded.reason.slice(0, 300), started: false },
+      }),
+    );
+    await store.emit(input.tenantId, events);
+    return { ok: false, created: true, lead, run: null, outcome: loaded.reason, queued: [] };
+  }
+
+  /* freeze the rules this run will live under, before anything is queued against it.
+     the run is created already pinned — the store refuses one that is not — and every
+     action queued against it inherits the same snapshot. */
+  const snapshot = await snapshotConfig(store, input.tenantId, loaded.loaded);
+
+  const run = await store.createRun({
+    id: deps.uuid(),
+    tenantId: input.tenantId,
+    leadId: lead.id,
+    moduleKey: MODULE_KEY,
+    state: 'new',
+    configVersion: loaded.loaded.row.configVersion,
+    configSnapshotId: snapshot.id,
+    stoppedAt: null,
+    completedAt: null,
+    stopReason: null,
+    lastError: null,
+  });
+
   await store.emit(input.tenantId, events);
 
-  // ── may we speak at all? ──
-  if (!loaded.ok) {
-    await stopRun(deps, lead, run, 'not_permitted', loaded.reason);
-    return { ok: false, created: true, lead, run, outcome: loaded.reason, queued: [] };
-  }
   /* a canary is exempt from the master switch, and only from that. it exists to prove the
      pipeline works *before* the module is switched on — that is where it sits in the
      onboarding checklist — and it cannot reach a real handset, because `senderFor()` gives
@@ -620,6 +949,24 @@ export async function handleMessageStatus(deps: EngineDeps, input: MessageStatus
 
   if (!message) return { ok: false, outcome: 'no message with that provider id — nothing to update' };
 
+  /* settle the effect attempt too (ARC-015).
+
+     Provider acceptance and delivery are different facts, and the attempt row is
+     where the difference is kept: `accepted` means Twilio took it, `confirmed` means
+     it reached the handset. The callback carries no lease — it is not a worker — so
+     it is fenced on the provider reference instead, which only the provider knows.
+     A duplicate or out-of-order callback is a no-op rather than an error. */
+  if (status === 'delivered' || status === 'failed' || status === 'undelivered') {
+    await store.recordEffectDelivery({
+      tenantId: input.tenantId,
+      providerMessageId: input.providerMessageId,
+      state: status === 'delivered' ? 'confirmed' : 'failed_terminal',
+      errorCategory: status === 'delivered' ? null : (input.errorClass ?? 'delivery'),
+      errorDetail: input.errorCode ? `provider code ${input.errorCode}` : null,
+      nowIso: iso(now),
+    });
+  }
+
   const conversation = await store.getConversation(input.tenantId, message.conversationId);
   if (!conversation) return { ok: false, outcome: 'the conversation behind that message is gone' };
   const lead = await store.getLead(input.tenantId, conversation.leadId);
@@ -711,12 +1058,34 @@ export interface DispatchSummary {
  */
 export async function runDueActions(
   deps: EngineDeps,
-  options: { limit?: number; worker?: string; leaseSeconds?: number } = {},
+  options: {
+    limit?: number;
+    worker?: string;
+    leaseSeconds?: number;
+    /**
+     * Which tenant's work to take.
+     *
+     * Required, and `null` — every tenant — has to be written out. That is the whole
+     * of the S-C1 fix at this level: the operator canary used to call a claim that
+     * silently meant "all tenants", so pressing it drained other clients' due texts
+     * into a recording sender. There is now no way to ask for that by omission.
+     */
+    tenantId: string | null;
+    /** restrict to synthetic leads. what a canary passes. */
+    canaryOnly?: boolean;
+  },
 ): Promise<DispatchSummary> {
   const { store } = deps;
   const now = deps.now();
   const worker = options.worker ?? deps.worker ?? 'dispatcher';
-  const claimed = await store.claimActions(options.limit ?? 25, worker, iso(now), options.leaseSeconds ?? 120);
+  const claimed = await store.claimActions({
+    limit: options.limit ?? 25,
+    worker,
+    nowIso: iso(now),
+    leaseSeconds: options.leaseSeconds ?? 120,
+    tenantId: options.tenantId,
+    canaryOnly: options.canaryOnly === true,
+  });
 
   const summary: DispatchSummary = { claimed: claimed.length, done: 0, cancelled: 0, retried: 0, failed: 0, details: [] };
 
@@ -737,11 +1106,24 @@ type ActionOutcome = { kind: 'done' | 'cancelled' | 'retried' | 'failed'; outcom
 async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Promise<ActionOutcome> {
   const { store } = deps;
 
+  const lease = leaseOf(action);
+  if (!lease) {
+    /* a claim always sets a lease token. arriving here means the row was handed over by
+       something other than a claim, and an unfenced worker must not touch it. */
+    return { kind: 'failed', outcome: 'this action carries no lease token — refusing to execute it' };
+  }
+
   /* the three terminal ways an action ends. a retry does not come through here — it is
      `retryOrGiveUp`'s job, because putting a row back on the queue and closing it out are
-     different writes and conflating them is how an action ends up both pending and done. */
+     different writes and conflating them is how an action ends up both pending and done.
+
+     fenced since ARC-015: if another worker reclaimed this row while we were working, the
+     write matches nothing and we say so rather than reporting success. */
   const finish = async (kind: 'done' | 'cancelled' | 'failed', outcome: string): Promise<ActionOutcome> => {
-    await store.completeAction(action.id, kind, kind === 'done' ? null : outcome, iso(now));
+    const result = await store.completeAction(lease, kind, kind === 'done' ? null : outcome, iso(now));
+    if (!result.ok) {
+      return { kind: 'failed', outcome: `could not close this action out (${result.reason}): ${result.detail}` };
+    }
     return { kind, outcome };
   };
 
@@ -751,13 +1133,32 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
   const lead = await store.getLead(action.tenantId, run.leadId);
   if (!lead) return finish('cancelled', 'the lead behind this action no longer exists');
 
-  // ── the re-checks ──
+  // ── the re-checks that apply to every action, send or not ──
   if (isTerminal(run.state)) {
     return finish('cancelled', `the run is ${run.state} — nothing further is sent`);
   }
 
+  /* the tenant's own state. 0010 never asked, so an archived client's queue kept
+     draining and a deboarded contractor's customers kept being texted. the send path
+     asks again in `authorizeLeadRecoveryEffect`; this stops the non-sending actions
+     (routing, staff notification, classification) for a stopped client too. */
+  const tenant = await store.getTenant(action.tenantId);
+  if (!tenant || tenant.status === 'archived' || tenant.status === 'paused') {
+    await store.cancelPendingActions(action.tenantId, run.id, 'the client is archived or paused');
+    return finish(
+      'cancelled',
+      !tenant
+        ? 'this tenant no longer exists'
+        : `this client is ${tenant.status} — the automation does not run for them`,
+    );
+  }
+
   const sends = action.actionType === 'send_first_response' || action.actionType === 'send_followup';
 
+  /* cheap pre-filters. the authoritative versions of these live in
+     `authorizeLeadRecoveryEffect` and run again immediately before the provider call;
+     doing them here as well means an obviously-dead action is cancelled without
+     reserving an effect it will never use. */
   if (sends) {
     if (!maySend(run.state)) {
       return finish('cancelled', `the run is ${run.state} — a person has this, so the automation stays quiet`);
@@ -770,34 +1171,41 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
       }
     }
     const conversation = await store.getOrCreateConversation(action.tenantId, lead.id);
-    /* a reply that landed after this action was queued. the inbound handler already
-       cancels, and this is the second line in case a claim and a reply raced. */
-    if (action.actionType === 'send_followup' && conversation.lastInboundAt) {
-      return finish('cancelled', 'the customer replied before this follow-up fired');
+    if (conversation.lastInboundAt) {
+      return finish('cancelled', 'the customer replied before this message fired');
     }
     const openHandoff = await store.getOpenHandoff(action.tenantId, lead.id);
     if (openHandoff) {
       return finish('cancelled', 'a person has taken this lead over');
     }
+    /* the master switch, read live. cancelling the rest of the run here rather than
+       leaving `authorizeLeadRecoveryEffect` to refuse each action one at a time means
+       a module switched off mid-sequence empties its queue in one pass. */
+    const current = await store.getConfig(action.tenantId, MODULE_KEY);
+    if (!lead.isCanary && !current?.enabled) {
+      await store.cancelPendingActions(action.tenantId, run.id, 'the module was switched off');
+      return finish('cancelled', 'lead recovery was switched off for this tenant before this action fired');
+    }
   }
 
-  const loaded = await loadConfig(store, action.tenantId);
-  if (!loaded.ok) {
+  /* the pinned configuration. read from the run's frozen snapshot, never from the
+     mutable row — an edit made while this sequence was in flight changes what the
+     *next* run does, not what this one was authorised to do. */
+  const pinned = await loadPinnedConfig(store, run);
+  if (!pinned.ok) {
     /* a configuration that has gone invalid under a running sequence is not a transient
        error and retrying it will not help. it becomes a human task immediately. */
     await openHandoffFor(deps, lead, run, {
-      reason: loaded.reason,
+      reason: pinned.reason,
       reasonCode: 'other',
       isSafety: false,
       at: now,
       notifyStaff: false,
+      action,
     });
-    return finish('failed', loaded.reason);
+    return finish('failed', pinned.reason);
   }
-  if (!loaded.loaded.row.enabled && sends && !lead.isCanary) {
-    await store.cancelPendingActions(action.tenantId, run.id, 'the module was switched off');
-    return finish('cancelled', 'lead recovery was switched off for this tenant before this action fired');
-  }
+  const loaded = { ok: true as const, loaded: { row: { enabled: true, configVersion: pinned.snapshot.configVersion }, config: pinned.config } };
 
   const config = loaded.loaded.config;
 
@@ -812,6 +1220,21 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
         const result = await sendMessage(deps, { lead, run, config, body, action, now });
 
         if (!result.sent) {
+          /* the ambiguous case gets its own branch and never reaches `retryOrGiveUp`.
+             we cannot prove the provider did not take it, so sending again risks a
+             duplicate; a person decides instead. Under-send and escalate beats
+             double-send, every time. */
+          if (result.ambiguous) {
+            await openHandoffFor(deps, lead, run, {
+              reason: `${result.detail} — check the provider before anyone messages this customer`,
+              reasonCode: 'delivery_failed',
+              isSafety: false,
+              at: now,
+              notifyStaff: true,
+              action,
+            });
+            return finish('failed', result.detail);
+          }
           if (result.permanent) {
             await recordSendFailure(deps, lead, run, result.detail, now, action);
             await openHandoffFor(deps, lead, run, {
@@ -820,6 +1243,7 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
               isSafety: false,
               at: now,
               notifyStaff: true,
+              action,
             });
             return finish('failed', result.detail);
           }
@@ -893,7 +1317,7 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
       case 'route_to_contractor': {
         const destination = config.forwarding.destination;
         await store.updateLead(action.tenantId, lead.id, { assignedTo: destination, status: 'qualified' });
-        await notifyStaff(deps, { lead, config, now, summary: lead.aiSummary, urgency: lead.urgency, safetyFlags: lead.safetyFlags });
+        await notifyStaff(deps, { lead, config, now, summary: lead.aiSummary, urgency: lead.urgency, safetyFlags: lead.safetyFlags, action });
 
         await store.emit(action.tenantId, [
           baseEvent(lead, {
@@ -916,12 +1340,13 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
           notifyStaff: true,
           sendAck: action.payload.send_ack === true,
           config,
+          action,
         });
         return finish('done', 'handed to a person');
       }
 
       case 'notify_staff': {
-        await notifyStaff(deps, { lead, config, now, summary: lead.aiSummary, urgency: lead.urgency, safetyFlags: lead.safetyFlags });
+        await notifyStaff(deps, { lead, config, now, summary: lead.aiSummary, urgency: lead.urgency, safetyFlags: lead.safetyFlags, action });
         return finish('done', 'staff notified');
       }
 
@@ -962,13 +1387,30 @@ async function retryOrGiveUp(
 ): Promise<ActionOutcome> {
   const { store } = deps;
 
+  const lease = leaseOf(action);
+  if (!lease) {
+    return { kind: 'failed', outcome: `${detail} — and this action carries no lease, so it was left alone` };
+  }
+
   if (action.attempts < action.maxAttempts) {
     const seconds = backoffSeconds(action.attempts);
-    await store.rescheduleAction(action.id, iso(new Date(now.getTime() + seconds * 1000)), detail);
+    const rescheduled = await store.rescheduleAction(
+      lease,
+      iso(new Date(now.getTime() + seconds * 1000)),
+      detail,
+    );
+    if (!rescheduled.ok) {
+      /* another worker holds it now; it is theirs to retry. putting it back would
+         give the row two futures. */
+      return { kind: 'failed', outcome: `${detail} — not retried (${rescheduled.reason}): ${rescheduled.detail}` };
+    }
     return { kind: 'retried', outcome: `${detail} — retrying in ${seconds}s (attempt ${action.attempts} of ${action.maxAttempts})` };
   }
 
-  await store.completeAction(action.id, 'failed', detail, iso(now));
+  const closed = await store.completeAction(lease, 'failed', detail, iso(now));
+  if (!closed.ok) {
+    return { kind: 'failed', outcome: `${detail} — and it could not be closed out (${closed.reason})` };
+  }
   await recordSendFailure(deps, lead, run, detail, now, action);
   await openHandoffFor(deps, lead, run, {
     reason: `${action.actionType.replace(/_/g, ' ')} failed ${action.attempts} times and gave up: ${detail}`,
@@ -976,6 +1418,7 @@ async function retryOrGiveUp(
     isSafety: false,
     at: now,
     notifyStaff: true,
+    action,
   });
   await store.emit(action.tenantId, [
     baseEvent(lead, {
@@ -1001,76 +1444,227 @@ async function retryOrGiveUp(
 
 /* ── the pieces the actions are made of ─────────────────── */
 
-async function sendMessage(
+/**
+ * Perform a reserved side effect.
+ *
+ * Only reachable with a permit, which means every guard in
+ * `authorizeLeadRecoveryEffect` has already passed and this worker — not another —
+ * owns the effect. What is left is the part that can go wrong at the provider, and
+ * the three outcomes it has:
+ *
+ *   accepted   Twilio took it. Record the message and emit `sms_sent`.
+ *   rejected   Twilio answered and refused. Provably not sent, so it may be retried.
+ *   unknown    No answer came back. It may or may not have gone out, so it is parked
+ *              in `outcome_unknown` and **never** retried automatically.
+ *
+ * The third case is the one this function exists for. Before ARC-015 a 10-second
+ * timeout looked exactly like a failure and was retried, which is how one customer
+ * got two texts.
+ */
+async function dispatchEffect(
   deps: EngineDeps,
-  args: { lead: LeadRow; run: RunRow; config: LeadRecoveryConfig; body: string; action: ActionRow; now: Date },
-): Promise<{ sent: boolean; sid: string | null; permanent: boolean; detail: string }> {
+  args: {
+    permit: EffectPermit;
+    lead: LeadRow;
+    body: string;
+    to: string;
+    now: Date;
+    /** emitted only on acceptance, and only for customer-facing messages. */
+    evidence?: { eventKey: string; template?: string | null; latencyFrom?: string | null } | null;
+    recordMessage?: boolean;
+  },
+): Promise<{ sent: boolean; sid: string | null; permanent: boolean; ambiguous: boolean; detail: string }> {
   const { store } = deps;
-  const { lead, config, body, now } = args;
+  const { permit, lead, body, to, now } = args;
+  const { attempt, lease, sender, config } = permit;
 
-  if (!lead.phone) return { sent: false, sid: null, permanent: true, detail: 'this lead has no phone number' };
+  await store.settleEffect({
+    attemptId: attempt.id,
+    tenantId: attempt.tenantId,
+    leaseToken: lease.leaseToken,
+    state: 'dispatching',
+    nowIso: iso(now),
+  });
 
-  if (config.compliance.status !== 'approved') {
-    return { sent: false, sid: null, permanent: true, detail: `messaging compliance is "${config.compliance.status}"` };
-  }
-
-  const sender = senderFor(deps, lead);
-  if (!sender) {
-    return { sent: false, sid: null, permanent: true, detail: 'no sender is configured for a synthetic run — refusing to fall back to the live one' };
-  }
-
-  const conversation = await store.getOrCreateConversation(lead.tenantId, lead.id);
   let result: SendResult;
   try {
     result = await sender.send({
-      to: lead.phone,
+      to,
       body,
       messagingServiceSid: config.twilio.messaging_service_sid,
       from: config.twilio.phone_number,
       statusCallback: deps.urls?.statusCallback ?? null,
     });
   } catch (error) {
-    return { sent: false, sid: null, permanent: false, detail: (error as Error)?.message ?? 'the provider request threw' };
+    /* the adapter itself threw. we never saw a response, so the outcome is unknown. */
+    result = {
+      ok: false,
+      sid: null,
+      status: null,
+      errorCode: null,
+      errorMessage: (error as Error)?.message ?? 'the provider request threw',
+      permanent: false,
+      ambiguous: true,
+      ms: 0,
+    };
   }
 
-  /* the latency the portal reports as "response time" is measured from the moment the lead
-     landed, which is what the customer experienced — not from when a worker picked the
-     action up. */
-  const leadAt = typeof args.action.payload.lead_at === 'string' ? Date.parse(args.action.payload.lead_at) : Date.parse(lead.createdAt);
-  const latencyMs = Number.isFinite(leadAt) ? Math.max(0, now.getTime() - leadAt) : null;
+  // ── the outcome we cannot resolve ──
+  if (!result.ok && result.ambiguous) {
+    await store.settleEffect({
+      attemptId: attempt.id,
+      tenantId: attempt.tenantId,
+      leaseToken: lease.leaseToken,
+      state: 'reconciliation_required',
+      errorCategory: 'provider_unknown',
+      errorDetail: (result.errorMessage ?? 'no response from the provider').slice(0, 300),
+      retryable: false,
+      nowIso: iso(now),
+    });
+    /* evidence an operator can act on. deliberately not `sms_sent`: we do not know
+       that it was, and the portal must never count a maybe as a send. */
+    await store.emit(lead.tenantId, [
+      baseEvent(lead, {
+        event_type: 'automation_failed',
+        occurred_at: iso(now),
+        status: 'failure',
+        error_class: 'upstream',
+        event_key: eventKey('lr', 'unknown', attempt.effectKey),
+        payload: {
+          reason: 'the provider did not answer, so whether this message was sent is unknown',
+          effect: attempt.effectType,
+          resolution: 'held for reconciliation — no automatic retry',
+        },
+      }),
+    ]);
+    return {
+      sent: false,
+      sid: null,
+      permanent: true,
+      ambiguous: true,
+      detail: `the provider did not answer (${result.errorMessage ?? 'timeout'}) — held for reconciliation rather than retried`,
+    };
+  }
 
-  await store.insertMessage({
-    tenantId: lead.tenantId,
-    conversationId: conversation.id,
-    direction: 'outbound',
+  // ── a clean refusal ──
+  if (!result.ok) {
+    await store.settleEffect({
+      attemptId: attempt.id,
+      tenantId: attempt.tenantId,
+      leaseToken: lease.leaseToken,
+      state: result.permanent ? 'failed_terminal' : 'rejected',
+      errorCategory: 'delivery',
+      errorDetail: (result.errorMessage ?? 'send failed').slice(0, 300),
+      retryable: !result.permanent,
+      nowIso: iso(now),
+    });
+    return {
+      sent: false,
+      sid: null,
+      permanent: result.permanent,
+      ambiguous: false,
+      detail: `${result.errorMessage ?? 'send failed'}${result.errorCode ? ` (${result.errorCode})` : ''}`,
+    };
+  }
+
+  // ── accepted ──
+  await store.settleEffect({
+    attemptId: attempt.id,
+    tenantId: attempt.tenantId,
+    leaseToken: lease.leaseToken,
+    state: 'accepted',
     providerMessageId: result.sid,
-    body,
-    status: result.ok ? (result.status ?? 'queued') : 'failed',
-    errorClass: result.ok ? null : 'delivery',
-    errorDetail: result.ok ? null : result.errorMessage,
-    occurredAt: iso(now),
+    nowIso: iso(now),
   });
 
-  await store.emit(lead.tenantId, [
-    baseEvent(lead, {
-      event_type: 'sms_sent',
-      occurred_at: iso(now),
-      status: result.ok ? 'success' : 'failure',
-      latency_ms: result.ok ? latencyMs : null,
-      error_class: result.ok ? null : 'delivery',
-      event_key: eventKey('lr', 'sms', args.action.idempotencyKey, String(args.action.attempts)),
-      payload: result.ok
-        ? { to: lead.phone, body: body.slice(0, 320), provider_message_id: result.sid }
-        : { to: lead.phone, error: result.errorMessage ?? 'send failed', provider_code: result.errorCode },
-    }),
-  ]);
+  if (args.recordMessage !== false) {
+    const conversation = await store.getOrCreateConversation(lead.tenantId, lead.id);
+    await store.insertMessage({
+      tenantId: lead.tenantId,
+      conversationId: conversation.id,
+      direction: 'outbound',
+      providerMessageId: result.sid,
+      body,
+      status: result.status ?? 'queued',
+      errorClass: null,
+      errorDetail: null,
+      occurredAt: iso(now),
+    });
+  }
 
-  return {
-    sent: result.ok,
-    sid: result.sid,
-    permanent: result.permanent,
-    detail: result.ok ? 'sent' : `${result.errorMessage ?? 'send failed'}${result.errorCode ? ` (${result.errorCode})` : ''}`,
-  };
+  if (args.evidence) {
+    /* the latency the portal reports as "response time" is measured from the moment the
+       lead landed, which is what the customer experienced — not from when a worker
+       picked the action up. */
+    const from = args.evidence.latencyFrom ?? lead.createdAt;
+    const leadAt = Date.parse(from);
+    const latencyMs = Number.isFinite(leadAt) ? Math.max(0, now.getTime() - leadAt) : null;
+    await store.emit(lead.tenantId, [
+      baseEvent(lead, {
+        event_type: 'sms_sent',
+        occurred_at: iso(now),
+        status: 'success',
+        latency_ms: latencyMs,
+        /* keyed on the effect, not the attempt. a retried send is one `sms_sent`,
+           where 0010 emitted one per attempt and so double-counted. */
+        event_key: args.evidence.eventKey,
+        payload: {
+          to,
+          body: body.slice(0, 320),
+          provider_message_id: result.sid,
+          ...(args.evidence.template ? { template: args.evidence.template } : {}),
+        },
+      }),
+    ]);
+  }
+
+  return { sent: true, sid: result.sid, permanent: false, ambiguous: false, detail: 'sent' };
+}
+
+/** Authorise, then dispatch. The only path to a customer-facing message. */
+async function sendMessage(
+  deps: EngineDeps,
+  args: { lead: LeadRow; run: RunRow; config: LeadRecoveryConfig; body: string; action: ActionRow; now: Date },
+): Promise<{ sent: boolean; sid: string | null; permanent: boolean; ambiguous: boolean; detail: string }> {
+  const { lead, action, now } = args;
+
+  /* stable for the life of the effect: one first response per run, one follow-up per
+     run. it is the reservation key, the provider idempotency key and the event key. */
+  const effectKey = eventKey('lr', 'effect', action.idempotencyKey);
+
+  const authorized = await authorizeLeadRecoveryEffect(deps, {
+    action,
+    run: args.run,
+    lead,
+    config: args.config,
+    effectType: 'customer_sms',
+    effectKey,
+    destination: lead.phone,
+    now,
+  });
+
+  if (!authorized.ok) {
+    return {
+      sent: false,
+      sid: null,
+      permanent: authorized.terminal,
+      ambiguous: authorized.denial === 'ambiguous_outcome',
+      detail: authorized.detail,
+    };
+  }
+
+  return await dispatchEffect(deps, {
+    permit: authorized.permit,
+    lead,
+    body: args.body,
+    to: lead.phone as string,
+    now,
+    evidence: {
+      eventKey: eventKey('lr', 'sms', action.idempotencyKey),
+      template: typeof action.payload.template === 'string' ? action.payload.template : null,
+      latencyFrom: typeof action.payload.lead_at === 'string' ? action.payload.lead_at : null,
+    },
+  });
 }
 
 async function recordSendFailure(deps: EngineDeps, lead: LeadRow, run: RunRow, detail: string, now: Date, action: ActionRow) {
@@ -1115,6 +1709,8 @@ async function notifyStaff(
     summary?: string | null;
     urgency?: string | null;
     safetyFlags?: string[];
+    /** the claimed action this alert belongs to. absent only for unfenced callers. */
+    action?: ActionRow | null;
   },
 ): Promise<number> {
   const { lead, config, now } = args;
@@ -1140,12 +1736,47 @@ async function notifyStaff(
        texted STOP does not keep getting lead alerts. */
     const suppressed = await deps.store.isSuppressed(lead.tenantId, 'sms', recipient.address, iso(now));
     if (suppressed) continue;
+
+    /* a staff alert is an external effect too, and duplicating one is how a
+       contractor gets woken twice for the same lead. reserved per (action, recipient)
+       so each destination is its own logical effect. */
+    const reservation = args.action
+      ? await deps.store.reserveEffect({
+        tenantId: lead.tenantId,
+        effectKey: eventKey('lr', 'staff', args.action.idempotencyKey, recipient.address),
+        effectType: 'staff_sms',
+        idempotencyKey: eventKey('lr', 'staff', args.action.idempotencyKey, recipient.address),
+        worker: args.action.lockedBy ?? deps.worker ?? 'dispatcher',
+        leaseToken: args.action.leaseToken ?? 'unleased',
+        runId: args.action.runId,
+        leadId: lead.id,
+        actionId: args.action.id,
+        destinationRef: maskPhone(recipient.address),
+        isCanary: lead.isCanary,
+      })
+      : null;
+    if (reservation && !reservation.reserved) continue;
+
     const result = await sender.send({
       to: recipient.address,
       body,
       messagingServiceSid: config.twilio.messaging_service_sid,
       from: config.twilio.phone_number,
     });
+
+    if (reservation) {
+      await deps.store.settleEffect({
+        attemptId: reservation.attempt.id,
+        tenantId: lead.tenantId,
+        leaseToken: reservation.attempt.leaseToken as string,
+        state: result.ok ? 'accepted' : result.ambiguous ? 'reconciliation_required' : 'rejected',
+        providerMessageId: result.sid,
+        errorCategory: result.ok ? null : result.ambiguous ? 'provider_unknown' : 'delivery',
+        errorDetail: result.ok ? null : (result.errorMessage ?? 'send failed').slice(0, 300),
+        retryable: result.ok ? null : !result.ambiguous && !result.permanent,
+        nowIso: iso(now),
+      });
+    }
     if (result.ok) sent += 1;
   }
   return sent;
@@ -1164,6 +1795,8 @@ async function openHandoffFor(
     sendAck?: boolean;
     assignedTo?: string | null;
     config?: LeadRecoveryConfig;
+    /** present when this handoff came from a claimed action, so effects can be fenced. */
+    action?: ActionRow | null;
   },
 ): Promise<void> {
   const { store } = deps;
@@ -1206,6 +1839,7 @@ async function openHandoffFor(
       summary: args.reason,
       urgency: lead.urgency,
       safetyFlags: lead.safetyFlags,
+      action: args.action ?? null,
     });
   }
 
@@ -1215,36 +1849,70 @@ async function openHandoffFor(
     if (sender && !suppressed) {
       const conversation = await store.getOrCreateConversation(lead.tenantId, lead.id);
       const body = renderHandoffAck(config, lead.customerName);
-      const result = await sender.send({
-        to: lead.phone,
-        body,
-        messagingServiceSid: config.twilio.messaging_service_sid,
-        from: config.twilio.phone_number,
-        statusCallback: deps.urls?.statusCallback ?? null,
-      });
-      await store.insertMessage({
+
+      /* one acknowledgement per lead, whatever re-opens the handoff. */
+      const ackKey = eventKey('lr', 'ack', lead.correlationId);
+      const reservation = await store.reserveEffect({
         tenantId: lead.tenantId,
+        effectKey: ackKey,
+        effectType: 'customer_sms',
+        idempotencyKey: ackKey,
+        worker: args.action?.lockedBy ?? deps.worker ?? 'dispatcher',
+        leaseToken: args.action?.leaseToken ?? 'unleased',
+        runId: run?.id ?? null,
+        leadId: lead.id,
+        actionId: args.action?.id ?? null,
         conversationId: conversation.id,
-        direction: 'outbound',
-        providerMessageId: result.sid,
-        body,
-        status: result.ok ? (result.status ?? 'queued') : 'failed',
-        errorClass: result.ok ? null : 'delivery',
-        errorDetail: result.ok ? null : result.errorMessage,
-        occurredAt: iso(args.at),
+        destinationRef: maskPhone(lead.phone),
+        isCanary: lead.isCanary,
       });
-      await store.emit(lead.tenantId, [
-        baseEvent(lead, {
-          event_type: 'sms_sent',
-          occurred_at: iso(args.at),
-          status: result.ok ? 'success' : 'failure',
-          error_class: result.ok ? null : 'delivery',
-          event_key: eventKey('lr', 'ack', lead.correlationId),
-          payload: result.ok
-            ? { to: lead.phone, body: body.slice(0, 320), template: 'handoff_ack' }
-            : { to: lead.phone, error: result.errorMessage ?? 'send failed' },
-        }),
-      ]);
+
+      if (reservation.reserved) {
+        const result = await sender.send({
+          to: lead.phone,
+          body,
+          messagingServiceSid: config.twilio.messaging_service_sid,
+          from: config.twilio.phone_number,
+          statusCallback: deps.urls?.statusCallback ?? null,
+        });
+
+        await store.settleEffect({
+          attemptId: reservation.attempt.id,
+          tenantId: lead.tenantId,
+          leaseToken: reservation.attempt.leaseToken as string,
+          state: result.ok ? 'accepted' : result.ambiguous ? 'reconciliation_required' : 'rejected',
+          providerMessageId: result.sid,
+          errorCategory: result.ok ? null : result.ambiguous ? 'provider_unknown' : 'delivery',
+          errorDetail: result.ok ? null : (result.errorMessage ?? 'send failed').slice(0, 300),
+          retryable: result.ok ? null : !result.ambiguous && !result.permanent,
+          nowIso: iso(args.at),
+        });
+
+        if (result.ok) {
+          await store.insertMessage({
+            tenantId: lead.tenantId,
+            conversationId: conversation.id,
+            direction: 'outbound',
+            providerMessageId: result.sid,
+            body,
+            status: result.status ?? 'queued',
+            errorClass: null,
+            errorDetail: null,
+            occurredAt: iso(args.at),
+          });
+          /* emitted only on acceptance. 0010 wrote `sms_sent` with status failure for a
+             send that never happened, which the portal then counted as an attempt. */
+          await store.emit(lead.tenantId, [
+            baseEvent(lead, {
+              event_type: 'sms_sent',
+              occurred_at: iso(args.at),
+              status: 'success',
+              event_key: ackKey,
+              payload: { to: lead.phone, body: body.slice(0, 320), template: 'handoff_ack' },
+            }),
+          ]);
+        }
+      }
     }
   }
 }
@@ -1318,6 +1986,9 @@ async function queue(
        follow-up per run, one close per run. a second attempt to queue the same thing finds
        the row already there and adds nothing. */
     idempotencyKey: eventKey(run.id, actionType),
+    /* every action carries its run's snapshot. the store and 0013 both refuse one that
+       differs, so this is the run's pin restated, never a fresh choice. */
+    configSnapshotId: run.configSnapshotId,
     payload,
   });
   return result.created;

@@ -25,6 +25,8 @@
  */
 
 import { validateEvent } from '../event-validation.ts';
+import { SELECTABLE_STATUSES } from '../registry/capabilities.ts';
+import { getModule } from '../registry/modules.ts';
 import type { RunState, StopReason } from './state-machine.ts';
 
 /* ── row shapes ─────────────────────────────────────────── */
@@ -96,12 +98,38 @@ export interface RunRow {
   moduleKey: string;
   state: RunState;
   configVersion: number;
+  /**
+   * The immutable configuration this run began under (0011).
+   *
+   * `configVersion` is the counter the mutable row happened to carry; this is the
+   * thing that actually answers "what was this run allowed to do". A run without
+   * one predates snapshotting and may not send — see `claim_actions_internal`.
+   */
+  configSnapshotId: string | null;
   startedAt: string;
   updatedAt: string;
   stoppedAt: string | null;
   completedAt: string | null;
   stopReason: StopReason | null;
   lastError: string | null;
+}
+
+/** A frozen, hashed copy of the validated config a run started under (0011). */
+export interface ConfigSnapshotRow {
+  id: string;
+  tenantId: string;
+  moduleKey: string;
+  configVersion: number;
+  schemaVersion: number;
+  config: Record<string, unknown>;
+  configHash: string;
+  createdAt: string;
+}
+
+/** Only what the engine needs in order to refuse to act for a stopped client. */
+export interface TenantRow {
+  id: string;
+  status: 'onboarding' | 'active' | 'paused' | 'archived';
 }
 
 export type ActionType =
@@ -119,15 +147,158 @@ export interface ActionRow {
   runId: string;
   actionType: ActionType;
   runAt: string;
-  status: 'pending' | 'claimed' | 'done' | 'cancelled' | 'failed';
+  /** `blocked` (0011): queued before snapshots existed, so it may never send. */
+  status: 'pending' | 'claimed' | 'done' | 'cancelled' | 'failed' | 'blocked';
   idempotencyKey: string;
   attempts: number;
   maxAttempts: number;
   lockedAt: string | null;
   lockedBy: string | null;
+  /**
+   * The fence (0011).
+   *
+   * `lockedBy` is not one: the dispatcher's worker name is a constant, so the same
+   * identifier reclaims the same row a minute later and a stale worker's late write
+   * would still match it. A fresh uuid per claim is what makes "are you still the
+   * holder?" answerable.
+   */
+  leaseToken: string | null;
+  fence: number;
+  /**
+   * The configuration snapshot this action was queued under (0011 column, 0013 rule).
+   *
+   * Always its run's snapshot: the database derives it from the run on insert, refuses
+   * a mismatch, and never lets it change. Null only on legacy rows queued before
+   * pinning existed, and a null pin is never claimable.
+   */
+  configSnapshotId: string | null;
   lastError: string | null;
   payload: Record<string, unknown>;
   completedAt: string | null;
+}
+
+/** What a worker must present to mutate an action it claimed. */
+export interface ActionLease {
+  actionId: string;
+  tenantId: string;
+  leaseToken: string;
+}
+
+/* ── typed store results ────────────────────────────────── */
+
+/**
+ * Why a fenced write did nothing.
+ *
+ * The point of this union is that no caller can read a zero-row update as success.
+ * Before 0011 `completeAction` returned void, so "the row you thought you held was
+ * taken by somebody else" and "done" were the same value.
+ */
+export type StoreFailure =
+  | 'not_found'
+  | 'wrong_tenant'
+  | 'lost_lease'
+  | 'invalid_state'
+  | 'already_completed'
+  | 'already_attempted'
+  | 'blocked_by_guard'
+  | 'outcome_unknown'
+  | 'retryable_error'
+  | 'terminal_error';
+
+export type StoreResult<T = void> =
+  | { ok: true; value: T }
+  | { ok: false; reason: StoreFailure; detail: string };
+
+export const storeOk = <T>(value: T): StoreResult<T> => ({ ok: true, value });
+export const storeFail = <T = void>(reason: StoreFailure, detail: string): StoreResult<T> =>
+  ({ ok: false, reason, detail });
+
+/* ── external effects ───────────────────────────────────── */
+
+export type EffectType = 'customer_sms' | 'staff_sms';
+
+/**
+ * The lifecycle of one customer- or employee-affecting side effect.
+ *
+ * The split that matters is between states that *prove the provider never took it*
+ * — `rejected`, `failed_retryable`, `cancelled_before_send` — and every other
+ * non-terminal state. Only the first group may be retried automatically. The rest
+ * are ambiguous, and an ambiguous send is resolved by a person or a reconciler,
+ * never by sending again and hoping.
+ */
+export type EffectState =
+  | 'reserved'
+  | 'cancelled_before_send'
+  | 'dispatching'
+  | 'accepted'
+  | 'confirmed'
+  | 'rejected'
+  | 'failed_retryable'
+  | 'failed_terminal'
+  | 'outcome_unknown'
+  | 'reconciliation_required';
+
+/** States from which a fresh provider call is provably safe. */
+export const RETRYABLE_EFFECT_STATES: EffectState[] = [
+  'rejected',
+  'failed_retryable',
+  'cancelled_before_send',
+];
+
+/** States that mean "we cannot prove this was not sent" — never auto-retry. */
+export const AMBIGUOUS_EFFECT_STATES: EffectState[] = [
+  'dispatching',
+  'outcome_unknown',
+  'reconciliation_required',
+];
+
+export interface EffectAttemptRow {
+  id: string;
+  tenantId: string;
+  runId: string | null;
+  leadId: string | null;
+  actionId: string | null;
+  conversationId: string | null;
+  effectType: EffectType;
+  effectKey: string;
+  idempotencyKey: string;
+  worker: string | null;
+  leaseToken: string | null;
+  fence: number;
+  attemptNo: number;
+  provider: string;
+  destinationRef: string | null;
+  state: EffectState;
+  providerMessageId: string | null;
+  errorCategory: string | null;
+  errorDetail: string | null;
+  retryable: boolean | null;
+  isCanary: boolean;
+  reservedAt: string;
+  dispatchStartedAt: string | null;
+  acceptedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface ReserveEffectInput {
+  tenantId: string;
+  effectKey: string;
+  effectType: EffectType;
+  idempotencyKey: string;
+  worker: string;
+  leaseToken: string;
+  runId?: string | null;
+  leadId?: string | null;
+  actionId?: string | null;
+  conversationId?: string | null;
+  destinationRef?: string | null;
+  isCanary?: boolean;
+}
+
+export interface ReserveEffectResult {
+  attempt: EffectAttemptRow;
+  /** true = this caller owns the effect and may call the provider. */
+  reserved: boolean;
 }
 
 export interface HandoffRow {
@@ -196,19 +367,47 @@ export interface EngineStore {
   /* runs */
   getRun(tenantId: string, runId: string): Promise<RunRow | null>;
   getRunForLead(tenantId: string, leadId: string, moduleKey?: string): Promise<RunRow | null>;
+  /**
+   * Refuses a run with no snapshot, another tenant's snapshot, or a snapshot for a
+   * different module or an unregistered schema (0013). The run's pin never changes.
+   */
   createRun(row: Omit<RunRow, 'startedAt' | 'updatedAt'>): Promise<RunRow>;
   updateRun(tenantId: string, runId: string, patch: Partial<RunRow>): Promise<RunRow>;
 
   /* the queue */
-  scheduleAction(row: Omit<ActionRow, 'id' | 'status' | 'attempts' | 'lockedAt' | 'lockedBy' | 'lastError' | 'completedAt'> & {
+  /**
+   * The action inherits its run's snapshot. Passing `configSnapshotId` is allowed and
+   * must equal the run's; omitting it lets the database derive it. Queueing against a
+   * run with no snapshot is refused (0013).
+   */
+  scheduleAction(row: Omit<ActionRow, 'id' | 'status' | 'attempts' | 'lockedAt' | 'lockedBy' | 'leaseToken' | 'fence' | 'lastError' | 'completedAt' | 'configSnapshotId'> & {
     maxAttempts?: number;
+    configSnapshotId?: string | null;
   }): Promise<{ action: ActionRow; created: boolean }>;
   cancelPendingActions(tenantId: string, runId: string, reason: string, types?: ActionType[]): Promise<number>;
-  claimActions(limit: number, worker: string, nowIso: string, leaseSeconds?: number): Promise<ActionRow[]>;
-  completeAction(id: string, status: 'done' | 'failed' | 'cancelled', error: string | null, nowIso: string): Promise<void>;
-  rescheduleAction(id: string, runAt: string, error: string | null): Promise<void>;
+  /**
+   * Claim due work.
+   *
+   * `tenantId` is required for anything but the production dispatcher, and
+   * `canaryOnly` restricts a claim to synthetic leads. Before 0011 there was one
+   * unscoped function and the operator canary used it, so pressing "run canary"
+   * drained whatever was due for every other client into a recording sender.
+   */
+  claimActions(options: {
+    limit: number;
+    worker: string;
+    nowIso: string;
+    leaseSeconds?: number;
+    /** null means every tenant, and only the dispatcher may pass it. */
+    tenantId: string | null;
+    canaryOnly?: boolean;
+  }): Promise<ActionRow[]>;
+  /** Fenced. A stale worker gets `lost_lease`, never a silent success. */
+  completeAction(lease: ActionLease, status: 'done' | 'failed' | 'cancelled', error: string | null, nowIso: string): Promise<StoreResult>;
+  rescheduleAction(lease: ActionLease, runAt: string, error: string | null): Promise<StoreResult>;
   listActionsForRun(tenantId: string, runId: string): Promise<ActionRow[]>;
   listFailedActions(tenantId: string, limit: number): Promise<ActionRow[]>;
+  /** Only a failed, pinned action goes back on the queue; a legacy unpinned one stays put. */
   retryAction(tenantId: string, actionId: string, runAt: string): Promise<ActionRow | null>;
 
   /* suppression */
@@ -220,11 +419,56 @@ export interface EngineStore {
   getOpenHandoff(tenantId: string, leadId: string): Promise<HandoffRow | null>;
   resolveHandoff(tenantId: string, handoffId: string, resolution: string, at: string): Promise<HandoffRow | null>;
 
+  /* tenant state — the live stop condition 0010 never checked */
+  getTenant(tenantId: string): Promise<TenantRow | null>;
+
+  /* configuration snapshots (0011) */
+  createConfigSnapshot(row: Omit<ConfigSnapshotRow, 'id' | 'createdAt'>): Promise<ConfigSnapshotRow>;
+  getConfigSnapshot(tenantId: string, snapshotId: string): Promise<ConfigSnapshotRow | null>;
+
+  /* external effects (0011) */
+  reserveEffect(input: ReserveEffectInput): Promise<ReserveEffectResult>;
+  settleEffect(args: {
+    attemptId: string;
+    tenantId: string;
+    leaseToken: string;
+    state: EffectState;
+    providerMessageId?: string | null;
+    errorCategory?: string | null;
+    errorDetail?: string | null;
+    retryable?: boolean | null;
+    nowIso: string;
+  }): Promise<StoreResult>;
+  getEffectByKey(tenantId: string, effectKey: string): Promise<EffectAttemptRow | null>;
+  /** Provider callbacks carry no lease; they are fenced on the provider reference. */
+  recordEffectDelivery(args: {
+    tenantId: string;
+    providerMessageId: string;
+    state: 'accepted' | 'confirmed' | 'failed_terminal';
+    errorCategory?: string | null;
+    errorDetail?: string | null;
+    nowIso: string;
+  }): Promise<StoreResult>;
+  listOpenEffects(tenantId: string, limit: number): Promise<EffectAttemptRow[]>;
+
   /* evidence */
   emit(tenantId: string, events: unknown[]): Promise<{ written: number; invalid: string[] }>;
 }
 
 /* ── the in-memory implementation ───────────────────────── */
+
+/**
+ * Whether a snapshot's schema version is one the registry says this module runs.
+ *
+ * The same question `automation_runs_guard_snapshot()` asks of
+ * `registry_module_versions` in 0013, asked here of the typed registry it is seeded
+ * from — so neither store keeps a second list of module names.
+ */
+function registeredSnapshotSchema(moduleKey: string, schemaVersion: number): boolean {
+  return (getModule(moduleKey)?.versions ?? []).some(
+    (v) => SELECTABLE_STATUSES.includes(v.status) && v.configSchemaKey !== null && v.configSchemaVersion === schemaVersion,
+  );
+}
 
 let counter = 0;
 function id(prefix: string): string {
@@ -247,6 +491,14 @@ export class MemoryStore implements EngineStore {
   suppressions: SuppressionRow[] = [];
   events: { tenantId: string; event: Record<string, unknown> }[] = [];
   invalidEvents: string[] = [];
+  snapshots: ConfigSnapshotRow[] = [];
+  effects: EffectAttemptRow[] = [];
+  /**
+   * Tenants the test has declared. An unknown tenant reads as `active`, which keeps
+   * the several hundred existing fixtures working; a test that cares about archive
+   * or pause declares the row.
+   */
+  tenants: TenantRow[] = [];
 
   /** Set by a test to make the next write fail the way a transient database error does. */
   failNextEmit: string | null = null;
@@ -382,8 +634,24 @@ export class MemoryStore implements EngineStore {
     return this.runs.find((r) => r.tenantId === tenantId && r.leadId === leadId && r.moduleKey === moduleKey) ?? null;
   }
 
+  /** Mirrors `automation_runs_guard_snapshot()` (0013): a new run is pinned or refused. */
   // deno-lint-ignore require-await
   async createRun(row: Omit<RunRow, 'startedAt' | 'updatedAt'>) {
+    if (!row.configSnapshotId) {
+      throw new Error('automation_runs: a new run must be pinned to a configuration snapshot');
+    }
+    const snapshot = this.snapshots.find((s) => s.id === row.configSnapshotId && s.tenantId === row.tenantId);
+    if (!snapshot) {
+      throw new Error(`automation_runs: snapshot ${row.configSnapshotId} does not belong to tenant ${row.tenantId}`);
+    }
+    if (snapshot.moduleKey !== row.moduleKey) {
+      throw new Error(`automation_runs: snapshot is for module ${snapshot.moduleKey}, not ${row.moduleKey}`);
+    }
+    if (!registeredSnapshotSchema(row.moduleKey, snapshot.schemaVersion)) {
+      throw new Error(
+        `automation_runs: schema version ${snapshot.schemaVersion} is not a registered configuration schema for ${row.moduleKey}`,
+      );
+    }
     if (this.runs.some((r) => r.tenantId === row.tenantId && r.leadId === row.leadId && r.moduleKey === row.moduleKey)) {
       throw new Error('duplicate key value violates unique constraint "automation_runs_tenant_id_lead_id_module_key_key"');
     }
@@ -393,17 +661,40 @@ export class MemoryStore implements EngineStore {
     return run;
   }
 
+  /** A run's pin and identity are fixed at creation, as the 0013 trigger enforces. */
   // deno-lint-ignore require-await
   async updateRun(tenantId: string, runId: string, patch: Partial<RunRow>) {
     const run = this.runs.find((r) => r.id === runId && r.tenantId === tenantId);
     if (!run) throw new Error(`no run ${runId} for tenant ${tenantId}`);
+    for (const key of ['configSnapshotId', 'tenantId', 'leadId', 'moduleKey'] as const) {
+      if (key in patch && patch[key] !== run[key]) {
+        throw new Error(`automation_runs: ${key} is fixed when the run is created and cannot be changed`);
+      }
+    }
     Object.assign(run, patch, { updatedAt: new Date().toISOString() });
     return run;
   }
 
   // ── queue ──
+  /**
+   * Mirrors `scheduled_actions_guard_snapshot()` (0013). The pin comes from the run —
+   * derived when omitted, refused when it disagrees — and the check runs before the
+   * idempotency lookup because in Postgres a BEFORE INSERT trigger fires before the
+   * unique index is consulted.
+   */
   // deno-lint-ignore require-await
-  async scheduleAction(row: Omit<ActionRow, 'id' | 'status' | 'attempts' | 'lockedAt' | 'lockedBy' | 'lastError' | 'completedAt'> & { maxAttempts?: number }) {
+  async scheduleAction(row: Omit<ActionRow, 'id' | 'status' | 'attempts' | 'lockedAt' | 'lockedBy' | 'leaseToken' | 'fence' | 'lastError' | 'completedAt' | 'configSnapshotId'> & { maxAttempts?: number; configSnapshotId?: string | null }) {
+    const run = this.runs.find((r) => r.id === row.runId && r.tenantId === row.tenantId);
+    if (!run) throw new Error(`scheduled_actions: run ${row.runId} does not belong to tenant ${row.tenantId}`);
+    if (!run.configSnapshotId) {
+      throw new Error(`scheduled_actions: run ${row.runId} has no configuration snapshot — nothing may be queued against it`);
+    }
+    if (row.configSnapshotId && row.configSnapshotId !== run.configSnapshotId) {
+      throw new Error(
+        `scheduled_actions: snapshot ${row.configSnapshotId} is not the snapshot of run ${row.runId} (${run.configSnapshotId})`,
+      );
+    }
+
     const existing = this.actions.find(
       (a) => a.tenantId === row.tenantId && a.idempotencyKey === row.idempotencyKey,
     );
@@ -420,6 +711,9 @@ export class MemoryStore implements EngineStore {
       maxAttempts: row.maxAttempts ?? 5,
       lockedAt: null,
       lockedBy: null,
+      leaseToken: null,
+      fence: 0,
+      configSnapshotId: run.configSnapshotId,
       lastError: null,
       payload: row.payload ?? {},
       completedAt: null,
@@ -443,15 +737,44 @@ export class MemoryStore implements EngineStore {
     return cancelled;
   }
 
+  /**
+   * Claim due work, mirroring `claim_actions_internal` (0011, tightened in 0013).
+   *
+   * The filters that are not obvious, and that the SQL also applies: an action is
+   * offered only when it and its run carry the same non-null snapshot, an action at
+   * its attempt cap is never re-offered by an expired lease, and `canaryOnly`
+   * restricts the claim to synthetic leads so an operator's test cannot touch real
+   * work.
+   */
   // deno-lint-ignore require-await
-  async claimActions(limit: number, worker: string, nowIso: string, leaseSeconds = 120) {
+  async claimActions(options: {
+    limit: number;
+    worker: string;
+    nowIso: string;
+    leaseSeconds?: number;
+    tenantId: string | null;
+    canaryOnly?: boolean;
+  }) {
+    const { limit, worker, nowIso, tenantId, canaryOnly = false } = options;
+    const leaseSeconds = options.leaseSeconds ?? 120;
     const leaseCutoff = new Date(Date.parse(nowIso) - Math.max(leaseSeconds, 30) * 1000).toISOString();
+
     const due = this.actions
-      .filter(
-        (a) =>
+      .filter((a) => {
+        if (tenantId !== null && a.tenantId !== tenantId) return false;
+        const run = this.runs.find((r) => r.id === a.runId && r.tenantId === a.tenantId);
+        if (!run || !run.configSnapshotId) return false;
+        if (!a.configSnapshotId || a.configSnapshotId !== run.configSnapshotId) return false;
+        if (a.attempts >= a.maxAttempts) return false;
+        if (canaryOnly) {
+          const lead = this.leads.find((l) => l.id === run.leadId && l.tenantId === run.tenantId);
+          if (!lead?.isCanary) return false;
+        }
+        return (
           (a.status === 'pending' && a.runAt <= nowIso) ||
-          (a.status === 'claimed' && a.lockedAt !== null && a.lockedAt < leaseCutoff),
-      )
+          (a.status === 'claimed' && a.lockedAt !== null && a.lockedAt < leaseCutoff)
+        );
+      })
       .sort((a, b) => a.runAt.localeCompare(b.runAt))
       .slice(0, Math.max(1, limit));
 
@@ -462,31 +785,52 @@ export class MemoryStore implements EngineStore {
       action.status = 'claimed';
       action.lockedAt = nowIso;
       action.lockedBy = worker;
+      action.leaseToken = id('lease');
+      action.fence += 1;
       action.attempts += 1;
     }
     return due.map((a) => ({ ...a }));
   }
 
+  /** Fenced on (action, tenant, lease). A stale worker changes nothing. */
   // deno-lint-ignore require-await
-  async completeAction(actionId: string, status: 'done' | 'failed' | 'cancelled', error: string | null, nowIso: string) {
-    const action = this.actions.find((a) => a.id === actionId);
-    if (!action) return;
+  async completeAction(lease: ActionLease, status: 'done' | 'failed' | 'cancelled', error: string | null, nowIso: string): Promise<StoreResult> {
+    const action = this.actions.find((a) => a.id === lease.actionId);
+    if (!action) return storeFail('not_found', `no action ${lease.actionId}`);
+    if (action.tenantId !== lease.tenantId) return storeFail('wrong_tenant', 'that action belongs to another tenant');
+    if (action.status !== 'claimed') {
+      return storeFail('already_completed', `the action is ${action.status}, not claimed`);
+    }
+    if (action.leaseToken !== lease.leaseToken) {
+      return storeFail('lost_lease', 'another worker holds this action now');
+    }
     action.status = status;
     action.lastError = error;
     action.completedAt = nowIso;
     action.lockedAt = null;
     action.lockedBy = null;
+    action.leaseToken = null;
+    return storeOk(undefined);
   }
 
   // deno-lint-ignore require-await
-  async rescheduleAction(actionId: string, runAt: string, error: string | null) {
-    const action = this.actions.find((a) => a.id === actionId);
-    if (!action) return;
+  async rescheduleAction(lease: ActionLease, runAt: string, error: string | null): Promise<StoreResult> {
+    const action = this.actions.find((a) => a.id === lease.actionId);
+    if (!action) return storeFail('not_found', `no action ${lease.actionId}`);
+    if (action.tenantId !== lease.tenantId) return storeFail('wrong_tenant', 'that action belongs to another tenant');
+    if (action.status !== 'claimed') {
+      return storeFail('already_completed', `the action is ${action.status}, not claimed`);
+    }
+    if (action.leaseToken !== lease.leaseToken) {
+      return storeFail('lost_lease', 'another worker holds this action now');
+    }
     action.status = 'pending';
     action.runAt = runAt;
     action.lastError = error;
     action.lockedAt = null;
     action.lockedBy = null;
+    action.leaseToken = null;
+    return storeOk(undefined);
   }
 
   // deno-lint-ignore require-await
@@ -503,6 +847,9 @@ export class MemoryStore implements EngineStore {
   async retryAction(tenantId: string, actionId: string, runAt: string) {
     const action = this.actions.find((a) => a.id === actionId && a.tenantId === tenantId);
     if (!action || action.status !== 'failed') return null;
+    /* a legacy unpinned action could never be claimed again, so putting it back on
+       the queue would only strand it there looking alive. 0013 refuses it too. */
+    if (!action.configSnapshotId) return null;
     action.status = 'pending';
     action.runAt = runAt;
     action.attempts = 0;
@@ -558,6 +905,171 @@ export class MemoryStore implements EngineStore {
     handoff.resolution = resolution;
     handoff.resolvedAt = at;
     return handoff;
+  }
+
+  // ── tenant state ──
+  /* an undeclared tenant reads as active: the existing fixtures predate this method
+     and none of them is testing archive behaviour. a test that cares declares the row. */
+  // deno-lint-ignore require-await
+  async getTenant(tenantId: string): Promise<TenantRow | null> {
+    return this.tenants.find((t) => t.id === tenantId) ?? { id: tenantId, status: 'active' };
+  }
+
+  // ── configuration snapshots ──
+  // deno-lint-ignore require-await
+  async createConfigSnapshot(row: Omit<ConfigSnapshotRow, 'id' | 'createdAt'>) {
+    /* unique (tenant_id, config_hash): identical configuration reuses one snapshot. */
+    const existing = this.snapshots.find(
+      (s) => s.tenantId === row.tenantId && s.configHash === row.configHash,
+    );
+    if (existing) return existing;
+    const snapshot: ConfigSnapshotRow = { ...row, id: id('snap'), createdAt: new Date().toISOString() };
+    /* frozen, because the table's trigger refuses UPDATE and DELETE outright and a
+       test that mutates one here would be testing something Postgres forbids. */
+    Object.freeze(snapshot.config);
+    this.snapshots.push(snapshot);
+    return snapshot;
+  }
+
+  // deno-lint-ignore require-await
+  async getConfigSnapshot(tenantId: string, snapshotId: string) {
+    return this.snapshots.find((s) => s.id === snapshotId && s.tenantId === tenantId) ?? null;
+  }
+
+  // ── external effects ──
+  /**
+   * Reserve a side effect, mirroring `reserve_lead_recovery_effect` in 0011.
+   *
+   * The insert-or-refuse shape is the send-once guarantee: whoever inserts the row
+   * owns the effect. A second caller only gets to retry from a state that proves the
+   * provider never took it.
+   */
+  // deno-lint-ignore require-await
+  async reserveEffect(input: ReserveEffectInput): Promise<ReserveEffectResult> {
+    const existing = this.effects.find(
+      (e) => e.tenantId === input.tenantId && e.effectKey === input.effectKey,
+    );
+
+    if (!existing) {
+      const attempt: EffectAttemptRow = {
+        id: id('eff'),
+        tenantId: input.tenantId,
+        runId: input.runId ?? null,
+        leadId: input.leadId ?? null,
+        actionId: input.actionId ?? null,
+        conversationId: input.conversationId ?? null,
+        effectType: input.effectType,
+        effectKey: input.effectKey,
+        idempotencyKey: input.idempotencyKey,
+        worker: input.worker,
+        leaseToken: input.leaseToken,
+        fence: 0,
+        attemptNo: 1,
+        provider: 'twilio',
+        destinationRef: input.destinationRef ?? null,
+        state: 'reserved',
+        providerMessageId: null,
+        errorCategory: null,
+        errorDetail: null,
+        retryable: null,
+        isCanary: input.isCanary === true,
+        reservedAt: new Date().toISOString(),
+        dispatchStartedAt: null,
+        acceptedAt: null,
+        completedAt: null,
+      };
+      this.effects.push(attempt);
+      return { attempt: { ...attempt }, reserved: true };
+    }
+
+    if (RETRYABLE_EFFECT_STATES.includes(existing.state)) {
+      existing.state = 'reserved';
+      existing.worker = input.worker;
+      existing.leaseToken = input.leaseToken;
+      existing.attemptNo += 1;
+      existing.errorCategory = null;
+      existing.errorDetail = null;
+      existing.retryable = null;
+      existing.dispatchStartedAt = null;
+      existing.completedAt = null;
+      return { attempt: { ...existing }, reserved: true };
+    }
+
+    /* reserved / dispatching / accepted / confirmed / outcome_unknown /
+       reconciliation_required / failed_terminal — somebody else owns this, or it
+       already happened, or we cannot prove it did not. Do not send. */
+    return { attempt: { ...existing }, reserved: false };
+  }
+
+  // deno-lint-ignore require-await
+  async settleEffect(args: {
+    attemptId: string;
+    tenantId: string;
+    leaseToken: string;
+    state: EffectState;
+    providerMessageId?: string | null;
+    errorCategory?: string | null;
+    errorDetail?: string | null;
+    retryable?: boolean | null;
+    nowIso: string;
+  }): Promise<StoreResult> {
+    const attempt = this.effects.find((e) => e.id === args.attemptId);
+    if (!attempt) return storeFail('not_found', `no effect attempt ${args.attemptId}`);
+    if (attempt.tenantId !== args.tenantId) return storeFail('wrong_tenant', 'that attempt belongs to another tenant');
+    if (attempt.leaseToken !== args.leaseToken) {
+      return storeFail('lost_lease', 'this attempt was reserved under a different lease');
+    }
+    attempt.state = args.state;
+    if (args.providerMessageId) attempt.providerMessageId = args.providerMessageId;
+    attempt.errorCategory = args.errorCategory ?? null;
+    attempt.errorDetail = args.errorDetail ?? null;
+    attempt.retryable = args.retryable ?? null;
+    if (args.state === 'dispatching') attempt.dispatchStartedAt ??= args.nowIso;
+    if (args.state === 'accepted' || args.state === 'confirmed') attempt.acceptedAt ??= args.nowIso;
+    if (['confirmed', 'rejected', 'failed_terminal', 'cancelled_before_send'].includes(args.state)) {
+      attempt.completedAt = args.nowIso;
+    }
+    return storeOk(undefined);
+  }
+
+  // deno-lint-ignore require-await
+  async getEffectByKey(tenantId: string, effectKey: string) {
+    const found = this.effects.find((e) => e.tenantId === tenantId && e.effectKey === effectKey);
+    return found ? { ...found } : null;
+  }
+
+  // deno-lint-ignore require-await
+  async recordEffectDelivery(args: {
+    tenantId: string;
+    providerMessageId: string;
+    state: 'accepted' | 'confirmed' | 'failed_terminal';
+    errorCategory?: string | null;
+    errorDetail?: string | null;
+    nowIso: string;
+  }): Promise<StoreResult> {
+    const attempt = this.effects.find(
+      (e) => e.tenantId === args.tenantId && e.providerMessageId === args.providerMessageId,
+    );
+    if (!attempt) return storeFail('not_found', 'no attempt carries that provider reference');
+    /* a duplicate callback is a no-op rather than a churn, and a late one cannot
+       reopen something that was rejected or cancelled before it ever went out. */
+    if (attempt.state === args.state) return storeFail('invalid_state', 'already in that state');
+    if (attempt.state === 'rejected' || attempt.state === 'cancelled_before_send') {
+      return storeFail('invalid_state', `a ${attempt.state} attempt cannot be reopened by a callback`);
+    }
+    attempt.state = args.state;
+    if (args.errorCategory) attempt.errorCategory = args.errorCategory;
+    if (args.errorDetail) attempt.errorDetail = args.errorDetail;
+    if (args.state === 'confirmed' || args.state === 'failed_terminal') attempt.completedAt = args.nowIso;
+    return storeOk(undefined);
+  }
+
+  // deno-lint-ignore require-await
+  async listOpenEffects(tenantId: string, limit: number) {
+    return this.effects
+      .filter((e) => e.tenantId === tenantId && AMBIGUOUS_EFFECT_STATES.includes(e.state))
+      .slice(0, limit)
+      .map((e) => ({ ...e }));
   }
 
   // ── evidence ──

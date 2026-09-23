@@ -128,7 +128,10 @@ Deno.serve(async (request) => {
   };
 
   try {
-    const summary = await runDueActions(deps, { limit, worker });
+    /* the production dispatcher, and the only caller allowed to ask for every
+       tenant's work. `tenantId: null` is written out rather than defaulted, because
+       the defect ARC-015 closes was exactly a global claim reached by omission. */
+    const summary = await runDueActions(deps, { limit, worker, tenantId: null });
     if (summary.claimed > 0) {
       console.log(
         `dispatch ${worker}: claimed ${summary.claimed}, done ${summary.done}, cancelled ${summary.cancelled}, retried ${summary.retried}, failed ${summary.failed}`,

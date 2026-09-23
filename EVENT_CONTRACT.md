@@ -91,7 +91,7 @@ execution layer added (0010).
 | `message_failed` | it did not arrive. `status: failure`, `error_class`, `payload.provider_code`. |
 | `lead_booked` | it turned into work. The only conversion claim in the product, and `actor: human` always — never inferred from an enthusiastic reply. |
 | `lead_suppressed` | this contact must not be messaged again. `payload.reason` ∈ `opt_out │ wrong_contact │ …`. |
-| `automation_completed` | the run reached a terminal state cleanly. `payload.stop_reason`. |
+| `automation_completed` | the run reached a terminal state cleanly. `payload.stop_reason`. With `payload.started: false` and `stop_reason: not_permitted`, no run began at all: the tenant had no valid configuration to pin one to. |
 | `automation_failed` | the run exhausted its retries or hit a permanent error. `status: failure`. |
 
 ### estimate recovery (5)
