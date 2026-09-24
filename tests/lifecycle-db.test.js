@@ -329,19 +329,30 @@ describe('no path around the state machine', { skip }, () => {
     );
   });
 
-  test('forged history and a forged activation are both refused: activation needs a passing test of the current versions', async () => {
+  test('a forged activation — a legal history row, then the update — is refused without a passing test of the current versions', async () => {
     const { rows: [lc] } = await db.query('select * from tenant_modules where tenant_id = $1', [t.tenantId]);
     const next = Number(lc.state_version) + 1;
     const { rows: [head] } = await db.query('select * from lifecycle_heads($1, $2)', [t.tenantId, LR]);
-    const msg = await refused(db, `
-      with h as (
-        insert into tenant_module_transitions (tenant_id, module_key, lifecycle_id, state_version, transition, from_state, to_state, actor_type, actor_id, reason_code, idempotency_key)
-        values ($1, 'lead_recovery', $2, $3, 'activate', 'testing', 'active', 'operator', $4, 'forged', 'forged-2') returning 1
-      )
-      update tenant_modules set state = 'active', state_version = $3,
-        authorized_tenant_config_version_id = $5, authorized_module_config_version_id = $6
-       where id = $2`, [t.tenantId, lc.id, next, operator, head.tenant_version_id, head.module_version_id]);
-    assert.match(msg, /test_evidence_missing|history first/);
+    /* two statements, so the guard sees the history row and reaches the evidence check. */
+    let message = null;
+    try {
+      await db.transaction(async (tx) => {
+        await tx.query(
+          `insert into tenant_module_transitions (tenant_id, module_key, lifecycle_id, state_version, transition, from_state, to_state, actor_type, actor_id, reason_code, idempotency_key)
+           values ($1, 'lead_recovery', $2, $3, 'activate', 'testing', 'active', 'operator', $4, 'forged', 'forged-2')`,
+          [t.tenantId, lc.id, next, operator],
+        );
+        await tx.query(
+          `update tenant_modules set state = 'active', state_version = $2,
+             authorized_tenant_config_version_id = $3, authorized_module_config_version_id = $4
+            where id = $1`,
+          [lc.id, next, head.tenant_version_id, head.module_version_id],
+        );
+      });
+    } catch (error) {
+      message = error.message;
+    }
+    assert.match(message ?? 'accepted', /arc_lifecycle:test_evidence_missing/);
     assert.equal((await t.lifecycle()).state, 'testing');
   });
 
@@ -485,6 +496,35 @@ describe('the database authorises runs and effects itself', { skip }, () => {
     assert.match(await refused(db, `insert into automation_runs (tenant_id, lead_id, module_key, config_snapshot_id, run_mode) values ($1, $2, 'lead_recovery', $3, 'live')`, [t.tenantId, lead.id, snap.id]), /requirements_pending/);
   });
 
+  test('with nothing pending, a live run on anything but the authorised versions is still refused', async () => {
+    const t = await tenant(db, operator);
+    await t.live();
+    const first = await intakeLead(deps(t.store), { tenantId: t.tenantId, source: 'missed_call', externalRef: 'CA-auth-1', phone: '+16145559911', intakeRef: '+16145550100', consentSms: true, consentSource: 'inbound_call' });
+    const { rows: [old] } = await db.query('select config_snapshot_id from automation_runs where id = $1', [first.run.id]);
+    await t.publish({ services: ['furnace repair'] });
+    const lc = await t.lifecycle();
+    assert.deepEqual(lc.pending_requirements, [], 'consequence-free: nothing pending, authorisation carried');
+    const { rows: [lead] } = await db.query(`insert into leads (tenant_id, correlation_id, source) values ($1, gen_random_uuid(), 'manual') returning id`, [t.tenantId]);
+    assert.match(
+      await refused(db, `insert into automation_runs (tenant_id, lead_id, module_key, config_snapshot_id, run_mode) values ($1, $2, 'lead_recovery', $3, 'live')`, [t.tenantId, lead.id, old.config_snapshot_id]),
+      /arc_lifecycle:authorization_stale/,
+    );
+  });
+
+  test('the function itself refuses to carry authorisation across a change the registry says needs more', async () => {
+    const t = await tenant(db, operator);
+    await t.live();
+    await t.publish({ templates: { ...leadRecoveryConfig().templates, followup: '{{company}} — still here if you need us.' } });
+    const lc = await t.lifecycle();
+    assert.deepEqual(lc.pending_requirements, ['retest']);
+    const { rows: [head] } = await db.query('select * from lifecycle_heads($1, $2)', [t.tenantId, LR]);
+    const forged = { pending_requirements: [], authorized: { tenant_version_id: head.tenant_version_id, module_version_id: head.module_version_id } };
+    await assert.rejects(
+      db.query(`select apply_tenant_module_transition($1, 'lead_recovery', 'apply_config_change', $2, 'system', null, 'forged', null, 'forged-carry', $3::jsonb)`, [t.tenantId, Number(lc.state_version), JSON.stringify(forged)]),
+      /arc_lifecycle:requirements_pending: a change with consequences \(requires_retest\)/,
+    );
+  });
+
   test('a live effect cannot be reserved while the module is paused, and a real lead cannot be passed off as a canary', async () => {
     const t = await tenant(db, operator);
     await t.live();
@@ -509,7 +549,8 @@ describe('the database authorises runs and effects itself', { skip }, () => {
     assert.equal(paused.cancelledActions, 1);
     const { rows } = await db.query(`select a.action_type, a.status from scheduled_actions a join automation_runs r on r.id = a.run_id where a.tenant_id = $1 and r.run_mode = 'live' order by a.action_type`, [t.tenantId]);
     assert.deepEqual(rows.map((r) => `${r.action_type}:${r.status}`), ['open_handoff:pending', 'send_first_response:cancelled']);
-    await runDueActions(deps(t.store, { live: sender }), { tenantId: null });
+    /* scoped to this tenant: other tests in this database leave live work of their own. */
+    await runDueActions(deps(t.store, { live: sender }), { tenantId: t.tenantId });
     assert.equal(sender.sent.length, 0);
     assert.equal((await db.query('select count(*)::int as n from handoffs where tenant_id = $1', [t.tenantId])).rows[0].n, 1, 'a person still has the gas lead');
   });

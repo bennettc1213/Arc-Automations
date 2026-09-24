@@ -990,6 +990,20 @@ describe('just-in-time authorisation refuses', () => {
     assert.equal(store.handoffs.length, 0, 'an operator\'s pause is not a delivery failure');
   });
 
+  test('withdrawing the sending attestation stops the next message at the effect gate itself', async () => {
+    /* the reservation re-checks state and health but not connections; only the effect
+       gate asks whether `send_sms` can still be proven. this isolates that layer. */
+    const store = await live();
+    const sender = new RecordingSender();
+    const d = deps(store, { live: sender });
+    await intakeLead(d, missedCall());
+    store.onboardingSteps = store.onboardingSteps.filter((s) => s.stepKey !== 'twilio_connected');
+    const summary = await runDueActions(d, { tenantId: null });
+    assert.equal(sender.sent.length, 0);
+    assert.match(summary.details[0].outcome, /^connection_not_ready: send_sms is unknown/);
+    assert.equal(realEffects(store).length, 0, 'refused before anything was reserved');
+  });
+
   test('the reservation refuses a live effect for a module that is not active, whoever asks', async () => {
     const store = await live();
     await intakeLead(deps(store), missedCall());

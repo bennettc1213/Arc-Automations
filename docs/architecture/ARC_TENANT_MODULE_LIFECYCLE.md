@@ -430,9 +430,37 @@ test mode on a module under test. `republish` runs the real reconciliation.
 ## 19. Mutation testing
 
 Each defect was mechanically reintroduced on a scratch copy (baseline green first) and the
-relevant suites re-run.
+relevant suites re-run. **20/20 caught.**
 
-(Filled in from the run: see the completion report.)
+| # | Reintroduced defect | Layer | Caught by |
+|---|---|---|---|
+| 0 | a new live run is not bound to the authorised versions | authoriser | `stale activation evidence…`, `a run pinned to anything but the authorised versions` |
+| 1 | pending requirements do not hold new live runs | authoriser | `a pending requirement…`, the retest policy test |
+| 2 | a paused module may still run live | authoriser | `a paused module` |
+| 3 | failing health never blocks | health policy | `failing or blocking health…` |
+| 4 | a compliance change may stay live | impact policy | `requires reactivation (compliance)…` |
+| 5 | every change carries authorisation forward | reconciler | the retest, reactivation and shadow policy tests |
+| 6 | an unreadable impact reads as no consequence | classifier | `an unknown or unreadable impact…`, `an impact nobody can read…` |
+| 7 | shadow mode runs live | intake | the five shadow tests |
+| 8 | the effect gate skips the lifecycle | effect gate | `withdrawing the sending attestation stops the next message at the effect gate itself` |
+| 9 | the in-memory reservation stops re-reading the lifecycle | memory store | `the reservation refuses a live effect…`, the pause-in-the-gap test |
+| 10 | the in-memory run guard is skipped | memory store | `a synthetic lead is never shadow…` |
+| 11 | the store accepts activation without test evidence | memory store | `the store refuses an activation without evidence…` |
+| 12 | the store ignores a stale state version | memory store | the concurrency tests |
+| 13 | the production adapter drops `run_mode` from the run insert | adapter | `a run insert names run_mode…`, and every live run over real SQL |
+| 14 | SQL: activation without a passing test of the current versions | 0015 guard | `a forged activation — a legal history row, then the update…` |
+| 15 | SQL: the reservation stops re-reading the lifecycle | 0015 reservation | `a live effect cannot be reserved while the module is paused…` |
+| 16 | SQL: a live run need not match the authorised versions | 0015 run guard | `with nothing pending, a live run on anything but the authorised versions is still refused` |
+| 17 | SQL: history becomes editable | 0015 history guard | `history is append-only…` |
+| 18 | SQL: carrying authorisation ignores the recorded impact | 0015 guard | `the function itself refuses to carry authorisation across a change the registry says needs more` |
+| 19 | SQL: members read every tenant's lifecycle | 0015 RLS | `a member reads their own tenant's lifecycle row…` |
+
+On the first run four were **missed**: #8, #14, #16, #18. Each time a second layer had
+refused first, so the layer under test was never reached. For #8 the reservation refused.
+For #14 a data-modifying CTE hid the history row, so the guard refused as "history first".
+For #16 a pending retest refused first. #18 was tested in memory only. Three more (#9, #10,
+#13) did not apply, because the mutation script did not match the CRLF files. A test now
+isolates each of the four layers, and all seven are caught.
 
 ## 20. Known limitations
 
