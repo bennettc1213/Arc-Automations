@@ -38,6 +38,8 @@ import type {
   TenantRow,
 } from './engine/store.ts';
 import { storeFail, storeOk } from './engine/store.ts';
+import { supabaseConfigStore } from './config/supabase-config-store.ts';
+import { raiseLifecycle, supabaseLifecycleStore } from './lifecycle/supabase-lifecycle-store.ts';
 
 /* the shape of the client this needs. `any` on the builder because PostgREST's fluent
    builder is not worth restating, and every call below is one line. */
@@ -149,6 +151,7 @@ const toRun = (row: any): RunRow => ({
   state: row.state,
   configVersion: row.config_version,
   configSnapshotId: row.config_snapshot_id ?? null,
+  runMode: row.run_mode ?? null,
   startedAt: row.started_at,
   updatedAt: row.updated_at,
   stoppedAt: row.stopped_at ?? null,
@@ -187,6 +190,8 @@ const toSnapshot = (row: any): ConfigSnapshotRow => ({
   schemaVersion: row.schema_version,
   config: row.config ?? {},
   configHash: row.config_hash,
+  tenantConfigVersionId: row.tenant_config_version_id ?? null,
+  moduleConfigVersionId: row.module_config_version_id ?? null,
   createdAt: row.created_at,
 });
 
@@ -244,6 +249,12 @@ export function supabaseStore(db: Db): EngineStore {
   const sink: EventSink = supabaseEventSink(db as never);
 
   return {
+    /* ARC-110's version and draft tables (0014), in their own file. */
+    ...supabaseConfigStore(db),
+    /* ARC-120's lifecycle, history and evidence tables (0015), likewise. */
+    ...supabaseLifecycleStore(db),
+
+    /* the module switch. `config` on this row is frozen by 0014 and read by nothing. */
     async getConfig(tenantId, moduleKey = 'lead_recovery') {
       const { data, error } = await db
         .from('module_configs')
@@ -263,11 +274,16 @@ export function supabaseStore(db: Db): EngineStore {
      * the tenant count: a book of a few hundred contractors is a sequential scan of a few
      * hundred small rows, and the alternative — denormalising the number into a column —
      * would be a second source of truth for which number belongs to whom.
+     *
+     * Since 0014 it reads each tenant's *current published* Lead Recovery version
+     * (`module_config_heads`), never a draft or the frozen legacy column. Publication
+     * refuses a number another tenant's current version holds (G-P5), so two claimants
+     * here means something bypassed that — and it still refuses to guess.
      */
     async findTenantByTwilioNumber(phone) {
       const { data, error } = await db
-        .from('module_configs')
-        .select('*')
+        .from('module_config_heads')
+        .select('tenant_id, module_key')
         .eq('module_key', 'lead_recovery')
         .contains('config', { twilio: { phone_number: phone } })
         .limit(2);
@@ -276,7 +292,7 @@ export function supabaseStore(db: Db): EngineStore {
       /* two tenants claiming one number is a misconfiguration that must not be resolved by
          picking the first: it would route one company's calls to another. */
       if (rows.length > 1) throw new Error(`${phone} is claimed by more than one tenant — refusing to guess`);
-      return rows.length === 1 ? toConfig(rows[0]) : null;
+      return rows.length === 1 ? { tenantId: rows[0].tenant_id, moduleKey: rows[0].module_key } : null;
     },
 
     async findIntakeKey(publicKey) {
@@ -531,6 +547,9 @@ export function supabaseStore(db: Db): EngineStore {
      * functions refused every action and nothing ran in production. 0013 now refuses
      * an unpinned, foreign-tenant or wrong-module run outright, so the omission would
      * fail loudly rather than silently.
+     *
+     * `run_mode` (0015) is named for the same reason: the database authorises the mode
+     * against the lifecycle in this insert, and refuses a run that states none.
      */
     async createRun(row) {
       const { data, error } = await db
@@ -543,10 +562,11 @@ export function supabaseStore(db: Db): EngineStore {
           state: row.state,
           config_version: row.configVersion,
           config_snapshot_id: row.configSnapshotId,
+          run_mode: row.runMode,
         })
         .select('*')
         .single();
-      if (error) fail('run insert', error);
+      if (error) raiseLifecycle('run insert', error);
       return toRun(data);
     },
 
@@ -837,9 +857,14 @@ export function supabaseStore(db: Db): EngineStore {
     /* -- configuration snapshots -- */
 
     async createConfigSnapshot(row): Promise<ConfigSnapshotRow> {
-      /* unique (tenant_id, config_hash). identical configuration across a thousand
-         runs is one row, so this attempts the insert and reads the unique violation
-         back rather than checking first, which would have a race in it. */
+      /* one snapshot per (tenant version, module version) since 0014, or per content
+         hash for a legacy unversioned one. a thousand runs under the same versions share
+         one row, so this attempts the insert and reads the unique violation back rather
+         than checking first, which would have a race in it. the two version columns are
+         always named: an adapter that dropped them would be ARC-015B again, and 0014's
+         guard refuses an unversioned snapshot for a versioned tenant outright. */
+      const tenantVersionId = row.tenantConfigVersionId ?? null;
+      const moduleVersionId = row.moduleConfigVersionId ?? null;
       const { data, error } = await db
         .from('lead_recovery_config_snapshots')
         .insert({
@@ -849,18 +874,22 @@ export function supabaseStore(db: Db): EngineStore {
           schema_version: row.schemaVersion,
           config: row.config,
           config_hash: row.configHash,
+          tenant_config_version_id: tenantVersionId,
+          module_config_version_id: moduleVersionId,
         })
         .select('*')
         .maybeSingle();
 
       if (error) {
         if (!isUniqueViolation(error)) fail('snapshot create', error);
-        const { data: existing, error: readError } = await db
+        let readBack = db
           .from('lead_recovery_config_snapshots')
           .select('*')
-          .eq('tenant_id', row.tenantId)
-          .eq('config_hash', row.configHash)
-          .maybeSingle();
+          .eq('tenant_id', row.tenantId);
+        readBack = moduleVersionId
+          ? readBack.eq('tenant_config_version_id', tenantVersionId).eq('module_config_version_id', moduleVersionId)
+          : readBack.is('module_config_version_id', null).eq('config_hash', row.configHash);
+        const { data: existing, error: readError } = await readBack.maybeSingle();
         if (readError) fail('snapshot read-back', readError);
         if (!existing) fail('snapshot read-back', { message: 'the snapshot vanished between insert and read' });
         return toSnapshot(existing);
@@ -896,7 +925,8 @@ export function supabaseStore(db: Db): EngineStore {
         p_destination: input.destinationRef ?? null,
         p_is_canary: input.isCanary === true,
       });
-      if (error) fail('effect reserve', error);
+      /* 0015's lifecycle refusal comes back typed, so the engine can deny it cleanly. */
+      if (error) raiseLifecycle('effect reserve', error);
 
       const row = Array.isArray(data) ? data[0] : data;
       if (!row) fail('effect reserve', { message: 'the reservation returned no row' });

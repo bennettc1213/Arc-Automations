@@ -7,10 +7,11 @@
  *
  * Two rules shape the action list:
  *
- * 1. **Activation fails closed.** `activate` re-validates the configuration, re-checks
- *    compliance, and re-reads the onboarding checklist from the database. There is no
- *    override parameter. The way to switch on a module whose campaign is not registered is
- *    to register the campaign.
+ * 1. **Activation fails closed.** `activate` is a lifecycle transition (ARC-120,
+ *    `ops/lifecycle.ts`): it re-validates the configuration, re-checks compliance, re-reads
+ *    the onboarding checklist, needs a passing synthetic test of exactly the versions it
+ *    authorises, and the database checks that again. There is no override parameter. The
+ *    way to switch on a module whose campaign is not registered is to register the campaign.
  *
  * 2. **Nothing here can reach a customer by accident.** `test-routing` is a pure
  *    computation that returns the TwiML that *would* be produced and places no call.
@@ -24,13 +25,24 @@
  */
 
 import {
-  canActivate,
   defaultConfig,
   ONBOARDING_STEPS,
-  REQUIRED_STEPS,
   validateLeadRecoveryConfig,
 } from '../_shared/lead-recovery-config.ts';
 import { supabaseStore } from '../_shared/supabase-store.ts';
+import { publishEffectiveConfig, resolveEffectiveConfig } from '../_shared/config/engine.ts';
+import { moduleScope, TENANT_SCOPE } from '../_shared/config/model.ts';
+import {
+  activateModule,
+  beginTesting,
+  getLifecycleStatus,
+  pauseModule,
+  recordTestResult,
+  resumeModule,
+} from '../_shared/lifecycle/engine.ts';
+import { parseLifecycleState } from '../_shared/lifecycle/model.ts';
+import { failed as configFailed } from './config.ts';
+import { lifecycleFailed, lifecycleOut, statusOut } from './lifecycle.ts';
 import {
   intakeLead,
   markBooked,
@@ -103,10 +115,22 @@ function missingTable(message: string): boolean {
 }
 
 function needs0010(message: string): ActionResponse {
+  if (/relation .*(config_versions|config_drafts|config_heads|registry_config_schemas).* does not exist/i.test(message)) {
+    return {
+      body: { error: 'lead recovery configuration needs supabase/migrations/0014_versioned_configuration.sql applied first', detail: message },
+      status: 501,
+    };
+  }
   return {
     body: { error: 'lead recovery needs supabase/migrations/0010_lead_recovery.sql applied first', detail: message },
     status: 501,
   };
+}
+
+/** A relation-missing error from either migration era. */
+function missingRelation(message: string): boolean {
+  return missingTable(message)
+    || /relation .*(config_versions|config_drafts|config_heads|registry_config_schemas).* does not exist/i.test(message);
 }
 
 function depsFor(context: LeadRecoveryContext, options: { synthetic?: boolean } = {}): EngineDeps {
@@ -157,8 +181,20 @@ export async function handleLeadRecoveryAction(
     switch (action) {
       // ── everything the console needs to draw the panel, in one round trip ──
       case 'lead-recovery-get': {
+        /* configuration comes from published versions (0014): the resolver's answer when
+           there is one, and the operator is told why when there is not. module_configs
+           contributes the switch and nothing else. */
+        const store = supabaseStore(db);
+        const [resolution, tenantHead, moduleHead, tenantDraft, moduleDraft] = await Promise.all([
+          resolveEffectiveConfig(store, tenantId, MODULE_KEY),
+          store.getConfigHead(tenantId, TENANT_SCOPE),
+          store.getConfigHead(tenantId, moduleScope(MODULE_KEY)),
+          store.getOpenDraft(tenantId, TENANT_SCOPE),
+          store.getOpenDraft(tenantId, moduleScope(MODULE_KEY)),
+        ]);
+
         const [configRead, stepsRead, keyRead, runsRead, failedRead, handoffRead, leadRead] = await Promise.all([
-          db.from('module_configs').select('*').eq('tenant_id', tenantId).eq('module_key', MODULE_KEY).maybeSingle(),
+          db.from('module_configs').select('enabled').eq('tenant_id', tenantId).eq('module_key', MODULE_KEY).maybeSingle(),
           db.from('module_onboarding').select('*').eq('tenant_id', tenantId).eq('module_key', MODULE_KEY),
           db.from('intake_keys').select('id, public_key, label, allowed_origins, created_at, last_used_at, revoked_at').eq('tenant_id', tenantId).is('revoked_at', null),
           db.from('automation_runs').select('state').eq('tenant_id', tenantId).eq('module_key', MODULE_KEY),
@@ -172,11 +208,28 @@ export async function handleLeadRecoveryAction(
           if (read.error) return bad(`read failed: ${read.error.message}`, 500);
         }
 
-        const config = configRead.data?.config ?? null;
-        const validation = config ? validateLeadRecoveryConfig(config) : null;
+        /* what the form shows: the resolved configuration; failing that, the published
+           documents as they stand; failing that, a legacy import still waiting as drafts;
+           failing that, the defaults. only the first is ever what a run would use. */
+        const legacyPending = [tenantDraft, moduleDraft].some((d) => d && 'legacy' in (d.origin ?? {}));
+        const config: Record<string, unknown> | null = resolution.ok
+          ? resolution.config
+          : tenantHead || moduleHead
+            ? { ...(moduleHead?.config ?? {}), ...(tenantHead?.config ?? {}) }
+            : legacyPending
+              ? { ...(moduleDraft?.config ?? {}), ...(tenantDraft?.config ?? {}) }
+              : null;
 
-        const done = (stepsRead.data ?? []).filter((s: { done_at: string | null }) => s.done_at).map((s: { step_key: string }) => s.step_key);
-        const activation = config ? canActivate(config, done) : { ok: false, blockers: ['no configuration yet'], missingSteps: REQUIRED_STEPS };
+        /* the lifecycle (ARC-120) is what decides, so it is what the panel is told: its state,
+           its health, and every reason activation would be refused — the module's own checks,
+           the checklist, connections, and a passing test of exactly these versions. */
+        const status = await getLifecycleStatus(store, tenantId, MODULE_KEY, { historyLimit: 5 });
+        const activation = {
+          ok: status.activation.ok,
+          blockers: status.activation.blockers.filter((b) => b.code !== 'onboarding_incomplete').map((b) => b.message),
+          missingSteps: status.activation.onboarding.missing,
+        };
+        const validation = resolution.ok ? null : config ? validateLeadRecoveryConfig(config) : null;
 
         /* run states, counted rather than listed: the panel shows "how many are waiting on
            a person" not a table of uuids. */
@@ -184,16 +237,26 @@ export async function handleLeadRecoveryAction(
         for (const row of runsRead.data ?? []) byState[row.state] = (byState[row.state] ?? 0) + 1;
 
         return ok({
-          configured: Boolean(configRead.data),
-          enabled: configRead.data?.enabled ?? false,
-          schema_version: configRead.data?.schema_version ?? null,
-          config_version: configRead.data?.config_version ?? null,
-          updated_at: configRead.data?.updated_at ?? null,
+          configured: Boolean(moduleHead),
+          /* the operator's decision (active), and separately whether a new live run could
+             start right now — an active module can be held by a pending retest or health. */
+          enabled: parseLifecycleState(status.lifecycle?.state) === 'active',
+          live: status.effective.live,
+          lifecycle: statusOut(status),
+          schema_version: moduleHead?.schemaVersion ?? null,
+          /* the published module version a new run would be pinned to. */
+          config_version: moduleHead?.version ?? null,
+          updated_at: moduleHead?.publishedAt ?? null,
+          /* what the save button must send back, so a stale form publishes nothing. */
+          versions: { tenant: tenantHead?.version ?? 0, module: moduleHead?.version ?? 0 },
+          legacy_import_pending: legacyPending,
           config: config ?? defaultConfig(),
-          valid: validation ? validation.ok : false,
-          errors: validation && !validation.ok ? validation.errors : [],
-          warnings: validation?.warnings ?? [],
-          compliance: validation?.ok ? validation.config.compliance.status : (config as { compliance?: { status?: string } })?.compliance?.status ?? 'not_started',
+          valid: resolution.ok,
+          errors: resolution.ok
+            ? []
+            : (resolution.fieldErrors?.length ? resolution.fieldErrors.map((e) => e.message) : [resolution.message]),
+          warnings: resolution.ok ? resolution.warnings : validation?.warnings ?? [],
+          compliance: ((config as { compliance?: { status?: string } } | null)?.compliance?.status) ?? 'not_started',
           steps: ONBOARDING_STEPS.map((step) => {
             const row = (stepsRead.data ?? []).find((s: { step_key: string }) => s.step_key === step.key);
             return { ...step, done_at: row?.done_at ?? null, note: row?.note ?? null };
@@ -221,26 +284,30 @@ export async function handleLeadRecoveryAction(
       }
 
       case 'lead-recovery-save-config': {
-        const result = validateLeadRecoveryConfig(body.config);
+        /* the panel's one button, published through the versioned engine (ARC-110): the
+           effective configuration is validated whole, split into the tenant settings and
+           the Lead Recovery document, and each scope that changed is published as its
+           next version. `expected` is the pair of versions the form was loaded from —
+           a stale form is a 409 and publishes nothing. */
+        if (!context.actorId) return bad('not signed in', 401);
+        const expected = (typeof body.expected === 'object' && body.expected !== null ? body.expected : {}) as Record<string, unknown>;
+        const asVersion = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : null);
+        const store = supabaseStore(db);
+        const result = await publishEffectiveConfig(store, {
+          tenantId,
+          moduleKey: MODULE_KEY,
+          config: body.config,
+          expected: { tenant: asVersion(expected.tenant), module: asVersion(expected.module) },
+          actor: { kind: 'operator', userId: context.actorId },
+          note: typeof body.note === 'string' ? body.note : null,
+        });
         if (!result.ok) {
-          return { body: { error: 'the configuration is not valid', errors: result.errors, warnings: result.warnings }, status: 422 };
+          const response = configFailed(result);
+          /* the panel reads `errors` as a list of sentences, as it always has. */
+          response.body.errors = (result.fieldErrors ?? []).map((e) => e.message);
+          return response;
         }
-
-        /* the validated, normalised object is what is stored — never the raw body. a key
-           the schema dropped must not survive into the database by the back door. */
-        const { data, error } = await db
-          .from('module_configs')
-          .upsert(
-            { tenant_id: tenantId, module_key: MODULE_KEY, config: result.config, schema_version: 1 },
-            { onConflict: 'tenant_id,module_key' },
-          )
-          .select('*')
-          .single();
-
-        if (error) {
-          if (missingTable(error.message)) return needs0010(error.message);
-          return bad(`save failed: ${error.message}`, 500);
-        }
+        const data = { config_version: result.moduleVersion };
 
         /* saving valid business rules is what step 2 means, so it ticks itself. an
            operator ticking a box to say the thing they just did was done is theatre. */
@@ -253,11 +320,28 @@ export async function handleLeadRecoveryAction(
 
         const logged = await context.audit('lead_recovery.config_saved', 'tenant', tenantId, {
           config_version: data.config_version,
-          compliance: result.config.compliance.status,
+          tenant_settings_version: result.tenantVersion,
+          published: result.published.map((p) => ({ scope: p.version.scope, version: p.version.version })),
           warnings: result.warnings.length,
         });
 
-        return ok({ config_version: data.config_version, warnings: result.warnings, logged });
+        return ok({
+          config_version: data.config_version,
+          versions: { tenant: result.tenantVersion, module: result.moduleVersion },
+          published: result.published.map((p) => ({
+            scope: p.version.scope,
+            version: p.version.version,
+            changed_fields: p.impact.changedFields,
+            requires_retest: p.impact.aggregate.requiresRetest,
+            requires_shadow: p.impact.aggregate.requiresShadow,
+            requires_reactivation: p.impact.aggregate.requiresReactivation,
+            /* what the lifecycle made of it (ARC-120): carried forward, held for a retest,
+               or paused. publishing never switches anything on. */
+            lifecycle: p.lifecycle.map((l) => ({ module_key: l.moduleKey, transition: l.transition, state: l.state, pending: l.pending, note: l.note })),
+          })),
+          warnings: result.warnings,
+          logged,
+        });
       }
 
       case 'lead-recovery-set-step': {
@@ -289,88 +373,96 @@ export async function handleLeadRecoveryAction(
 
       // ── the gate ──
       case 'lead-recovery-activate': {
-        const [configRead, stepsRead] = await Promise.all([
-          db.from('module_configs').select('*').eq('tenant_id', tenantId).eq('module_key', MODULE_KEY).maybeSingle(),
-          db.from('module_onboarding').select('step_key, done_at').eq('tenant_id', tenantId).eq('module_key', MODULE_KEY),
-        ]);
-        if (configRead.error && missingTable(configRead.error.message)) return needs0010(configRead.error.message);
-        if (!configRead.data) return bad('this tenant has no lead recovery configuration to activate', 409);
+        /* ARC-120: activation is a lifecycle transition, judged against exactly what a new
+           run would start under — the resolved published configuration, a passing synthetic
+           test of those very versions, proven connections and the checklist — and it
+           authorises those versions and no others. From paused it is a resumption, which
+           re-checks everything the same way. There is still no override. */
+        const store = supabaseStore(db);
+        if (!context.actorId) return bad('not signed in', 401);
+        const lifecycle = await store.getLifecycle(tenantId, MODULE_KEY);
+        const state = lifecycle ? parseLifecycleState(lifecycle.state) : 'unselected';
+        const request = {
+          tenantId,
+          moduleKey: MODULE_KEY,
+          actor: { type: 'operator' as const, id: context.actorId },
+          /* what the panel was drawn from; the current version when an older console sends none. */
+          expectedStateVersion: typeof body.expected_state_version === 'number' ? body.expected_state_version : (lifecycle?.stateVersion ?? 0),
+          idempotencyKey: typeof body.idempotency_key === 'string' ? body.idempotency_key : null,
+          reason: 'activated from the Lead Recovery panel',
+        };
+        const result = state === 'paused'
+          ? await resumeModule(store, request)
+          : state === 'testing' || state === 'shadow'
+            ? await activateModule(store, request)
+            : null;
 
-        const done = (stepsRead.data ?? []).filter((s: { done_at: string | null }) => s.done_at).map((s: { step_key: string }) => s.step_key);
-        const check = canActivate(configRead.data.config, done);
-
-        /* fail closed, and say everything that is wrong rather than the first thing. */
-        if (!check.ok) {
-          return {
-            body: {
-              error: 'this module cannot be activated yet',
-              blockers: check.blockers,
-              missing_steps: check.missingSteps,
-            },
-            status: 409,
-          };
+        if (!result || !result.ok) {
+          /* fail closed, and say everything that is wrong rather than the first thing. */
+          const status = await getLifecycleStatus(store, tenantId, MODULE_KEY);
+          const refusal = result ? null : state === 'unselected'
+            ? 'lead recovery is not selected for this client'
+            : `lead recovery is ${state} — run a synthetic canary to begin testing it first`;
+          const response = result
+            ? lifecycleFailed(result)
+            : lifecycleFailed({ ok: false, code: state === 'unselected' ? 'module_not_selected' : 'illegal_transition', message: refusal! });
+          response.body.error = 'this module cannot be activated yet';
+          response.body.blockers = [
+            ...(refusal ? [refusal] : []),
+            ...(result && !result.ok && result.code === 'stale_state' ? [result.message] : []),
+            ...status.activation.blockers.filter((b) => b.code !== 'onboarding_incomplete').map((b) => b.message),
+          ];
+          response.body.missing_steps = status.activation.onboarding.missing;
+          return response;
         }
-
-        const { error } = await db
-          .from('module_configs')
-          .update({ enabled: true })
-          .eq('tenant_id', tenantId)
-          .eq('module_key', MODULE_KEY);
-        if (error) return bad(`activation failed: ${error.message}`, 500);
 
         await db.from('module_onboarding').upsert(
           { tenant_id: tenantId, module_key: MODULE_KEY, step_key: 'module_activated', done_at: new Date().toISOString() },
           { onConflict: 'tenant_id,module_key,step_key' },
         );
-
-        const logged = await context.audit('lead_recovery.activated', 'tenant', tenantId, {
-          config_version: configRead.data.config_version,
+        /* the transition wrote its own audit row, in its own transaction. */
+        return ok({
+          enabled: true,
+          lifecycle: lifecycleOut(result.result.lifecycle),
+          transition: result.result.transition.transition,
+          logged: true,
         });
-        return ok({ enabled: true, logged });
       }
 
       case 'lead-recovery-pause': {
-        const { error } = await db
-          .from('module_configs')
-          .update({ enabled: false })
-          .eq('tenant_id', tenantId)
-          .eq('module_key', MODULE_KEY);
-        if (error) {
-          if (missingTable(error.message)) return needs0010(error.message);
-          return bad(`pause failed: ${error.message}`, 500);
-        }
-
-        /* pausing stops new sequences. anything already queued is cancelled too, because
-           "paused" that still texts four people over the next hour is not paused. */
-        const { data: cancelled } = await db
-          .from('scheduled_actions')
-          .update({ status: 'cancelled', last_error: 'the module was paused', completed_at: new Date().toISOString() })
-          .eq('tenant_id', tenantId)
-          .eq('status', 'pending')
-          .select('id');
-
-        const logged = await context.audit('lead_recovery.paused', 'tenant', tenantId, {
-          reason: typeof body.reason === 'string' ? body.reason.slice(0, 200) : null,
-          cancelled: cancelled?.length ?? 0,
+        /* pausing stops new sequences, and anything already queued that would reach
+           somebody is cancelled in the same transaction — "paused" that still texts four
+           people over the next hour is not paused. A handoff still opens; its messages are
+           refused at their own gate. Configuration, evidence and history are kept. */
+        const store = supabaseStore(db);
+        if (!context.actorId) return bad('not signed in', 401);
+        const lifecycle = await store.getLifecycle(tenantId, MODULE_KEY);
+        const result = await pauseModule(store, {
+          tenantId,
+          moduleKey: MODULE_KEY,
+          actor: { type: 'operator', id: context.actorId },
+          expectedStateVersion: typeof body.expected_state_version === 'number' ? body.expected_state_version : (lifecycle?.stateVersion ?? 0),
+          idempotencyKey: typeof body.idempotency_key === 'string' ? body.idempotency_key : null,
+          reason: typeof body.reason === 'string' ? body.reason.slice(0, 200) : 'paused from the Lead Recovery panel',
         });
-        return ok({ enabled: false, cancelled_actions: cancelled?.length ?? 0, logged });
+        if (!result.ok) return lifecycleFailed(result);
+        return ok({
+          enabled: false,
+          cancelled_actions: result.result.cancelledActions,
+          lifecycle: lifecycleOut(result.result.lifecycle),
+          logged: true,
+        });
       }
 
       // ── a dry run of the voice webhook. no call is placed ──
       case 'lead-recovery-test-routing': {
-        const { data, error } = await db
-          .from('module_configs')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .eq('module_key', MODULE_KEY)
-          .maybeSingle();
-        if (error && missingTable(error.message)) return needs0010(error.message);
-        if (!data) return bad('this tenant has no lead recovery configuration', 404);
+        /* the published configuration the live webhook would route on. */
+        const resolution = await resolveEffectiveConfig(supabaseStore(db), tenantId, MODULE_KEY);
+        if (!resolution.ok) {
+          return { body: { error: resolution.message, code: resolution.code, errors: (resolution.fieldErrors ?? []).map((e) => e.message) }, status: resolution.code === 'missing_published_configuration' ? 404 : 422 };
+        }
 
-        const result = validateLeadRecoveryConfig(data.config);
-        if (!result.ok) return { body: { error: 'the configuration is not valid', errors: result.errors }, status: 422 };
-
-        const config = result.config;
+        const config = resolution.config as unknown as ReturnType<typeof defaultConfig>;
         if (!config.twilio.phone_number) {
           return { body: { error: 'no Twilio number is recorded, so no webhook would ever reach this tenant' }, status: 409 };
         }
@@ -387,7 +479,7 @@ export async function handleLeadRecoveryAction(
         /* the routing question asked the other way round: does the number this tenant
            claims actually resolve back to them, and only to them? */
         const { data: claimants } = await db
-          .from('module_configs')
+          .from('module_config_heads')
           .select('tenant_id')
           .eq('module_key', MODULE_KEY)
           .contains('config', { twilio: { phone_number: config.twilio.phone_number } });
@@ -415,6 +507,26 @@ export async function handleLeadRecoveryAction(
       case 'lead-recovery-canary': {
         const deps = depsFor(context, { synthetic: true });
         const stamp = new Date().toISOString();
+        if (!context.actorId) return bad('not signed in', 401);
+        const operator = { type: 'operator' as const, id: context.actorId };
+
+        /* ARC-120: a synthetic test needs the module selected. pressing "run a canary" on a
+           module that is only being configured is the operator asking to test it, so testing
+           begins — explicitly, audited, and only if the configuration is ready. selection is
+           never implied: an unselected module is refused. */
+        let lifecycle = await deps.store.getLifecycle(tenantId, MODULE_KEY);
+        const current = lifecycle ? parseLifecycleState(lifecycle.state) : 'unselected';
+        if (current === 'unselected') {
+          return lifecycleFailed({ ok: false, code: 'module_not_selected', message: 'select lead recovery for this client before testing it' });
+        }
+        if (current === 'configuring') {
+          const began = await beginTesting(deps.store, {
+            tenantId, moduleKey: MODULE_KEY, actor: operator,
+            expectedStateVersion: lifecycle!.stateVersion, reason: 'a synthetic canary was requested',
+          });
+          if (!began.ok) return lifecycleFailed(began);
+          lifecycle = began.result.lifecycle;
+        }
 
         const intake = await intakeLead(deps, {
           tenantId,
@@ -462,10 +574,28 @@ export async function handleLeadRecoveryAction(
           );
         }
 
+        /* the result, as evidence bound to exactly the versions the run was pinned to. the
+           run is read back from the database, not described by this handler. */
+        let evidence: Record<string, unknown> = { recorded: false, reason: 'no synthetic run was started' };
+        if (run) {
+          const latest = await deps.store.getLifecycle(tenantId, MODULE_KEY);
+          const recorded = await recordTestResult(deps.store, {
+            tenantId, moduleKey: MODULE_KEY, actor: operator,
+            expectedStateVersion: latest?.stateVersion ?? 0,
+            runId: run.id,
+            passed,
+            summary: { actions: actions.map((a) => `${a.actionType}:${a.status}`), claimed: dispatched.claimed },
+          });
+          evidence = recorded.ok
+            ? { recorded: true, evidence_id: recorded.result.evidence?.id ?? null, accepted: recorded.result.lifecycle.testEvidenceId === recorded.result.evidence?.id }
+            : { recorded: false, code: recorded.code, reason: recorded.message };
+        }
+
         const logged = await context.audit('lead_recovery.canary_run', 'tenant', tenantId, {
           passed,
           state: run?.state ?? null,
           outcome: intake.outcome,
+          evidence_recorded: evidence.recorded === true,
         });
 
         return ok({
@@ -476,6 +606,8 @@ export async function handleLeadRecoveryAction(
           correlation_id: intake.lead?.correlationId ?? null,
           actions: actions.map((a) => ({ type: a.actionType, status: a.status, error: a.lastError })),
           dispatched,
+          evidence,
+          lifecycle: lifecycleOut(await deps.store.getLifecycle(tenantId, MODULE_KEY)),
           /* said plainly on the response so nobody has to take it on trust. */
           note: 'nothing was sent — a synthetic run is given a recording sender and Twilio\'s reserved test number',
           logged,
@@ -647,7 +779,7 @@ export async function handleLeadRecoveryAction(
     }
   } catch (error) {
     const message = (error as Error)?.message ?? 'the action failed';
-    if (missingTable(message)) return needs0010(message);
+    if (missingRelation(message)) return needs0010(message);
     console.error(`lead recovery action ${action} failed`, error);
     return bad(message, 500);
   }

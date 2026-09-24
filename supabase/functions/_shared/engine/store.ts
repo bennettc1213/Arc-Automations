@@ -25,12 +25,21 @@
  */
 
 import { validateEvent } from '../event-validation.ts';
+import type { ConfigStore } from '../config/store.ts';
+import { MemoryLifecycleStore } from '../lifecycle/memory.ts';
+import { LifecycleStoreError, type RunMode } from '../lifecycle/model.ts';
+import type { LifecycleStore } from '../lifecycle/store.ts';
 import { SELECTABLE_STATUSES } from '../registry/capabilities.ts';
 import { getModule } from '../registry/modules.ts';
 import type { RunState, StopReason } from './state-machine.ts';
 
 /* ── row shapes ─────────────────────────────────────────── */
 
+/**
+ * A `module_configs` row. Since 0014 it carries the module's switch (`enabled`) and
+ * nothing the engine reads for behaviour: `config` is frozen legacy content, and the
+ * configuration a run uses is resolved from published versions (`config/engine.ts`).
+ */
 export interface TenantConfigRow {
   tenantId: string;
   moduleKey: string;
@@ -106,6 +115,13 @@ export interface RunRow {
    * one predates snapshotting and may not send — see `claim_actions_internal`.
    */
   configSnapshotId: string | null;
+  /**
+   * How this run may touch the world — `live`, `test` or `shadow` (0015, ARC-120) — fixed
+   * when it is created, when the lifecycle authorised it. Null only on runs created before
+   * lifecycle authorisation existed; nothing proves those were allowed to start, so they
+   * may not act.
+   */
+  runMode: RunMode | null;
   startedAt: string;
   updatedAt: string;
   stoppedAt: string | null;
@@ -119,10 +135,18 @@ export interface ConfigSnapshotRow {
   id: string;
   tenantId: string;
   moduleKey: string;
+  /** since 0014: the module version's number. before it: the mutable row's counter. */
   configVersion: number;
   schemaVersion: number;
   config: Record<string, unknown>;
   configHash: string;
+  /**
+   * The published versions this snapshot was composed from (ARC-110, 0014). Null on
+   * every snapshot written before versioning — that provenance cannot be proven, so it
+   * is not invented. Both or neither.
+   */
+  tenantConfigVersionId: string | null;
+  moduleConfigVersionId: string | null;
   createdAt: string;
 }
 
@@ -336,11 +360,16 @@ export interface IntakeKeyRow {
 
 /* ── the interface ──────────────────────────────────────── */
 
-export interface EngineStore {
-  /* configuration & routing */
+export interface EngineStore extends ConfigStore, LifecycleStore {
+  /* the module switch, a mirror of `tenant_modules.state = 'active'` since 0015 — read by
+     nothing that decides. configuration itself is resolved from versions (ConfigStore). */
   getConfig(tenantId: string, moduleKey?: string): Promise<TenantConfigRow | null>;
-  /** which tenant owns the number Twilio just called. the only routing rule there is. */
-  findTenantByTwilioNumber(phone: string): Promise<TenantConfigRow | null>;
+  /**
+   * Which tenant owns the number Twilio just called — the only routing rule there is.
+   * Read from each tenant's *published* Lead Recovery version (0014); a number claimed by
+   * two tenants throws rather than guessing.
+   */
+  findTenantByTwilioNumber(phone: string): Promise<{ tenantId: string; moduleKey: string } | null>;
   findIntakeKey(publicKey: string): Promise<IntakeKeyRow | null>;
   touchIntakeKey(id: string): Promise<void>;
 
@@ -479,19 +508,19 @@ function id(prefix: string): string {
   return `${prefix.padEnd(8, '0').slice(0, 8)}-0000-4000-8000-${hex}`;
 }
 
-export class MemoryStore implements EngineStore {
-  configs: TenantConfigRow[] = [];
-  intakeKeys: IntakeKeyRow[] = [];
-  leads: LeadRow[] = [];
+/**
+ * The configuration tables, the switch rows (`configs`), `arc_admins` (`operators`) and
+ * `admin_actions` are inherited from `MemoryConfigStore` (ARC-110); the lifecycle tables,
+ * and the runs, leads, actions, snapshots and intake keys their guards read, from
+ * `MemoryLifecycleStore` (ARC-120). A test holds one object for the whole database.
+ */
+export class MemoryStore extends MemoryLifecycleStore implements EngineStore {
   conversations: ConversationRow[] = [];
   messages: MessageRow[] = [];
-  runs: RunRow[] = [];
-  actions: ActionRow[] = [];
   handoffs: HandoffRow[] = [];
   suppressions: SuppressionRow[] = [];
   events: { tenantId: string; event: Record<string, unknown> }[] = [];
   invalidEvents: string[] = [];
-  snapshots: ConfigSnapshotRow[] = [];
   effects: EffectAttemptRow[] = [];
   /**
    * Tenants the test has declared. An unknown tenant reads as `active`, which keeps
@@ -509,13 +538,18 @@ export class MemoryStore implements EngineStore {
     return this.configs.find((c) => c.tenantId === tenantId && c.moduleKey === moduleKey) ?? null;
   }
 
-  // deno-lint-ignore require-await
+  /** Mirrors the adapter's read of `module_config_heads` (0014): published versions only. */
   async findTenantByTwilioNumber(phone: string) {
-    return (
-      this.configs.find(
-        (c) => ((c.config as { twilio?: { phone_number?: string } }).twilio?.phone_number ?? null) === phone,
-      ) ?? null
-    );
+    const tenants = [...new Set(this.moduleConfigVersions.filter((v) => v.moduleKey === 'lead_recovery').map((v) => v.tenantId))];
+    const claimants: string[] = [];
+    for (const tenantId of tenants) {
+      const head = await this.getConfigHead(tenantId, { kind: 'module', moduleKey: 'lead_recovery' });
+      if ((head?.config as { twilio?: { phone_number?: string } } | undefined)?.twilio?.phone_number === phone) {
+        claimants.push(tenantId);
+      }
+    }
+    if (claimants.length > 1) throw new Error(`${phone} is claimed by more than one tenant — refusing to guess`);
+    return claimants.length === 1 ? { tenantId: claimants[0], moduleKey: 'lead_recovery' } : null;
   }
 
   // deno-lint-ignore require-await
@@ -652,6 +686,15 @@ export class MemoryStore implements EngineStore {
         `automation_runs: schema version ${snapshot.schemaVersion} is not a registered configuration schema for ${row.moduleKey}`,
       );
     }
+    /* 0014: a tenant whose configuration is versioned starts versioned runs. */
+    if (!snapshot.moduleConfigVersionId && this.hasModuleVersions(row.tenantId, row.moduleKey)) {
+      throw new Error(
+        `automation_runs: ${row.moduleKey} configuration for this tenant is versioned, so a new run must be pinned to a snapshot that names its versions`,
+      );
+    }
+    /* 0015: a new run states its mode, and the lifecycle must allow that mode now — a live
+       run only on exactly the versions an operator authorised. */
+    this.guardRunLifecycle(row);
     if (this.runs.some((r) => r.tenantId === row.tenantId && r.leadId === row.leadId && r.moduleKey === row.moduleKey)) {
       throw new Error('duplicate key value violates unique constraint "automation_runs_tenant_id_lead_id_module_key_key"');
     }
@@ -666,7 +709,7 @@ export class MemoryStore implements EngineStore {
   async updateRun(tenantId: string, runId: string, patch: Partial<RunRow>) {
     const run = this.runs.find((r) => r.id === runId && r.tenantId === tenantId);
     if (!run) throw new Error(`no run ${runId} for tenant ${tenantId}`);
-    for (const key of ['configSnapshotId', 'tenantId', 'leadId', 'moduleKey'] as const) {
+    for (const key of ['configSnapshotId', 'tenantId', 'leadId', 'moduleKey', 'runMode'] as const) {
       if (key in patch && patch[key] !== run[key]) {
         throw new Error(`automation_runs: ${key} is fixed when the run is created and cannot be changed`);
       }
@@ -693,6 +736,10 @@ export class MemoryStore implements EngineStore {
       throw new Error(
         `scheduled_actions: snapshot ${row.configSnapshotId} is not the snapshot of run ${row.runId} (${run.configSnapshotId})`,
       );
+    }
+    /* scheduled_actions_lifecycle_guard (0015): a shadow run acts on nothing. */
+    if (run.runMode === 'shadow') {
+      throw new LifecycleStoreError('shadow_no_effects', 'a shadow run records what would have happened and queues nothing');
     }
 
     const existing = this.actions.find(
@@ -916,14 +963,62 @@ export class MemoryStore implements EngineStore {
   }
 
   // ── configuration snapshots ──
+  private hasModuleVersions(tenantId: string, moduleKey: string): boolean {
+    return this.moduleConfigVersions.some((v) => v.tenantId === tenantId && v.moduleKey === moduleKey);
+  }
+
+  /**
+   * Mirrors 0011's table as 0014 leaves it, and `lead_recovery_config_snapshots_guard_sources()`.
+   *
+   * A versioned snapshot is one per (tenant version, module version) pair — a rollback
+   * republishes old content as a new version, and its runs must record that version
+   * rather than borrow the snapshot of the one it copied. An unversioned snapshot is
+   * one per content hash, and is allowed only for a tenant with no module versions yet.
+   */
   // deno-lint-ignore require-await
   async createConfigSnapshot(row: Omit<ConfigSnapshotRow, 'id' | 'createdAt'>) {
-    /* unique (tenant_id, config_hash): identical configuration reuses one snapshot. */
-    const existing = this.snapshots.find(
-      (s) => s.tenantId === row.tenantId && s.configHash === row.configHash,
-    );
-    if (existing) return existing;
-    const snapshot: ConfigSnapshotRow = { ...row, id: id('snap'), createdAt: new Date().toISOString() };
+    const tenantVersionId = row.tenantConfigVersionId ?? null;
+    const moduleVersionId = row.moduleConfigVersionId ?? null;
+    if ((tenantVersionId === null) !== (moduleVersionId === null)) {
+      throw new Error('new row violates check constraint "lead_recovery_config_snapshots_sources_paired"');
+    }
+
+    if (moduleVersionId === null) {
+      if (this.hasModuleVersions(row.tenantId, row.moduleKey)) {
+        throw new Error(
+          `arc_config:forbidden: ${row.moduleKey} configuration for this tenant is versioned, so a snapshot must name the versions it was resolved from`,
+        );
+      }
+      const legacy = this.snapshots.find(
+        (s) => s.tenantId === row.tenantId && s.moduleConfigVersionId === null && s.configHash === row.configHash,
+      );
+      if (legacy) return legacy;
+    } else {
+      const moduleVersion = this.moduleConfigVersions.find(
+        (v) => v.id === moduleVersionId && v.tenantId === row.tenantId && v.moduleKey === row.moduleKey,
+      );
+      const tenantVersion = this.tenantConfigVersions.find((v) => v.id === tenantVersionId && v.tenantId === row.tenantId);
+      if (!moduleVersion || !tenantVersion) {
+        throw new Error(`arc_config:tenant_mismatch: those versions are not this tenant's ${row.moduleKey} versions`);
+      }
+      if (row.configVersion !== moduleVersion.version || row.schemaVersion !== moduleVersion.schemaVersion) {
+        throw new Error(
+          `arc_config:validation_failed: a snapshot records its module version's number and schema (${moduleVersion.version} / ${moduleVersion.schemaVersion})`,
+        );
+      }
+      const pinned = this.snapshots.find(
+        (s) => s.tenantId === row.tenantId && s.tenantConfigVersionId === tenantVersionId && s.moduleConfigVersionId === moduleVersionId,
+      );
+      if (pinned) return pinned;
+    }
+
+    const snapshot: ConfigSnapshotRow = {
+      ...row,
+      tenantConfigVersionId: tenantVersionId,
+      moduleConfigVersionId: moduleVersionId,
+      id: id('snap'),
+      createdAt: new Date().toISOString(),
+    };
     /* frozen, because the table's trigger refuses UPDATE and DELETE outright and a
        test that mutates one here would be testing something Postgres forbids. */
     Object.freeze(snapshot.config);
@@ -946,6 +1041,9 @@ export class MemoryStore implements EngineStore {
    */
   // deno-lint-ignore require-await
   async reserveEffect(input: ReserveEffectInput): Promise<ReserveEffectResult> {
+    /* 0015: re-read under the reservation, so a pause committed after the engine's own
+       check still stops the effect. a synthetic effect must belong to a synthetic lead. */
+    this.guardEffectLifecycle(input);
     const existing = this.effects.find(
       (e) => e.tenantId === input.tenantId && e.effectKey === input.effectKey,
     );

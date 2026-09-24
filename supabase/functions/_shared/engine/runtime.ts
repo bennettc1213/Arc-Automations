@@ -36,8 +36,14 @@ import {
   type ClassificationDecision,
 } from '../classifier.ts';
 import { eventKey } from '../event-writer.ts';
+import { canonicalJson, configHash } from '../canonical-json.ts';
+import { type Resolution } from '../config/compose.ts';
+import { resolveEffectiveConfig } from '../config/engine.ts';
+import { authorizeModuleExecution, type ExecutionDecision } from '../lifecycle/authorize.ts';
+import { safeSummary } from '../lifecycle/engine.ts';
+import { EXECUTION_DENIAL_CODES, type ExecutionDenialCode, LifecycleStoreError, type RunMode } from '../lifecycle/model.ts';
 import { type LeadRecoveryConfig } from '../lead-recovery-config.ts';
-import { resolveModuleRuntime, validatorFor } from '../registry/index.ts';
+import { validatorFor } from '../registry/index.ts';
 import { normaliseEmail, normalisePhone, maskPhone } from '../phone.ts';
 import { isMissedCall, type SendResult, type TwilioSender } from '../twilio.ts';
 import { assessSafety } from './rules.ts';
@@ -103,6 +109,15 @@ export function backoffSeconds(attempts: number): number {
   return Math.min(RETRY_CEILING_SECONDS, RETRY_BASE_SECONDS * 2 ** Math.max(0, attempts - 1));
 }
 
+/**
+ * Actions that put a person on a lead or close it — bookkeeping that stays safe when a
+ * module stops. Every message one of them would send still passes its own gate. The same
+ * list 0015's pause leaves on the queue.
+ */
+const BOOKKEEPING: ActionType[] = ['open_handoff', 'close_run'];
+/** Everything else: what reaches somebody, or decides who gets reached. */
+const CONTACT_ACTIONS: ActionType[] = ['send_first_response', 'send_followup', 'classify_reply', 'route_to_contractor', 'notify_staff'];
+
 /* ── dependencies ───────────────────────────────────────── */
 
 export interface EngineDeps {
@@ -158,34 +173,18 @@ export async function deterministicUuid(...parts: string[]): Promise<string> {
 }
 
 export interface LoadedConfig {
+  /** `enabled` is the module switch; `configVersion` the published module version's number. */
   row: { enabled: boolean; configVersion: number };
   config: LeadRecoveryConfig;
+  /** exactly which published versions were composed, and the hash of the result (ARC-110). */
+  resolution: Resolution;
 }
 
-/* ── configuration snapshots (ARC-015) ──────────────────── */
+/* ── configuration snapshots (ARC-015, sourced from ARC-110 versions) ── */
 
-/**
- * Stable serialisation, so the same configuration always hashes to the same string.
- *
- * `JSON.stringify` preserves insertion order, which means two identical rule sets
- * written by different code paths would hash differently and every run would mint a
- * fresh snapshot. Keys are sorted and `undefined` dropped.
- */
-export function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
-}
-
-/** The snapshot's identity. Sixty-four hex characters, as the column's check demands. */
-export async function configHash(config: unknown): Promise<string> {
-  const data = new TextEncoder().encode(canonicalJson(config));
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
-  return [...digest].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
+/* moved to ../canonical-json.ts so the version store can hash the same way without
+   importing the engine; re-exported so every existing caller keeps its import. */
+export { canonicalJson, configHash };
 
 /**
  * Freeze the configuration a run is about to begin under.
@@ -193,25 +192,30 @@ export async function configHash(config: unknown): Promise<string> {
  * Before ARC-015 a run stored `config_version`, a counter, and then every action
  * reloaded whatever `module_configs` currently held — so the pin recorded a number
  * and proved nothing. This writes the payload itself, hashed, and the run points at
- * it. Identical configuration across a thousand runs is one row.
+ * it.
+ *
+ * Since ARC-110 the payload is the resolver's output and the snapshot records the two
+ * published versions it was composed from, so "which tenant settings, which module
+ * version, which schema, what exact document" is one row away from every run and every
+ * action pinned to it. A thousand runs under one pair of versions share one snapshot.
  */
 export async function snapshotConfig(
   store: EngineStore,
   tenantId: string,
   loaded: LoadedConfig,
 ): Promise<ConfigSnapshotRow> {
-  const config = loaded.config as unknown as Record<string, unknown>;
-  /* the schema version is the registry's answer, not a literal: it is what 0013
-     checks a new run's snapshot against, so the two cannot quietly disagree. */
-  const resolved = resolveModuleRuntime(MODULE_KEY);
-  if (!resolved) throw new Error(`no configuration schema is registered for ${MODULE_KEY}`);
+  const { resolution } = loaded;
   return await store.createConfigSnapshot({
     tenantId,
     moduleKey: MODULE_KEY,
-    configVersion: loaded.row.configVersion,
-    schemaVersion: resolved.schema.version,
-    config,
-    configHash: await configHash(config),
+    configVersion: resolution.moduleVersion.version,
+    /* the module version's schema, which the resolver has already required to be the
+       registry's schema for this module — what 0013 checks a new run's snapshot against. */
+    schemaVersion: resolution.moduleVersion.schemaVersion,
+    config: resolution.config,
+    configHash: resolution.configHash,
+    tenantConfigVersionId: resolution.tenantVersion.id,
+    moduleConfigVersionId: resolution.moduleVersion.id,
   });
 }
 
@@ -254,30 +258,34 @@ export async function loadPinnedConfig(
 }
 
 /**
- * Load and validate a tenant's configuration.
+ * Load and validate a tenant's configuration — what a *new* run would start under.
  *
- * Validated on read as well as on write. Configuration written by an older release, or
- * edited straight into the database, must not be able to put the engine into a state its
- * own validator would have refused — and "the row exists" is not the same claim as "the
- * row is usable".
+ * Since ARC-110 this is the canonical resolver's answer and nothing else: the tenant's
+ * published settings composed with its published Lead Recovery version, validated by
+ * the registered schema on every read. It never reads a draft or the frozen
+ * `module_configs.config`; that row contributes only the switch. No published version
+ * means no configuration, and a lead that arrives then is recorded with no run —
+ * there is no default to fall back to.
  */
 export async function loadConfig(
   store: EngineStore,
   tenantId: string,
 ): Promise<{ ok: true; loaded: LoadedConfig } | { ok: false; reason: string; enabled: boolean }> {
-  const row = await store.getConfig(tenantId, MODULE_KEY);
-  if (!row) return { ok: false, reason: 'this tenant has no lead_recovery configuration', enabled: false };
+  const [row, resolution] = await Promise.all([
+    store.getConfig(tenantId, MODULE_KEY),
+    resolveEffectiveConfig(store, tenantId, MODULE_KEY),
+  ]);
+  const enabled = row?.enabled ?? false;
+  if (!resolution.ok) return { ok: false, enabled, reason: resolution.message };
 
-  const result = validateConfig(row.config);
-  if (!result.ok) {
-    return {
-      ok: false,
-      enabled: row.enabled,
-      reason: `configuration is not valid: ${result.errors.slice(0, 3).join('; ')}`,
-    };
-  }
-
-  return { ok: true, loaded: { row: { enabled: row.enabled, configVersion: row.configVersion }, config: result.config } };
+  return {
+    ok: true,
+    loaded: {
+      row: { enabled, configVersion: resolution.moduleVersion.version },
+      config: resolution.config as unknown as LeadRecoveryConfig,
+      resolution,
+    },
+  };
 }
 
 /** The one place a sender is chosen. A canary cannot be given the live one. */
@@ -293,7 +301,13 @@ export function leaseOf(action: ActionRow): ActionLease | null {
 
 /* ── just-in-time authorisation (ARC-015) ───────────────── */
 
-/** Why an effect was refused. Every one of these is a fact read fresh, not a pin. */
+/**
+ * Why an effect was refused. Every one of these is a fact read fresh, not a pin.
+ *
+ * Since ARC-120 the module's own switch (`module_off`) is the lifecycle's answer, and any
+ * of its stable codes (`module_paused`, `requirements_pending`, `health_blocks_execution`…)
+ * can appear here.
+ */
 export type EffectDenial =
   | 'no_lease'
   | 'tenant_missing'
@@ -305,7 +319,6 @@ export type EffectDenial =
   | 'suppressed'
   | 'customer_replied'
   | 'handoff_open'
-  | 'module_off'
   | 'lead_closed'
   | 'lead_booked'
   | 'no_consent'
@@ -314,7 +327,8 @@ export type EffectDenial =
   | 'no_sender'
   | 'already_attempted'
   | 'ambiguous_outcome'
-  | 'config_unpinned';
+  | 'config_unpinned'
+  | ExecutionDenialCode;
 
 export interface EffectPermit {
   attempt: EffectAttemptRow;
@@ -394,11 +408,21 @@ export async function authorizeLeadRecoveryEffect(
     return deny('run_not_sendable', `the run is ${run.state} — a person has this, so the automation stays quiet`);
   }
 
-  /* ── the module's master switch. a canary is exempt from this and only this. ── */
-  const current = await store.getConfig(action.tenantId, MODULE_KEY);
-  if (!lead.isCanary && !current?.enabled) {
-    return deny('module_off', 'lead recovery was switched off for this tenant before this action fired');
-  }
+  /* ── the lifecycle, just in time (ARC-120). the run's own mode decides what may happen:
+     a live run needs the module active and the sending capability proven now; a synthetic
+     run needs the module under test and never gets a live sender. this replaces the old
+     master switch, which the lifecycle now drives. ── */
+  const lifecycle = await authorizeModuleExecution(store, {
+    kind: 'effect',
+    tenantId: action.tenantId,
+    moduleKey: run.moduleKey,
+    lead,
+    run,
+    action,
+    config: config as unknown as Record<string, unknown>,
+    capability: 'send_sms',
+  });
+  if (!lifecycle.allowed) return deny(lifecycle.code, lifecycle.detail, lifecycle.terminal);
 
   /* ── the customer's own state ── */
   if (customerFacing) {
@@ -440,23 +464,31 @@ export async function authorizeLeadRecoveryEffect(
     return deny('no_sender', 'no sender is configured for a synthetic run — refusing to fall back to the live one');
   }
 
-  /* ── the reservation ── */
-  const { attempt, reserved } = await store.reserveEffect({
-    tenantId: action.tenantId,
-    effectKey: args.effectKey,
-    effectType: args.effectType,
-    /* stable across attempts. the provider gets this where it supports idempotency,
-       and it is what stops ARC and a provider-side retry duplicating each other. */
-    idempotencyKey: args.effectKey,
-    worker: action.lockedBy ?? deps.worker ?? 'dispatcher',
-    leaseToken: lease.leaseToken,
-    runId: run.id,
-    leadId: lead.id,
-    actionId: action.id,
-    conversationId: null,
-    destinationRef: maskPhone(destination),
-    isCanary: lead.isCanary,
-  });
+  /* ── the reservation. the database re-reads the lifecycle under a row lock in the same
+     transaction (0015), so a pause committed after the check above still stops this. ── */
+  let reservation: Awaited<ReturnType<EngineStore['reserveEffect']>>;
+  try {
+    reservation = await store.reserveEffect({
+      tenantId: action.tenantId,
+      effectKey: args.effectKey,
+      effectType: args.effectType,
+      /* stable across attempts. the provider gets this where it supports idempotency,
+         and it is what stops ARC and a provider-side retry duplicating each other. */
+      idempotencyKey: args.effectKey,
+      worker: action.lockedBy ?? deps.worker ?? 'dispatcher',
+      leaseToken: lease.leaseToken,
+      runId: run.id,
+      leadId: lead.id,
+      actionId: action.id,
+      conversationId: null,
+      destinationRef: maskPhone(destination),
+      isCanary: lead.isCanary,
+    });
+  } catch (error) {
+    if (error instanceof LifecycleStoreError) return deny(error.code as EffectDenial, error.message);
+    throw error;
+  }
+  const { attempt, reserved } = reservation;
 
   if (!reserved) {
     if (AMBIGUOUS_EFFECT_STATES.includes(attempt.state)) {
@@ -626,40 +658,79 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
     return { ok: false, created: true, lead, run: null, outcome: loaded.reason, queued: [] };
   }
 
+  /* ── may a run start, and in which mode? (ARC-120) ──
+     decided now, from the lifecycle as it stands at this moment, never from what a console
+     showed when the number was set up. a synthetic lead is a test: it proves the pipeline
+     before the module is live and cannot reach a handset (`senderFor()`). a real lead is
+     live — which needs the module active on exactly these versions — or shadow while the
+     module is gathering shadow evidence. every gate below still applies to all three. */
+  const resolution = loaded.loaded.resolution;
+  const lifecycle = await store.getLifecycle(input.tenantId, MODULE_KEY);
+  const requested: RunMode = isCanary ? 'test' : lifecycle?.state === 'shadow' ? 'shadow' : 'live';
+  const authorization = await authorizeModuleExecution(store, {
+    kind: 'start',
+    mode: requested,
+    tenantId: input.tenantId,
+    moduleKey: MODULE_KEY,
+    lead,
+    versions: { tenantVersionId: resolution.tenantVersion.id, moduleVersionId: resolution.moduleVersion.id },
+    config: resolution.config,
+  });
+
+  /* nothing authorises a run, so none is created: the lead and the reason are recorded,
+     keyed on the lead, exactly as for a tenant with no valid configuration. */
+  const refused = async (code: string, detail: string): Promise<IntakeResult> => {
+    events.push(
+      baseEvent(lead, {
+        event_type: 'automation_completed',
+        occurred_at: iso(deps.now()),
+        status: 'success',
+        event_key: eventKey('lr', 'run_end', correlationId, 'not_permitted'),
+        payload: { stop_reason: 'not_permitted', detail: `${code}: ${detail}`.slice(0, 300), started: false },
+      }),
+    );
+    await store.emit(input.tenantId, events);
+    return { ok: false, created: true, lead, run: null, outcome: detail, queued: [] };
+  };
+  if (!authorization.allowed) return await refused(authorization.code, authorization.detail);
+
   /* freeze the rules this run will live under, before anything is queued against it.
      the run is created already pinned — the store refuses one that is not — and every
      action queued against it inherits the same snapshot. */
   const snapshot = await snapshotConfig(store, input.tenantId, loaded.loaded);
 
-  const run = await store.createRun({
-    id: deps.uuid(),
-    tenantId: input.tenantId,
-    leadId: lead.id,
-    moduleKey: MODULE_KEY,
-    state: 'new',
-    configVersion: loaded.loaded.row.configVersion,
-    configSnapshotId: snapshot.id,
-    stoppedAt: null,
-    completedAt: null,
-    stopReason: null,
-    lastError: null,
-  });
+  let run: RunRow;
+  try {
+    run = await store.createRun({
+      id: deps.uuid(),
+      tenantId: input.tenantId,
+      leadId: lead.id,
+      moduleKey: MODULE_KEY,
+      state: 'new',
+      configVersion: loaded.loaded.row.configVersion,
+      configSnapshotId: snapshot.id,
+      /* the mode the lifecycle allowed, fixed on the run. the database authorises it again
+         in this insert, under a lock on the lifecycle (0015). */
+      runMode: authorization.mode,
+      stoppedAt: null,
+      completedAt: null,
+      stopReason: null,
+      lastError: null,
+    });
+  } catch (error) {
+    /* the lifecycle moved between the check above and the insert — a pause landing in
+       between is refused by the database, and handled as the refusal it is. */
+    if (error instanceof LifecycleStoreError) return await refused(error.code, error.message);
+    throw error;
+  }
 
   await store.emit(input.tenantId, events);
 
-  /* a canary is exempt from the master switch, and only from that. it exists to prove the
-     pipeline works *before* the module is switched on — that is where it sits in the
-     onboarding checklist — and it cannot reach a real handset, because `senderFor()` gives
-     a synthetic run the recording sender. Every other gate below still applies to it,
-     compliance included: a canary that sent on an unapproved campaign would be proving the
-     wrong thing. */
-  if (!loaded.loaded.row.enabled && !isCanary) {
-    const why = 'lead recovery is not switched on for this tenant — the lead is recorded, nothing was sent';
-    await stopRun(deps, lead, run, 'not_permitted', why);
-    return { ok: false, created: true, lead, run, outcome: why, queued: [] };
-  }
-
   const config = loaded.loaded.config;
+
+  if (authorization.mode === 'shadow') {
+    return await evaluateInShadow(deps, { lead, run, config, snapshot, phone, now, authorization });
+  }
 
   const suppression = phone ? await store.isSuppressed(input.tenantId, 'sms', phone, iso(now)) : null;
   if (suppression) {
@@ -728,6 +799,112 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
     run,
     outcome: decision.reason,
     queued: ['send_first_response'],
+  };
+}
+
+/* ── shadow mode (ARC-120) ──────────────────────────────── */
+
+/**
+ * A real lead, judged exactly as the module would judge it live — suppression, the
+ * deterministic safety rules, the first-response decision under the pinned configuration —
+ * with nothing sent and nothing queued.
+ *
+ * Structurally incapable of an external effect: no sender is chosen, no action is
+ * scheduled (the database refuses one against a shadow run), no effect is reserved (the
+ * reservation refuses anything but a live run), and the run is closed before this returns.
+ * What it produces is a "would have" — recorded as simulated evidence bound to the pinned
+ * versions, and in the lead's thread as `automation_completed` with `not_permitted`, the
+ * same ending a lead gets when nothing is switched on. It is never an `sms_sent`, never a
+ * booking and never a figure.
+ */
+async function evaluateInShadow(
+  deps: EngineDeps,
+  args: {
+    lead: LeadRow;
+    run: RunRow;
+    config: LeadRecoveryConfig;
+    snapshot: ConfigSnapshotRow;
+    phone: string | null;
+    now: Date;
+    authorization: ExecutionDecision;
+  },
+): Promise<IntakeResult> {
+  const { store } = deps;
+  const { lead, run, config, snapshot, phone, now } = args;
+
+  let wouldHave: 'nothing' | 'handoff' | 'send_first_response';
+  let reasonCode: string;
+  let detail: string;
+  const extra: Record<string, unknown> = {};
+
+  const suppression = phone ? await store.isSuppressed(lead.tenantId, 'sms', phone, iso(now)) : null;
+  if (suppression) {
+    wouldHave = 'nothing';
+    reasonCode = 'suppressed';
+    detail = 'the number is on the suppression list, so nothing would have been sent';
+  } else {
+    const safety = assessSafety(
+      [lead.serviceRequest, lead.locationText].filter(Boolean).join(' '),
+      {
+        emergencyKeywords: config.safety.emergency_keywords,
+        alwaysHandoffServices: config.safety.always_handoff_services,
+        requestedService: lead.serviceRequest,
+      },
+    );
+    if (safety.requiresHuman) {
+      wouldHave = 'handoff';
+      reasonCode = 'safety';
+      detail = 'the safety rules would have handed this to a person';
+      extra.safety_flags = safety.flags.length;
+    } else {
+      const first = decideFirstResponse(config, now, lead.customerName);
+      if (first.send) {
+        wouldHave = 'send_first_response';
+        reasonCode = 'first_response';
+        detail = `would have texted the customer (${first.templateKey})`;
+        extra.template = first.templateKey;
+        extra.delay_seconds = Math.max(0, Math.round((first.sendAt.getTime() - now.getTime()) / 1000));
+      } else {
+        wouldHave = 'nothing';
+        reasonCode = 'not_permitted';
+        detail = first.reason;
+      }
+    }
+  }
+
+  const why = `shadow mode — ${detail}; nothing was sent`;
+  await stopRun(deps, lead, run, 'not_permitted', why);
+
+  let recorded = true;
+  try {
+    await store.recordShadowObservation({
+      tenantId: lead.tenantId,
+      moduleKey: MODULE_KEY,
+      evidence: {
+        kind: 'shadow_observation',
+        outcome: 'observed',
+        runMode: 'shadow',
+        versions: { tenantVersionId: snapshot.tenantConfigVersionId!, moduleVersionId: snapshot.moduleConfigVersionId! },
+        configHash: snapshot.configHash,
+        capabilities: [],
+        runId: run.id,
+        summary: safeSummary({ would_have: wouldHave, reason_code: reasonCode, source: lead.source, ...extra }),
+      },
+    });
+  } catch (error) {
+    /* the module left shadow between this lead arriving and the record being written. the
+       run is already closed and nothing was sent; the observation is simply not kept. */
+    if (!(error instanceof LifecycleStoreError)) throw error;
+    recorded = false;
+  }
+
+  return {
+    ok: true,
+    created: true,
+    lead,
+    run,
+    outcome: recorded ? why : `${why} (not recorded as shadow evidence: the module left shadow)`,
+    queued: [],
   };
 }
 
@@ -1138,19 +1315,39 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
     return finish('cancelled', `the run is ${run.state} — nothing further is sent`);
   }
 
-  /* the tenant's own state. 0010 never asked, so an archived client's queue kept
-     draining and a deboarded contractor's customers kept being texted. the send path
-     asks again in `authorizeLeadRecoveryEffect`; this stops the non-sending actions
-     (routing, staff notification, classification) for a stopped client too. */
-  const tenant = await store.getTenant(action.tenantId);
-  if (!tenant || tenant.status === 'archived' || tenant.status === 'paused') {
-    await store.cancelPendingActions(action.tenantId, run.id, 'the client is archived or paused');
-    return finish(
-      'cancelled',
-      !tenant
-        ? 'this tenant no longer exists'
-        : `this client is ${tenant.status} — the automation does not run for them`,
-    );
+  /* may this run still act at all? (ARC-120) its pin is never replaced; what is re-read is
+     the tenant, the lifecycle, the run's own mode and every identity the action carries.
+     the send path asks again, closer still, in `authorizeLeadRecoveryEffect`. */
+  const allowed = await authorizeModuleExecution(store, {
+    kind: 'continue',
+    tenantId: action.tenantId,
+    moduleKey: run.moduleKey,
+    lead,
+    run,
+    action,
+  });
+  if (!allowed.allowed) {
+    /* the tenant's own state. 0010 never asked, so an archived client's queue kept
+       draining and a deboarded contractor's customers kept being texted. */
+    if (allowed.code === 'tenant_missing' || allowed.code === 'tenant_archived' || allowed.code === 'tenant_paused') {
+      await store.cancelPendingActions(action.tenantId, run.id, 'the client is archived or paused');
+      return finish('cancelled', allowed.detail);
+    }
+    /* an action whose identities or pins disagree is not a thing to retry or to hand to a
+       person as if it were a lead — it is refused, and says why. */
+    if (['identity_mismatch', 'snapshot_missing', 'snapshot_mismatch', 'invalid_run_mode'].includes(allowed.code)) {
+      return finish('failed', `${allowed.code}: ${allowed.detail}`);
+    }
+    /* a dependency is failing: not now, and not never. back off and try again. */
+    if (!allowed.terminal) return retryOrGiveUp(deps, action, run, lead, `${allowed.code}: ${allowed.detail}`, now);
+    /* the module stopped: paused, deselected, not live, or this run cannot prove it was
+       ever authorised. a handoff or a close still runs — it puts a person on the lead or
+       closes it out — and any message it would send is refused at its own gate. anything
+       that would reach somebody is cancelled, with the reason. */
+    if (!BOOKKEEPING.includes(action.actionType)) {
+      await store.cancelPendingActions(action.tenantId, run.id, `${allowed.code}: ${allowed.detail}`.slice(0, 300), CONTACT_ACTIONS);
+      return finish('cancelled', `${allowed.code}: ${allowed.detail}`);
+    }
   }
 
   const sends = action.actionType === 'send_first_response' || action.actionType === 'send_followup';
@@ -1177,14 +1374,6 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
     const openHandoff = await store.getOpenHandoff(action.tenantId, lead.id);
     if (openHandoff) {
       return finish('cancelled', 'a person has taken this lead over');
-    }
-    /* the master switch, read live. cancelling the rest of the run here rather than
-       leaving `authorizeLeadRecoveryEffect` to refuse each action one at a time means
-       a module switched off mid-sequence empties its queue in one pass. */
-    const current = await store.getConfig(action.tenantId, MODULE_KEY);
-    if (!lead.isCanary && !current?.enabled) {
-      await store.cancelPendingActions(action.tenantId, run.id, 'the module was switched off');
-      return finish('cancelled', 'lead recovery was switched off for this tenant before this action fired');
     }
   }
 
@@ -1220,6 +1409,13 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
         const result = await sendMessage(deps, { lead, run, config, body, action, now });
 
         if (!result.sent) {
+          /* the lifecycle refused at the last moment — a pause, a deselection, an archive
+             landing between the dispatcher's check and the effect. that is an operator's
+             decision, not a delivery failure: nothing went out, so cancel, and say why. */
+          if (result.permanent && result.denial && (EXECUTION_DENIAL_CODES as readonly string[]).includes(result.denial)) {
+            await store.cancelPendingActions(action.tenantId, run.id, `${result.denial}: ${result.detail}`.slice(0, 300), CONTACT_ACTIONS);
+            return finish('cancelled', `${result.denial}: ${result.detail}`);
+          }
           /* the ambiguous case gets its own branch and never reaches `retryOrGiveUp`.
              we cannot prove the provider did not take it, so sending again risks a
              duplicate; a person decides instead. Under-send and escalate beats
@@ -1317,7 +1513,7 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
       case 'route_to_contractor': {
         const destination = config.forwarding.destination;
         await store.updateLead(action.tenantId, lead.id, { assignedTo: destination, status: 'qualified' });
-        await notifyStaff(deps, { lead, config, now, summary: lead.aiSummary, urgency: lead.urgency, safetyFlags: lead.safetyFlags, action });
+        await notifyStaff(deps, { lead, config, now, summary: lead.aiSummary, urgency: lead.urgency, safetyFlags: lead.safetyFlags, action, run });
 
         await store.emit(action.tenantId, [
           baseEvent(lead, {
@@ -1346,7 +1542,7 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
       }
 
       case 'notify_staff': {
-        await notifyStaff(deps, { lead, config, now, summary: lead.aiSummary, urgency: lead.urgency, safetyFlags: lead.safetyFlags, action });
+        await notifyStaff(deps, { lead, config, now, summary: lead.aiSummary, urgency: lead.urgency, safetyFlags: lead.safetyFlags, action, run });
         return finish('done', 'staff notified');
       }
 
@@ -1625,7 +1821,7 @@ async function dispatchEffect(
 async function sendMessage(
   deps: EngineDeps,
   args: { lead: LeadRow; run: RunRow; config: LeadRecoveryConfig; body: string; action: ActionRow; now: Date },
-): Promise<{ sent: boolean; sid: string | null; permanent: boolean; ambiguous: boolean; detail: string }> {
+): Promise<{ sent: boolean; sid: string | null; permanent: boolean; ambiguous: boolean; detail: string; denial?: EffectDenial }> {
   const { lead, action, now } = args;
 
   /* stable for the life of the effect: one first response per run, one follow-up per
@@ -1650,6 +1846,7 @@ async function sendMessage(
       permanent: authorized.terminal,
       ambiguous: authorized.denial === 'ambiguous_outcome',
       detail: authorized.detail,
+      denial: authorized.denial,
     };
   }
 
@@ -1711,11 +1908,28 @@ async function notifyStaff(
     safetyFlags?: string[];
     /** the claimed action this alert belongs to. absent only for unfenced callers. */
     action?: ActionRow | null;
+    /** the run that action belongs to — what the lifecycle authorises against. */
+    run?: RunRow | null;
   },
 ): Promise<number> {
   const { lead, config, now } = args;
   const recipients = config.staff_alerts.filter((r) => r.channel === 'sms');
   if (recipients.length === 0) return 0;
+
+  /* a staff text is an external effect like any other (ARC-120): only from a claimed
+     action of a run the lifecycle still lets act. an unfenced caller reaches nobody. */
+  if (!args.action || !args.run) return 0;
+  const lifecycle = await authorizeModuleExecution(deps.store, {
+    kind: 'effect',
+    tenantId: lead.tenantId,
+    moduleKey: args.run.moduleKey,
+    lead,
+    run: args.run,
+    action: args.action,
+    config: config as unknown as Record<string, unknown>,
+    capability: 'send_sms',
+  });
+  if (!lifecycle.allowed) return 0;
 
   const sender = senderFor(deps, lead);
   if (!sender) return 0;
@@ -1740,8 +1954,9 @@ async function notifyStaff(
     /* a staff alert is an external effect too, and duplicating one is how a
        contractor gets woken twice for the same lead. reserved per (action, recipient)
        so each destination is its own logical effect. */
-    const reservation = args.action
-      ? await deps.store.reserveEffect({
+    let reservation: Awaited<ReturnType<EngineStore['reserveEffect']>>;
+    try {
+      reservation = await deps.store.reserveEffect({
         tenantId: lead.tenantId,
         effectKey: eventKey('lr', 'staff', args.action.idempotencyKey, recipient.address),
         effectType: 'staff_sms',
@@ -1753,9 +1968,13 @@ async function notifyStaff(
         actionId: args.action.id,
         destinationRef: maskPhone(recipient.address),
         isCanary: lead.isCanary,
-      })
-      : null;
-    if (reservation && !reservation.reserved) continue;
+      });
+    } catch (error) {
+      /* the lifecycle stopped between the check and the reservation (0015). */
+      if (error instanceof LifecycleStoreError) return sent;
+      throw error;
+    }
+    if (!reservation.reserved) continue;
 
     const result = await sender.send({
       to: recipient.address,
@@ -1764,19 +1983,17 @@ async function notifyStaff(
       from: config.twilio.phone_number,
     });
 
-    if (reservation) {
-      await deps.store.settleEffect({
-        attemptId: reservation.attempt.id,
-        tenantId: lead.tenantId,
-        leaseToken: reservation.attempt.leaseToken as string,
-        state: result.ok ? 'accepted' : result.ambiguous ? 'reconciliation_required' : 'rejected',
-        providerMessageId: result.sid,
-        errorCategory: result.ok ? null : result.ambiguous ? 'provider_unknown' : 'delivery',
-        errorDetail: result.ok ? null : (result.errorMessage ?? 'send failed').slice(0, 300),
-        retryable: result.ok ? null : !result.ambiguous && !result.permanent,
-        nowIso: iso(now),
-      });
-    }
+    await deps.store.settleEffect({
+      attemptId: reservation.attempt.id,
+      tenantId: lead.tenantId,
+      leaseToken: reservation.attempt.leaseToken as string,
+      state: result.ok ? 'accepted' : result.ambiguous ? 'reconciliation_required' : 'rejected',
+      providerMessageId: result.sid,
+      errorCategory: result.ok ? null : result.ambiguous ? 'provider_unknown' : 'delivery',
+      errorDetail: result.ok ? null : (result.errorMessage ?? 'send failed').slice(0, 300),
+      retryable: result.ok ? null : !result.ambiguous && !result.permanent,
+      nowIso: iso(now),
+    });
     if (result.ok) sent += 1;
   }
   return sent;
@@ -1840,10 +2057,27 @@ async function openHandoffFor(
       urgency: lead.urgency,
       safetyFlags: lead.safetyFlags,
       action: args.action ?? null,
+      run,
     });
   }
 
-  if (config && args.sendAck && lead.phone && config.compliance.status === 'approved') {
+  /* the acknowledgement is a customer-facing effect: from a claimed action of a run the
+     lifecycle still lets act (ARC-120), or not at all. the handoff itself — a person on
+     the lead — stands either way. */
+  const ackAllowed = config && args.sendAck && lead.phone && config.compliance.status === 'approved' && run && args.action
+    ? (await authorizeModuleExecution(store, {
+      kind: 'effect',
+      tenantId: lead.tenantId,
+      moduleKey: run.moduleKey,
+      lead,
+      run,
+      action: args.action,
+      config: config as unknown as Record<string, unknown>,
+      capability: 'send_sms',
+    })).allowed
+    : false;
+
+  if (config && ackAllowed && lead.phone) {
     const sender = senderFor(deps, lead);
     const suppressed = await store.isSuppressed(lead.tenantId, 'sms', lead.phone, iso(args.at));
     if (sender && !suppressed) {
@@ -1852,22 +2086,28 @@ async function openHandoffFor(
 
       /* one acknowledgement per lead, whatever re-opens the handoff. */
       const ackKey = eventKey('lr', 'ack', lead.correlationId);
-      const reservation = await store.reserveEffect({
-        tenantId: lead.tenantId,
-        effectKey: ackKey,
-        effectType: 'customer_sms',
-        idempotencyKey: ackKey,
-        worker: args.action?.lockedBy ?? deps.worker ?? 'dispatcher',
-        leaseToken: args.action?.leaseToken ?? 'unleased',
-        runId: run?.id ?? null,
-        leadId: lead.id,
-        actionId: args.action?.id ?? null,
-        conversationId: conversation.id,
-        destinationRef: maskPhone(lead.phone),
-        isCanary: lead.isCanary,
-      });
+      let reservation: Awaited<ReturnType<EngineStore['reserveEffect']>> | null = null;
+      try {
+        reservation = await store.reserveEffect({
+          tenantId: lead.tenantId,
+          effectKey: ackKey,
+          effectType: 'customer_sms',
+          idempotencyKey: ackKey,
+          worker: args.action?.lockedBy ?? deps.worker ?? 'dispatcher',
+          leaseToken: args.action?.leaseToken ?? 'unleased',
+          runId: run?.id ?? null,
+          leadId: lead.id,
+          actionId: args.action?.id ?? null,
+          conversationId: conversation.id,
+          destinationRef: maskPhone(lead.phone),
+          isCanary: lead.isCanary,
+        });
+      } catch (error) {
+        /* the lifecycle stopped between the check and the reservation (0015). */
+        if (!(error instanceof LifecycleStoreError)) throw error;
+      }
 
-      if (reservation.reserved) {
+      if (reservation?.reserved) {
         const result = await sender.send({
           to: lead.phone,
           body,

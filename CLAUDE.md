@@ -56,6 +56,19 @@ Activation is fail-closed against an eleven-step checklist. Deploy and Twilio
 setup: [DEPLOYMENT.md](DEPLOYMENT.md). The event contract:
 [EVENT_CONTRACT.md](EVENT_CONTRACT.md).
 
+**Whether a module may act is its lifecycle** (`0015`, `_shared/lifecycle/`,
+ARC-120): `tenant_modules` holds the operator's decision (unselected → configuring →
+testing → shadow → active ⇄ paused), what a published change requires, the exact
+configuration versions it was tested and **authorised** on, and a separate health
+overlay. `module_configs.enabled` is a mirror — writing it is refused. One authoriser,
+`authorizeModuleExecution`, decides at run start, at every action and before every
+effect; the run insert and the effect reservation re-check it in SQL. A new live run
+needs the module active on exactly its authorised versions; a publication is priced by
+the registry's recorded impact (`CHANGE_IMPACT_POLICY`) — consequence-free carries
+forward, retest holds new runs, compliance/number/safety pauses. Publication never
+activates, the system never un-pauses, and no run is ever repinned. Legal transitions
+live in one list (`LIFECYCLE_TRANSITIONS`), drift-tested against 0015.
+
 Requires `supabase/migrations/0003_client_ids_and_ops.sql` plus the
 `client-login` and `ops` edge functions; the console's Supabase page probes for
 all of it and says what is missing. Deboarding and restore need `0007`; service

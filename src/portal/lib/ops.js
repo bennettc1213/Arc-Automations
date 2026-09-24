@@ -1161,20 +1161,32 @@ export async function validateLeadRecoveryRemote(tenantId, config) {
   return callOps({ action: 'lead-recovery-validate-config', tenant_id: tenantId, config });
 }
 
-export async function saveLeadRecoveryConfig(tenantId, config) {
-  return callOps({ action: 'lead-recovery-save-config', tenant_id: tenantId, config });
+/* `expected` is the { tenant, module } pair of versions the form was loaded from
+   (`lead-recovery-get` returns it as `versions`). since 0014 the save publishes new
+   versions, and a form loaded before somebody else saved is refused with a 409 rather
+   than silently overwriting them. */
+export async function saveLeadRecoveryConfig(tenantId, config, expected) {
+  return callOps({ action: 'lead-recovery-save-config', tenant_id: tenantId, config, expected });
 }
 
 export async function setLeadRecoveryStep(tenantId, stepKey, done, note = null) {
   return callOps({ action: 'lead-recovery-set-step', tenant_id: tenantId, step_key: stepKey, done, note });
 }
 
-export async function activateLeadRecovery(tenantId) {
-  return callOps({ action: 'lead-recovery-activate', tenant_id: tenantId });
+/* the module lifecycle (0015, ARC-120). each change sends the lifecycle's state version the
+   panel was drawn from, so a screen somebody else has since acted on is refused with a 409
+   rather than overwriting what they did. activation from paused is a resumption, and the
+   server re-checks every gate either way. */
+export async function selectLeadRecovery(tenantId, expectedStateVersion) {
+  return callOps({ action: 'module-select', tenant_id: tenantId, module_key: 'lead_recovery', expected_state_version: expectedStateVersion });
 }
 
-export async function pauseLeadRecovery(tenantId, reason = null) {
-  return callOps({ action: 'lead-recovery-pause', tenant_id: tenantId, reason });
+export async function activateLeadRecovery(tenantId, expectedStateVersion) {
+  return callOps({ action: 'lead-recovery-activate', tenant_id: tenantId, expected_state_version: expectedStateVersion });
+}
+
+export async function pauseLeadRecovery(tenantId, reason = null, expectedStateVersion) {
+  return callOps({ action: 'lead-recovery-pause', tenant_id: tenantId, reason, expected_state_version: expectedStateVersion });
 }
 
 /* a computation, not a call. it returns the twiml the voice webhook would produce and

@@ -110,6 +110,13 @@ export interface FieldMetadata {
   control: 'text' | 'textarea' | 'number' | 'toggle' | 'select' | 'list' | 'group';
   visibleWhen?: { field: string; equals: unknown };
   deprecated?: boolean;
+  /**
+   * Which configuration scope stores this field (ARC-110). Absent means the schema's own
+   * scope. `'tenant'` on a module schema's field means the value lives in the tenant-wide
+   * settings document and is composed into the module's effective configuration — a
+   * module document may not carry it, so no two scopes ever hold the same key.
+   */
+  ownerScope?: 'tenant';
 }
 
 /* ── module versions ────────────────────────────────────── */
@@ -276,8 +283,10 @@ export const MODULES: readonly ModuleDefinition[] = Object.freeze([
             'twilio_connected', 'routing_tested', 'templates_approved',
             'consent_recorded', 'compliance_approved', 'canary_passed',
           ],
-          /* shadow mode does not exist yet; ARC-120 builds it. Declaring it required
-             here would make activation unreachable, so this states today's truth. */
+          /* ARC-120 built shadow mode. v1's first activation does not require it — this
+             published contract is frozen, and changing it would be a new version — but a
+             change the registry marks `requiresShadow` (the safety rules) still requires
+             shadow evidence before the module goes live again (CHANGE_IMPACT_POLICY). */
           requiresShadowMode: false,
           monitoringChecks: ['dispatcher_heartbeat', 'effect_reconciliation_queue'],
         },

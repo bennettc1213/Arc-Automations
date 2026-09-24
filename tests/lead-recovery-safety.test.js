@@ -21,6 +21,7 @@ import {
   validateLeadRecoveryConfig,
 } from '../supabase/functions/_shared/lead-recovery-config.ts';
 import { MemoryStore } from '../supabase/functions/_shared/engine/store.ts';
+import { republish, seedPublishedConfig } from './config-fixtures.js';
 import {
   authorizeLeadRecoveryEffect,
   canonicalJson,
@@ -77,14 +78,7 @@ function configure(store, { tenantId = TENANT_A, number = ARC_NUMBER_A, enabled 
     twilio: { ...base.twilio, phone_number: number },
   });
   assert.equal(validated.ok, true, 'the fixture config must be valid');
-  store.configs.push({
-    tenantId,
-    moduleKey: 'lead_recovery',
-    enabled,
-    schemaVersion: 1,
-    configVersion: 3,
-    config: validated.config,
-  });
+  seedPublishedConfig(store, { tenantId, config: validated.config, enabled });
   return store;
 }
 
@@ -634,7 +628,13 @@ describe('a run keeps the rules it began under', () => {
     assert.ok(run.configSnapshotId, 'the run points at a snapshot');
 
     const snapshot = await store.getConfigSnapshot(TENANT_A, run.configSnapshotId);
-    assert.equal(snapshot.configVersion, 3, 'the counter is kept for forensics');
+    /* since 0014 the number is the published module version's, and the snapshot names
+       both versions it was composed from. */
+    const moduleVersion = store.moduleConfigVersions.find((v) => v.tenantId === TENANT_A);
+    const tenantVersion = store.tenantConfigVersions.find((v) => v.tenantId === TENANT_A);
+    assert.equal(snapshot.configVersion, moduleVersion.version, 'the version number is kept for forensics');
+    assert.equal(snapshot.moduleConfigVersionId, moduleVersion.id);
+    assert.equal(snapshot.tenantConfigVersionId, tenantVersion.id);
     assert.equal(snapshot.configHash.length, 64);
     assert.equal(snapshot.config.company_name, 'Halstead Heating');
   });
@@ -653,12 +653,8 @@ describe('a run keeps the rules it began under', () => {
     const d = deps(store, { liveSender: sender });
     await intakeLead(d, missedCall());
 
-    /* the operator renames the company mid-sequence. */
-    store.configs[0].config = {
-      ...store.configs[0].config,
-      company_name: 'Somebody Else Entirely',
-    };
-    store.configs[0].configVersion = 4;
+    /* the operator renames the company mid-sequence — a new published version. */
+    await republish(store, TENANT_A, { company_name: 'Somebody Else Entirely' });
 
     const run = store.runs[0];
     const pinned = await loadPinnedConfig(store, run);
@@ -671,8 +667,7 @@ describe('a run keeps the rules it began under', () => {
     const store = setup();
     await intakeLead(deps(store), missedCall());
 
-    store.configs[0].config = { ...store.configs[0].config, company_name: 'Halstead HVAC' };
-    store.configs[0].configVersion = 4;
+    await republish(store, TENANT_A, { company_name: 'Halstead HVAC' });
 
     await intakeLead(deps(store), missedCall({ externalRef: 'CA2', phone: '+16145559933' }));
 

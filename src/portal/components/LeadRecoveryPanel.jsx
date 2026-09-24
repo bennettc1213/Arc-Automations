@@ -24,6 +24,7 @@ import {
   retryLeadRecoveryAction,
   runLeadRecoveryCanary,
   saveLeadRecoveryConfig,
+  selectLeadRecovery,
   takeOverLead,
   testLeadRecoveryRouting,
 } from '../lib/ops';
@@ -190,6 +191,9 @@ export default function LeadRecoveryPanel({ client }) {
   const [state, setState] = useState({ status: 'loading', data: null, error: null });
   const [form, setForm] = useState(() => toForm(null));
   const [dirty, setDirty] = useState(false);
+  /* the published versions the form was filled from. sent back on save so a form that
+     somebody else has since saved over is refused rather than silently winning (0014). */
+  const [formVersions, setFormVersions] = useState(null);
   const [routing, setRouting] = useState(null);
   const [canary, setCanary] = useState(null);
   const [activationError, setActivationError] = useState(null);
@@ -205,7 +209,10 @@ export default function LeadRecoveryPanel({ client }) {
          reloading over half-typed configuration is the fastest way to lose somebody's
          work. */
       setDirty((isDirty) => {
-        if (!isDirty) setForm(toForm(data.config));
+        if (!isDirty) {
+          setForm(toForm(data.config));
+          setFormVersions(data.versions ?? null);
+        }
         return isDirty;
       });
     } catch (error) {
@@ -256,22 +263,32 @@ export default function LeadRecoveryPanel({ client }) {
   const complianceStatus = data.compliance ?? 'not_started';
   const runs = data.runs_by_state ?? {};
   const needingPerson = (runs.handoff_required ?? 0) + (runs.handed_off ?? 0);
+  /* the module's lifecycle (ARC-120): the state this panel was drawn from travels back with
+     every change, so acting on a stale screen is refused rather than silently winning. */
+  const lifecycle = data.lifecycle?.lifecycle ?? null;
+  const stateVersion = lifecycle?.state_version ?? 0;
+  const unselected = !lifecycle || lifecycle.state === 'unselected';
 
   return (
     <Panel
       title="lead recovery"
-      note={data.enabled ? 'live' : data.configured ? 'configured, not switched on' : 'not set up'}
+      note={data.live ? 'live' : data.enabled ? 'active, new runs held' : data.configured ? 'configured, not switched on' : 'not set up'}
       actions={
-        <Pill tone={data.enabled ? 'ok' : data.configured ? 'warn' : 'neutral'}>
-          {data.enabled ? 'sending' : data.configured ? 'paused' : 'no config'}
+        <Pill tone={data.live ? 'ok' : data.configured ? 'warn' : 'neutral'}>
+          {data.live ? 'sending' : data.enabled ? 'held' : data.configured ? 'paused' : 'no config'}
         </Pill>
       }
     >
       {/* ── what it is doing right now ── */}
       <dl className="ws-facts">
         <Fact label="state">
-          {data.enabled ? 'answering calls and texting back' : 'recording leads, sending nothing'}
+          {data.live ? 'answering calls and texting back' : 'recording leads, sending nothing'}
         </Fact>
+        {data.lifecycle?.effective && (
+          <Fact label="lifecycle" note="the operator's decision and the system's health, kept apart">
+            {data.lifecycle.effective.headline}
+          </Fact>
+        )}
         <Fact label="messaging compliance">
           <Pill tone={COMPLIANCE_TONE[complianceStatus] ?? 'neutral'}>{complianceStatus.replace(/_/g, ' ')}</Pill>
         </Fact>
@@ -495,7 +512,7 @@ export default function LeadRecoveryPanel({ client }) {
         <ActionButton
           disabled={!validation.ok || !dirty}
           onRun={async () => {
-          const result = await saveLeadRecoveryConfig(tenantId, config);
+          const result = await saveLeadRecoveryConfig(tenantId, config, formVersions);
           setDirty(false);
           await load();
           return `saved as version ${result.config_version}`;
@@ -774,11 +791,21 @@ export default function LeadRecoveryPanel({ client }) {
         )}
 
         <div className="ops-rowactions">
-          {data.enabled ? (
+          {unselected ? (
+            <ActionButton
+              onRun={async () => {
+              await selectLeadRecovery(tenantId, stateVersion);
+              await load();
+              return 'selected — configure it, then run a canary to begin testing';
+              }}
+            >
+          select lead recovery for this client
+        </ActionButton>
+          ) : data.enabled ? (
             <ActionButton
               confirm="pausing stops new sequences and cancels everything already queued for this client. calls will still forward. continue?"
               onRun={async () => {
-              const result = await pauseLeadRecovery(tenantId, 'paused from the console');
+              const result = await pauseLeadRecovery(tenantId, 'paused from the console', stateVersion);
               await load();
               return `paused · ${formatCount(result.cancelled_actions)} queued action(s) cancelled`;
               }}
@@ -792,7 +819,7 @@ export default function LeadRecoveryPanel({ client }) {
               onRun={async () => {
               setActivationError(null);
               try {
-              await activateLeadRecovery(tenantId);
+              await activateLeadRecovery(tenantId, stateVersion);
               await load();
               return 'live';
               } catch (error) {
@@ -807,7 +834,7 @@ export default function LeadRecoveryPanel({ client }) {
           activate lead recovery
         </ActionButton>
           )}
-          {!data.enabled && !activation.ok && (
+          {!unselected && !data.enabled && !activation.ok && (
             <span className="ops-muted">
               {activation.missingSteps.length > 0
                 ? `${activation.missingSteps.length} required step(s) outstanding`

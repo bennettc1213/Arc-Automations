@@ -26,6 +26,8 @@ import {
   validateLeadRecoveryConfig,
 } from '../supabase/functions/_shared/lead-recovery-config.ts';
 import { MemoryStore } from '../supabase/functions/_shared/engine/store.ts';
+import { FIXTURE_OPERATOR, seedPublishedConfig } from './config-fixtures.js';
+import { pauseModule } from '../supabase/functions/_shared/lifecycle/engine.ts';
 import {
   backoffSeconds,
   handleInboundMessage,
@@ -106,19 +108,12 @@ function goodConfig(overrides = {}) {
   };
 }
 
-/** a store with one configured, switched-on tenant. */
+/** a store with one configured, switched-on tenant — its configuration published (0014). */
 function setup({ config, enabled = true, tenantId = TENANT_A } = {}) {
   const store = new MemoryStore();
   const validated = validateLeadRecoveryConfig(config ?? goodConfig());
   assert.equal(validated.ok, true, `the fixture config must be valid: ${validated.ok ? '' : validated.errors.join('; ')}`);
-  store.configs.push({
-    tenantId,
-    moduleKey: 'lead_recovery',
-    enabled,
-    schemaVersion: 1,
-    configVersion: 3,
-    config: validated.config,
-  });
+  seedPublishedConfig(store, { tenantId, config: validated.config, enabled });
   return store;
 }
 
@@ -845,13 +840,9 @@ describe('STOP creates a suppression and cancels everything', () => {
 
   test('a suppression belongs to one tenant and never leaks to another', async () => {
     const store = setup();
-    store.configs.push({
+    seedPublishedConfig(store, {
       tenantId: TENANT_B,
-      moduleKey: 'lead_recovery',
-      enabled: true,
-      schemaVersion: 1,
-      configVersion: 1,
-      config: validateLeadRecoveryConfig(goodConfig({ twilio: { ...goodConfig().twilio, phone_number: ARC_NUMBER_B } })).config,
+      config: goodConfig({ twilio: { ...goodConfig().twilio, phone_number: ARC_NUMBER_B } }),
     });
 
     await store.addSuppression({
@@ -1281,7 +1272,7 @@ describe('two dispatchers cannot execute the same action', () => {
 /* ══ permission to speak ══════════════════════════════════ */
 
 describe('a tenant that may not send, does not send', () => {
-  test('a switched-off module records the lead and sends nothing', async () => {
+  test('a module that is not live records the lead, starts no run, and sends nothing', async () => {
     const store = setup({ enabled: false });
     const sender = new RecordingSender();
     const d = deps(store, { liveSender: sender });
@@ -1291,7 +1282,12 @@ describe('a tenant that may not send, does not send', () => {
     assert.equal(store.leads.length, 1, 'the call still happened and is still recorded');
     assert.equal(store.pendingActions().length, 0);
     assert.equal(sender.sent.length, 0);
-    assert.equal(store.runs[0].stopReason, 'not_permitted');
+    /* ARC-120: nothing authorised a live run, so none exists — the reason is on the thread. */
+    assert.equal(store.runs.length, 0);
+    const ending = store.eventsOfType('automation_completed')[0].event;
+    assert.equal(ending.payload.stop_reason, 'not_permitted');
+    assert.equal(ending.payload.started, false);
+    assert.match(ending.payload.detail, /^module_not_active:/);
   });
 
   test('an unapproved campaign sends nothing, whatever the switch says', async () => {
@@ -1305,17 +1301,35 @@ describe('a tenant that may not send, does not send', () => {
     assert.equal(sender.sent.length, 0);
   });
 
-  test('a module switched off between queueing and sending cancels what is queued', async () => {
+  test('a module paused between queueing and sending cancels what is queued', async () => {
     const store = setup();
     const sender = new RecordingSender();
     const d = deps(store, { liveSender: sender });
     await intakeLead(d, missedCall());
 
-    store.configs[0].enabled = false;
+    const lifecycle = await store.getLifecycle(TENANT_A, 'lead_recovery');
+    const paused = await pauseModule(store, {
+      tenantId: TENANT_A, moduleKey: 'lead_recovery', actor: { type: 'operator', id: FIXTURE_OPERATOR },
+      expectedStateVersion: lifecycle.stateVersion,
+    });
+    assert.equal(paused.ok, true);
+    assert.equal(paused.result.cancelledActions, 1, 'the pause cancels the queued first response itself');
     const summary = await runDueActions(d, { tenantId: null });
 
     assert.equal(sender.sent.length, 0);
-    assert.equal(summary.cancelled, 1);
+    assert.equal(summary.claimed, 0);
+    assert.match(store.actions[0].lastError, /paused/);
+  });
+
+  test('the switch row is a mirror: writing it switches nothing on', async () => {
+    const store = setup({ enabled: false });
+    const sender = new RecordingSender();
+    const d = deps(store, { liveSender: sender });
+    store.configs[0].enabled = true;
+    const result = await intakeLead(d, missedCall());
+    assert.equal(result.ok, false);
+    assert.equal(sender.sent.length, 0);
+    assert.equal(store.runs.length, 0);
   });
 
   test('a tenant with no configuration at all is inert rather than broken', async () => {
@@ -1386,18 +1400,12 @@ describe('a canary can never contact a real customer', () => {
 describe('one tenant can never reach another tenant’s records', () => {
   function twoTenants() {
     const store = setup();
-    store.configs.push({
+    seedPublishedConfig(store, {
       tenantId: TENANT_B,
-      moduleKey: 'lead_recovery',
-      enabled: true,
-      schemaVersion: 1,
-      configVersion: 1,
-      config: validateLeadRecoveryConfig(
-        goodConfig({
-          company_name: 'Boise Plumbing',
-          twilio: { ...goodConfig().twilio, phone_number: ARC_NUMBER_B },
-        }),
-      ).config,
+      config: goodConfig({
+        company_name: 'Boise Plumbing',
+        twilio: { ...goodConfig().twilio, phone_number: ARC_NUMBER_B },
+      }),
     });
     return store;
   }

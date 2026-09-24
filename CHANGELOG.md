@@ -22,6 +22,62 @@ documented here. Format loosely follows
 - `tests/site-impact.test.js`, against a throwaway repo built in a temp directory, so it
   says nothing about, and is not broken by, whatever else is being edited.
 
+## [1.21.0] - 2026-09-23
+
+A module was live for a client because one boolean said so, and nothing recorded which
+configuration it had been switched on for — so publishing a new sending number an hour
+after activation changed what customers received without anyone approving it. Each
+tenant module now has a lifecycle: selected, tested, shadowed, activated, paused —
+authorised on exact configuration versions, and re-checked immediately before anything
+it does.
+
+### Added
+
+- **The tenant module lifecycle (`0015`, `_shared/lifecycle/`, ARC-120).** One record per
+  tenant module: its state, a version that makes a stale change a 409 instead of an
+  overwrite, the requirements a published change imposed, the configuration versions it
+  was tested, shadowed and authorised on, and a health overlay kept apart from the state.
+  Every change is one database transaction with an append-only history row, an audit row
+  and — where it applies — the cancellation of queued contact. Legal transitions are one
+  list, seeded into Postgres and drift-tested; a history row carries a foreign key to its
+  rule. Selection, activation, pause, resumption and deselection are explicit operator
+  acts; the system can only evaluate a change, record health, or pause.
+- **Just-in-time authorisation.** One authoriser decides when a run would start, before
+  every claimed action and before every message — tenant, module, run, action and snapshot
+  identities, the run's own mode, the lifecycle, pending requirements, the authorised
+  versions, health, configuration and connection readiness — with stable denial codes and
+  no side effect on refusal. The run insert and the effect reservation check the lifecycle
+  again in SQL under a row lock, so a pause that lands mid-dispatch still stops the send.
+- **Version-bound evidence.** The synthetic canary is recorded as evidence for exactly the
+  versions its run was pinned to; activation authorises those versions and no others.
+- **Change impact.** Every publication is priced from the registry's recorded impact:
+  consequence-free changes keep a live module live on the new versions; a retest change
+  (templates, hours, forwarding) holds new leads until a canary passes, while in-flight
+  sequences keep their approved words; a compliance, number or safety change pauses the
+  module until an operator re-activates it; anything unreadable gets every requirement.
+- **Shadow mode.** Real leads evaluated and recorded as "would have" — nothing queued,
+  reserved or sent, never counted as a message or a booking.
+- `ops` lifecycle actions (`module-*`), and a **select** button on the Lead Recovery panel.
+- `tests/lifecycle-engine.test.js`, `tests/lifecycle-adapter.test.js` and
+  `tests/lifecycle-db.test.js` (real Postgres via PGlite).
+
+### Changed
+
+- `module_configs.enabled` is a mirror of the lifecycle; writing it directly is refused.
+- A lead the lifecycle does not allow a run for is recorded with no run (as for a tenant
+  with no configuration), and the reason code is on its thread.
+- The panel's activate, pause and canary go through the lifecycle; the canary begins
+  testing, activation from paused is a resumption, and both send the state they were drawn
+  from. Deboarding a client deselects its modules.
+- A refusal at the last moment — a pause between the dispatcher's check and the send —
+  cancels the action instead of reporting a delivery failure.
+
+### Migration
+
+- 0015 does **not** carry an old activation over: a client that was switched on becomes
+  paused, needing a canary and an operator's resumption. Nothing is activated and nobody
+  is contacted. See DEPLOYMENT.md §2.
+
 ## [1.20.0] - 2026-09-23
 
 A tenant's configuration was one mutable row with a counter and no history. It

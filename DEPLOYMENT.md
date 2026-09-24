@@ -52,6 +52,60 @@ unaffected.
 To roll 0010 back, the exact statements are in a comment block at the top of
 the file.
 
+### 0014 — versioned configuration (ARC-110): the order matters
+
+0014 moves configuration out of `module_configs.config` into published versions
+(docs/architecture/ARC_VERSIONED_TENANT_CONFIGURATION_ENGINE.md). It copies each
+existing configuration into **drafts** — it cannot validate them in SQL, so it
+publishes nothing — and freezes the old column. Until the import below runs, a
+tenant configured the old way has **no published configuration**, and the new
+functions fail closed for it: leads are recorded with no run, and an inbound
+call to its number hears "not configured". So do these together:
+
+1. `supabase db push` (applies 0014).
+2. Deploy `ops`, `twilio`, `lead-intake` and `dispatch` from this release.
+3. As an operator, run the import and read its report:
+
+   ```json
+   { "action": "config-import-legacy" }
+   ```
+
+   `imported` — published as version 1, same effective behaviour as before.
+   `quarantined` — left as open drafts with field errors; fix through the Lead
+   Recovery panel's save button (or `config-draft-update` + `config-publish`).
+   `failed` — usually `number_claimed`: two tenants held the same Twilio number.
+4. Press **run a synthetic canary** for each imported tenant and confirm
+   `passed: true`, state `awaiting_reply`.
+
+Running the import twice is harmless. Nothing in 0014 rewrites an existing
+snapshot, run or action.
+
+### 0015 — the module lifecycle (ARC-120): previously live clients pause
+
+0015 gives every tenant module one lifecycle record and makes
+`module_configs.enabled` a mirror of it
+(docs/architecture/ARC_TENANT_MODULE_LIFECYCLE.md). The old switch never recorded
+which configuration it was turned on for, so the migration **does not carry an
+activation over**: a client that was switched on becomes **paused**, needing a
+retest, a review and a reactivation, and its switch turns off. A client that was
+configured but off becomes *configuring*. Nothing is activated and nobody is
+contacted. Apply it **with 0014**, in the same sitting:
+
+1. `supabase db push` (applies 0014 and 0015).
+2. Deploy `ops`, `twilio`, `lead-intake` and `dispatch` from this release.
+3. Run `config-import-legacy` (above). Each import is also evaluated by the
+   lifecycle; the first published configuration sets its baseline.
+4. For each client that was live: open the Lead Recovery panel, press **run a
+   synthetic canary** (a pass is recorded as evidence for exactly the published
+   versions), then **activate** — for a paused module that is a resumption, with
+   every gate re-checked. It refuses with every reason at once if anything is
+   missing.
+
+Until step 4, a previously live client records its leads and sends nothing, exactly
+as between steps 2 and 3 of 0014. Any legacy run still in flight cannot act (it was
+never authorised by a lifecycle); its handoffs and closes still run, and the
+customer's next contact starts a properly authorised run.
+
 ---
 
 ## 3. Edge functions
@@ -166,8 +220,9 @@ than transcribing from here.
 ### How a webhook finds its tenant
 
 **The number that was called owns the request.** `To` on a voice or SMS webhook
-is matched against `module_configs.config.twilio.phone_number`, and that is the
-entire routing rule.
+is matched against `twilio.phone_number` in each tenant's **current published**
+Lead Recovery configuration (0014), and that is the entire routing rule.
+Publishing a number another tenant's current version already holds is refused.
 
 There is no tenant id in the URL, no subaccount in a header and no query
 parameter, because every one of those is something a caller could change. A
@@ -187,12 +242,16 @@ override.
 
 ## 7. Onboarding a client
 
-In `/ops/console/clients/:tenantId`, the **lead recovery** panel. Eleven steps,
-eight required, in the order they are actually done:
+In `/ops/console/clients/:tenantId`, the **lead recovery** panel. First press
+**select lead recovery for this client** — selection is an explicit, audited
+operator act (ARC-120), and nothing can be tested or activated before it. Then
+eleven steps, eight required, in the order they are actually done:
 
 1. **tenant created** — the client exists and has a client ID.
 2. **business rules completed** — hours, services, service area, forwarding
-   destination, templates. Ticks itself when a valid config saves.
+   destination, templates. Ticks itself when a valid config saves. A save
+   publishes the changed parts as new versions (tenant settings, then Lead
+   Recovery); a form loaded before somebody else saved is refused — reload it.
 3. **staff destination verified** — somebody answered a test call on the
    forwarding number.
 4. **Twilio resources connected** — number and messaging service recorded.
@@ -203,15 +262,26 @@ eight required, in the order they are actually done:
 8. **consent process recorded** — how consent is captured, written down.
 9. **messaging compliance approved** — brand and campaign registered.
 10. **synthetic tests passed** — press *run a synthetic canary*. It goes end to
-    end with a recording sender, addressed to Twilio's reserved test number.
+    end with a recording sender, addressed to Twilio's reserved test number. The
+    first press begins *testing*; a pass is recorded as evidence bound to exactly
+    the published configuration versions it ran against.
 11. module activated — ticked by activation itself.
 
-Then press **activate**. If it refuses it prints every reason at once; there is
-no override.
+Then press **activate**. It authorises exactly the configuration versions the
+canary passed on. If it refuses it prints every reason at once; there is no
+override.
 
-To pause, press **pause**: new sequences stop and everything already queued is
-cancelled. Calls keep forwarding — switching a client's module off must never
-stop their phone ringing.
+To pause, press **pause**: new sequences stop and everything already queued that
+would reach somebody is cancelled (a handoff still opens, silently). Calls keep
+forwarding — switching a client's module off must never stop their phone ringing.
+
+**After a configuration change on a live client**, the save's response says what
+the lifecycle made of it. A change with no consequence (services, holidays,
+company name) stays live. A retest change (templates, hours, forwarding, staff
+alerts) keeps the module active but holds new leads until a canary passes on the
+new versions — in-flight sequences keep their approved words. A compliance,
+number or safety change pauses the module: canary (and for safety, shadow mode
+and a review), then activate.
 
 ### The website form
 
@@ -233,15 +303,27 @@ sitting.
 ## 8. Testing locally
 
 ```bash
-npm test          # 252 tests, node's own runner, zero dependencies
+npm test          # node's own runner, zero dependencies
 npm run build     # proves the bundle compiles
 npm run smoke     # renders every public page in a real browser
 ```
 
+The configuration engine's database suites (`tests/config-db.test.js`) apply
+every migration to real Postgres — PGlite, in-process, no Docker — and test RLS,
+the publish functions and the production adapter against it. They run when
+PGlite can be found and are reported `# SKIP` otherwise. Install it **outside**
+this checkout (an `npm i --no-save` here would prune `playwright-core`):
+
+```bash
+npm i --prefix ../pglite @electric-sql/pglite
+ARC_PGLITE_DIR=../pglite npm test
+```
+
 `npm test` runs the portal's derivations **and** the whole Lead Recovery engine
-— intake, replies, the dispatcher, retries, suppression, canaries, tenancy —
-against `MemoryStore` and recording senders. It touches no network, no
-database, no Twilio and no model. `node --test` strips the TypeScript natively,
+— intake, replies, the dispatcher, retries, suppression, canaries, tenancy,
+versioned configuration — against `MemoryStore` and recording senders. It
+touches no network, no Twilio and no model, and no database unless PGlite is
+provided as above. `node --test` strips the TypeScript natively,
 which is why `supabase/functions/_shared/**` carries no `jsr:` imports.
 
 `npm run smoke` needs a browser and `playwright-core`:

@@ -32,6 +32,7 @@ import {
 } from '../supabase/functions/_shared/engine/runtime.ts';
 import { RecordingSender } from '../supabase/functions/_shared/twilio.ts';
 import { supabaseDouble } from './supabase-double.js';
+import { lifecycleRows, publishedConfigRows, republish, seedPublishedConfig } from './config-fixtures.js';
 
 /* ── fixtures ───────────────────────────────────────────── */
 
@@ -66,9 +67,7 @@ function goodConfig(overrides = {}) {
 
 function configured({ enabled = true } = {}) {
   const store = new MemoryStore();
-  store.configs.push({
-    tenantId: TENANT_A, moduleKey: 'lead_recovery', enabled, schemaVersion: 1, configVersion: 3, config: goodConfig(),
-  });
+  seedPublishedConfig(store, { tenantId: TENANT_A, config: goodConfig(), enabled });
   return store;
 }
 
@@ -111,12 +110,36 @@ const runRow = (overrides = {}) => ({
   state: 'new',
   configVersion: 3,
   configSnapshotId: null,
+  /* a synthetic run, so the lifecycle's own rules (0015) stay out of the way of the pin's. */
+  runMode: 'test',
   stoppedAt: null,
   completedAt: null,
   stopReason: null,
   lastError: null,
   ...overrides,
 });
+
+/**
+ * A store whose tenant A has the synthetic lead `runRow()` names and a module under test —
+ * the lifecycle permits a test run, so every refusal below is the pin's alone.
+ */
+function contractStore() {
+  const store = new MemoryStore();
+  store.leads.push({
+    id: 'aaaaaaaa-0000-4000-8000-000000000002', tenantId: TENANT_A, correlationId: 'aaaaaaaa-0000-4000-8000-0000000000c0',
+    source: 'web_form', intakeRef: null, customerName: null, phone: null, email: null, serviceRequest: null,
+    locationZip: null, locationText: null, urgency: null, safetyFlags: [], aiSummary: null, status: 'new',
+    consentSms: false, consentSource: null, consentAt: null, assignedTo: null, bookingOutcome: null, bookedAt: null,
+    isCanary: true, createdAt: NOW.toISOString(), updatedAt: NOW.toISOString(),
+  });
+  store.lifecycles.push({
+    id: 'aaaaaaaa-0000-4000-8000-0000000000c1', tenantId: TENANT_A, moduleKey: 'lead_recovery', state: 'testing',
+    stateVersion: 2, pendingRequirements: [], observed: null, authorized: null, tested: null, testEvidenceId: null,
+    shadowed: null, shadowEvidenceId: null, healthStatus: 'unverified', healthReason: null, healthEvidence: {},
+    healthCheckedAt: null, createdAt: NOW.toISOString(), updatedAt: NOW.toISOString(),
+  });
+  return store;
+}
 
 async function snapshotIn(store, tenantId = TENANT_A, overrides = {}) {
   return store.createConfigSnapshot({
@@ -132,11 +155,16 @@ async function snapshotIn(store, tenantId = TENANT_A, overrides = {}) {
 
 /** Postgres with this tenant's configuration in it, seen through the production adapter. */
 function productionStore({ enabled = true } = {}) {
+  const versions = publishedConfigRows(TENANT_A, goodConfig());
   const db = supabaseDouble({
+    /* the switch row, and the published versions 0014 resolves configuration from. */
     module_configs: [{
       tenant_id: TENANT_A, module_key: 'lead_recovery', enabled,
-      schema_version: 1, config_version: 3, config: goodConfig(),
+      schema_version: 1, config_version: 1, config: {},
     }],
+    ...versions,
+    /* 0015: the lifecycle an operator left — live on these versions, or under test. */
+    ...lifecycleRows(TENANT_A, versions, { state: enabled ? 'active' : 'testing' }),
     tenants: [{ id: TENANT_A, status: 'active' }],
   });
   return { db, store: supabaseStore(db) };
@@ -157,7 +185,7 @@ describe('the production store persists the pin the engine hands it', () => {
   test('a run read back from Postgres is the run the engine created, field for field', async () => {
     /* the contract both stores must keep. before ARC-015B the production store handed
        back configSnapshotId: null for a run created with one. */
-    const memory = new MemoryStore();
+    const memory = contractStore();
     const snapshot = await snapshotIn(memory);
     const input = runRow({ configSnapshotId: snapshot.id });
 
@@ -248,25 +276,25 @@ describe('the production store persists the pin the engine hands it', () => {
 
 describe('a run is born pinned, to a snapshot it is entitled to', () => {
   test('a new run with no snapshot is refused', async () => {
-    const store = new MemoryStore();
+    const store = contractStore();
     await assert.rejects(store.createRun(runRow()), /must be pinned to a configuration snapshot/);
     assert.equal(store.runs.length, 0);
   });
 
   test("a run on another tenant's snapshot is refused", async () => {
-    const store = new MemoryStore();
+    const store = contractStore();
     const theirs = await snapshotIn(store, TENANT_B);
     await assert.rejects(store.createRun(runRow({ configSnapshotId: theirs.id })), /does not belong to tenant/);
   });
 
   test("a run on another module's snapshot is refused", async () => {
-    const store = new MemoryStore();
+    const store = contractStore();
     const other = await snapshotIn(store, TENANT_A, { moduleKey: 'estimate_recovery' });
     await assert.rejects(store.createRun(runRow({ configSnapshotId: other.id })), /snapshot is for module estimate_recovery/);
   });
 
   test('a run on a schema version the registry does not list is refused', async () => {
-    const store = new MemoryStore();
+    const store = contractStore();
     const odd = await snapshotIn(store, TENANT_A, { schemaVersion: 7 });
     await assert.rejects(
       store.createRun(runRow({ configSnapshotId: odd.id })),
@@ -275,14 +303,14 @@ describe('a run is born pinned, to a snapshot it is entitled to', () => {
   });
 
   test('a tenant-owned, registered snapshot creates a pinned run', async () => {
-    const store = new MemoryStore();
+    const store = contractStore();
     const snapshot = await snapshotIn(store);
     const run = await store.createRun(runRow({ configSnapshotId: snapshot.id }));
     assert.equal(run.configSnapshotId, snapshot.id);
   });
 
   test("a run's pin cannot be changed or cleared", async () => {
-    const store = new MemoryStore();
+    const store = contractStore();
     const first = await snapshotIn(store);
     const second = await snapshotIn(store, TENANT_A, { configHash: 'c'.repeat(64) });
     const run = await store.createRun(runRow({ configSnapshotId: first.id }));
@@ -299,7 +327,7 @@ describe('a run is born pinned, to a snapshot it is entitled to', () => {
 
 describe("an action carries exactly its run's pin", () => {
   async function pinnedRun() {
-    const store = new MemoryStore();
+    const store = contractStore();
     const snapshot = await snapshotIn(store);
     const run = await store.createRun(runRow({ configSnapshotId: snapshot.id }));
     return { store, snapshot, run };
@@ -428,9 +456,8 @@ describe('every action the engine queues is pinned to its run', () => {
     const followup = store.actions.find((a) => a.actionType === 'send_followup');
     const pin = followup.configSnapshotId;
 
-    /* the operator renames the company while the follow-up is waiting. */
-    store.configs[0].config = { ...store.configs[0].config, company_name: 'Somebody Else Entirely' };
-    store.configs[0].configVersion = 4;
+    /* the operator renames the company while the follow-up is waiting — a new version. */
+    await republish(store, TENANT_A, { company_name: 'Somebody Else Entirely' });
 
     followup.runAt = NOW.toISOString();
     await runDueActions(d, { tenantId: null });

@@ -66,7 +66,8 @@
  *   lead-recovery-get               everything the panel draws, in one round trip
  *   lead-recovery-validate-config   validate without writing (the console calls this
  *                                   as the operator types)
- *   lead-recovery-save-config       validate, then store the NORMALISED object
+ *   lead-recovery-save-config       validate, then publish the changed scopes as new
+ *                                   versions (0014) — needs the versions the form read
  *   lead-recovery-set-step          tick or reopen an onboarding step
  *   lead-recovery-activate          fail-closed: refuses until every required step and
  *                                   every compliance condition is satisfied
@@ -80,6 +81,20 @@
  *   lead-recovery-book              record the outcome of a lead
  *   lead-recovery-suppress          add a contact to the do-not-message list
  *   lead-recovery-issue-intake-key  issue or rotate a website form's public key
+ *
+ * Versioned configuration — ARC-110's engine (migration 0014). Every one is documented
+ * in ./config.ts; drafts, publication, rollback and resolution for both the
+ * tenant-wide settings (`scope: "tenant"`) and a module (`scope: "module"`,
+ * `module_key`):
+ *
+ *   config-get · config-history · config-version · config-resolve
+ *   config-draft-create · config-draft-get · config-draft-update · config-draft-validate
+ *   config-draft-preview · config-draft-discard · config-publish · config-rollback
+ *   config-import-legacy
+ *
+ *   Every write carries the version or revision the caller read, and a stale one is a
+ *   409 with `code`, never a silent overwrite. `lead-recovery-save-config` above now
+ *   publishes through the same engine.
  *
  *   { "action": "capabilities" }
  *     which of the above this deployment knows. The console asks, so a stale
@@ -104,6 +119,11 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { handleLeadRecoveryAction, LEAD_RECOVERY_ACTIONS } from './lead-recovery.ts';
+import { CONFIG_ACTIONS, handleConfigAction } from './config.ts';
+import { handleLifecycleAction, LIFECYCLE_ACTIONS as MODULE_LIFECYCLE_ACTIONS } from './lifecycle.ts';
+import { supabaseStore } from '../_shared/supabase-store.ts';
+import { deselectModule } from '../_shared/lifecycle/engine.ts';
+import { parseLifecycleState } from '../_shared/lifecycle/model.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -147,6 +167,8 @@ const ACTIONS = [
   ...LIFECYCLE_ACTIONS,
   ...PROBE_ACTIONS,
   ...LEAD_RECOVERY_ACTIONS,
+  ...CONFIG_ACTIONS,
+  ...MODULE_LIFECYCLE_ACTIONS,
 ];
 
 const RESTORE_STATUSES = ['onboarding', 'active', 'paused'];
@@ -286,6 +308,52 @@ Deno.serve(async (request) => {
     });
     if (error) console.error('audit write failed', verb, error.message);
     return !error;
+  }
+
+  // ── versioned configuration (0014) ────────────────────────────────────
+
+  /* delegated whole, like lead recovery below. the actor is the verified token's user,
+     and publish_config_draft checks it against arc_admins again inside the database. */
+  if (CONFIG_ACTIONS.includes(action)) {
+    try {
+      const result = await handleConfigAction(action, {
+        store: supabaseStore(db),
+        body: body as unknown as Record<string, unknown>,
+        actorId,
+        audit,
+      });
+      return json(result.body, result.status);
+    } catch (error) {
+      const message = (error as Error)?.message ?? 'the action failed';
+      if (/relation .*(config_versions|config_drafts|config_heads|registry_config_schemas).* does not exist/i.test(message)) {
+        return json({ error: 'versioned configuration needs supabase/migrations/0014_versioned_configuration.sql applied first', detail: message }, 501);
+      }
+      console.error(`config action ${action} failed`, error);
+      return json({ error: message }, 500);
+    }
+  }
+
+  // ── module lifecycle (0015) ───────────────────────────────────────────
+
+  /* delegated whole, like configuration above. the actor is the verified token's user,
+     and apply_tenant_module_transition checks it against arc_admins again inside the
+     database and writes its own audit row. */
+  if (MODULE_LIFECYCLE_ACTIONS.includes(action)) {
+    try {
+      const result = await handleLifecycleAction(action, {
+        store: supabaseStore(db),
+        body: body as unknown as Record<string, unknown>,
+        actorId,
+      });
+      return json(result.body, result.status);
+    } catch (error) {
+      const message = (error as Error)?.message ?? 'the action failed';
+      if (/relation .*(tenant_modules|tenant_module_transitions|tenant_module_evidence|lifecycle_transition_rules).* does not exist|apply_tenant_module_transition/i.test(message)) {
+        return json({ error: 'the module lifecycle needs supabase/migrations/0015_tenant_module_lifecycle.sql applied first', detail: message }, 501);
+      }
+      console.error(`lifecycle action ${action} failed`, error);
+      return json({ error: message }, 500);
+    }
   }
 
   // ── lead recovery (0010) ──────────────────────────────────────────────
@@ -720,6 +788,35 @@ Deno.serve(async (request) => {
       }
     }
 
+    /* every module this client had selected is deselected through its lifecycle (ARC-120):
+       queued live work is cancelled in the same transaction as the history row that says
+       why, and configuration, evidence and history are kept. the engine already refuses
+       to act for an archived client; this makes the record say so too. like the logins,
+       it runs after the deboarding committed and never undoes it. restoring a client
+       selects nothing again — selection is always an operator's explicit act. */
+    const modulesDeselected: { module_key: string; ok: boolean; detail?: string }[] = [];
+    try {
+      const store = supabaseStore(db);
+      for (const lifecycle of await store.listLifecycles(tenantId)) {
+        const state = parseLifecycleState(lifecycle.state);
+        if (!state || state === 'unselected') continue;
+        const result = await deselectModule(store, {
+          tenantId,
+          moduleKey: lifecycle.moduleKey,
+          actor: { type: 'operator', id: actorId ?? '' },
+          expectedStateVersion: lifecycle.stateVersion,
+          idempotencyKey: `deboard:${tenantId}:${lifecycle.moduleKey}:${lifecycle.stateVersion}`,
+          reason: `client deboarded: ${reason}`.slice(0, 300),
+        });
+        modulesDeselected.push(result.ok
+          ? { module_key: lifecycle.moduleKey, ok: true }
+          : { module_key: lifecycle.moduleKey, ok: false, detail: result.message });
+      }
+    } catch (error) {
+      /* 0015 not applied yet: there is no lifecycle to record against. */
+      modulesDeselected.push({ module_key: '*', ok: false, detail: (error as Error)?.message ?? 'lifecycle unavailable' });
+    }
+
     const logged = await audit('client.deboarded', 'tenant', tenantId, {
       name: tenant.name,
       client_id: tenant.client_id,
@@ -729,6 +826,7 @@ Deno.serve(async (request) => {
       access_removed: data?.members_removed ?? 0,
       connections_retired: data?.connections_retired ?? 0,
       logins_deleted: loginsDeleted.length,
+      modules_deselected: modulesDeselected.filter((m) => m.ok).map((m) => m.module_key),
     });
 
     return json(
@@ -740,6 +838,7 @@ Deno.serve(async (request) => {
         connections_retired: data?.connections_retired ?? 0,
         logins_deleted: loginsDeleted.length,
         logins_kept: loginsKept,
+        modules_deselected: modulesDeselected,
         logged,
       },
       200,
