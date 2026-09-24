@@ -7,8 +7,44 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.22.0] - 2026-09-24
+
+The roadmap lived in a Markdown file that had to be pasted into a chat every time someone
+wanted to ask what came next. The ops console now has an **ARC Roadmap Assistant**: a
+small docked panel that answers roadmap questions from
+`docs/architecture/ARC_IMPLEMENTATION_ROADMAP.md`, cites the sections it relied on, and
+says "I can't find that in the current roadmap" when the file has no answer. It can't
+change anything.
+
 ### Added
 
+- **The canonical roadmap**, at `docs/architecture/ARC_IMPLEMENTATION_ROADMAP.md`: the
+  2026-09-23 "UPDATED" handoff, byte for byte. The `UPDATED(2)` successor wasn't
+  available, so anything that exists only in it (for example, which ARC-LR prompt builds
+  the Lead Recovery workflow) isn't known until that file replaces this one.
+- **`roadmap-status` and `roadmap-ask` on the `ops` function**, behind the same
+  `is_arc_admin()` check as every other ops action. The function reads the roadmap from
+  `main` when a question arrives, so a pushed roadmap edit is the next answer's source,
+  with no function redeploy and no index to rebuild. It sends the model the current-state
+  sections plus the best-matching ones, never the whole file, and checks the reply before
+  it is shown. An answer that cites nothing it was given, names a prompt ID the excerpts
+  don't contain, or states a date they don't contain is withheld, whatever the question
+  asked for. A question the roadmap can't touch is answered without calling a model.
+  Rate-limited per operator, and it logs metadata only, never the question or the answer.
+- **The panel** (`RoadmapAssistant`), in `/ops/console` only: starter questions, the
+  roadmap's revision date and digest, "Source: §n …" under every answer, retry, new chat,
+  Escape to close, and a bottom sheet on phones. Replies are rendered from parsed data,
+  never as HTML. It is also in ⌘K as "ask the roadmap assistant".
+- `npm run roadmap:ask -- "…"`, which shows the sections a question would send, read fresh
+  from the working-tree file (add `--live` for the answer, using your own key).
+- `docs/architecture/ARC_ROADMAP_ASSISTANT.md`: how to update the roadmap, who can use the
+  assistant, configuration, limits and tests.
+- 81 tests in `tests/roadmap-assistant.test.js` and `tests/roadmap-ui.test.js`: golden
+  questions on a frozen copy of the roadmap; an edited copy producing an edited answer;
+  prompt injection; provider and source failures; operator denial; the component's
+  keyboard and ARIA contract; and proof, from the site's import graph, that neither the
+  roadmap nor the model key reaches the browser bundle. One more test fails if a prompt ID
+  is ever written into the assistant's code.
 - **Every finished prompt now says whether the change is visible on
   arcautomation.site or is backend only.** `scripts/site-impact.mjs` reads the answer
   off the import graph, walked from `index.html`, from each route's page and from each
@@ -21,6 +57,18 @@ documented here. Format loosely follows
   line in CLAUDE.md make the closing reply of each turn say the same.
 - `tests/site-impact.test.js`, against a throwaway repo built in a temp directory, so it
   says nothing about, and is not broken by, whatever else is being edited.
+
+### Changed
+
+- The `ops` function's operator check moved into `_shared/operator-gate.ts`, word for word,
+  so a test can hold it: 401 without a session, 403 for a non-operator, 500 if the check
+  itself fails.
+
+### Deploy
+
+- Run `supabase functions deploy ops` once, for the two new actions. It reuses
+  `ANTHROPIC_API_KEY`; `ARC_ROADMAP_MODEL`, `ARC_ROADMAP_SOURCE_URL` and
+  `ARC_ROADMAP_CACHE_SECONDS` are optional.
 
 ## [1.21.0] - 2026-09-23
 

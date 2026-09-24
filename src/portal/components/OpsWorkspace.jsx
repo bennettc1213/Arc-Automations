@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import CommandPalette from './CommandPalette';
 import Icon from './Icon';
+import RoadmapAssistant from './RoadmapAssistant';
 import Roster from '../pages/ops/Roster';
 import Clients from '../pages/ops/Clients';
 import ClientDetail from '../pages/ops/ClientDetail';
@@ -105,6 +106,7 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, onRel
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [roadmapOpen, setRoadmapOpen] = useState(false);
   const [probe, setProbe] = useState({ kind: 'checking', result: null, error: null });
   const location = useLocation();
   const navigate = useNavigate();
@@ -247,6 +249,7 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, onRel
       { label: 'check every pipeline now', icon: 'pulse', run: runProbe },
       { label: 'generate a client id', icon: 'identity', run: () => navigate(`${base}/identity`) },
       { label: 'reload the roster', icon: 'refresh', run: onReload },
+      { label: 'ask the roadmap assistant', icon: 'support', run: () => setRoadmapOpen(true) },
       { label: 'open the client demo', icon: 'external', run: () => navigate('/demo') },
     ];
     if (onSignOut) list.push({ label: 'sign out', icon: 'signout', run: onSignOut });
@@ -395,6 +398,10 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, onRel
         placeholder="search a client, a client id, a page…"
         emptyHint="clients are searchable by name, company, slug and client id."
       />
+
+      {/* answers questions about the canonical roadmap from the ops function. operators
+          only — this shell never renders for anyone else, and ops refuses them anyway. */}
+      <RoadmapAssistant open={roadmapOpen} onOpenChange={setRoadmapOpen} />
     </div>
   );
 }

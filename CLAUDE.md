@@ -128,6 +128,16 @@ and nothing else: green only on evidence from the live check or the event log,
 never from a status somebody typed. Past (archived) clients are split off in
 `OpsWorkspace` and left out of every total.
 
+## The roadmap (`docs/architecture/ARC_IMPLEMENTATION_ROADMAP.md`)
+
+The canonical ARC implementation roadmap, and the only knowledge of the console's
+**Roadmap Assistant** (`ops` actions `roadmap-status` / `roadmap-ask`,
+`_shared/roadmap/`, `RoadmapAssistant.jsx`). A new revision replaces this file in place.
+The function reads it from `main` at request time, so pushing is the update and there is
+nothing to regenerate. Never write a roadmap fact into the assistant's code: a test fails
+on any `ARC-nnn` identifier there. Answers that cite nothing, or name an ID or date the
+excerpts lack, are withheld. See [docs/architecture/ARC_ROADMAP_ASSISTANT.md](docs/architecture/ARC_ROADMAP_ASSISTANT.md).
+
 ## Shipping
 
 Pushing `main` **is** the deploy (`.github/workflows/deploy.yml`), and this repo

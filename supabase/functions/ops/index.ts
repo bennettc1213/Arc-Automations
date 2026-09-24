@@ -96,6 +96,16 @@
  *   409 with `code`, never a silent overwrite. `lead-recovery-save-config` above now
  *   publishes through the same engine.
  *
+ * Roadmap assistant — read-only, so not audited. Documented in ./roadmap.ts and
+ * docs/architecture/ARC_ROADMAP_ASSISTANT.md:
+ *
+ *   roadmap-status   which roadmap is loaded (digest, revision date), whether a model is set
+ *   roadmap-ask      { question, history? } answered from the canonical roadmap alone
+ *
+ *     The knowledge is docs/architecture/ARC_IMPLEMENTATION_ROADMAP.md as it is on `main`,
+ *     read at request time — pushing a roadmap edit updates it, with no redeploy of this
+ *     function. It answers questions and has no way to change anything.
+ *
  *   { "action": "capabilities" }
  *     which of the above this deployment knows. The console asks, so a stale
  *     deploy is reported as "redeploy the ops function" rather than as a
@@ -104,6 +114,7 @@
  * Authorisation is the caller's own JWT checked against public.arc_admins, via
  * the same is_arc_admin() the row level security policies use. There is exactly
  * one definition of "is this Ben" in the system and this is not a second one.
+ * (The HTTP side of that check is ../_shared/operator-gate.ts, so a test can hold it.)
  *
  * Every action that changes something writes a row to public.admin_actions
  * before it returns. That write happens here rather than in the browser for the
@@ -115,12 +126,19 @@
  *          supabase secrets set N8N_API_URL=https://you.app.n8n.cloud N8N_API_KEY=...
  *          (optional: without them the probe still checks ingest, tokens, events
  *          and /healthz, and says the workflows could not be asked.)
+ *          The roadmap assistant uses ANTHROPIC_API_KEY, the secret Lead Recovery
+ *          already reads; ARC_ROADMAP_MODEL, ARC_ROADMAP_SOURCE_URL and
+ *          ARC_ROADMAP_CACHE_SECONDS are optional overrides.
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { handleLeadRecoveryAction, LEAD_RECOVERY_ACTIONS } from './lead-recovery.ts';
 import { CONFIG_ACTIONS, handleConfigAction } from './config.ts';
 import { handleLifecycleAction, LIFECYCLE_ACTIONS as MODULE_LIFECYCLE_ACTIONS } from './lifecycle.ts';
+import { createRoadmapLimiter, handleRoadmapAction, ROADMAP_ACTIONS } from './roadmap.ts';
+import { operatorGate } from '../_shared/operator-gate.ts';
+import { roadmapModelFor } from '../_shared/roadmap/model.ts';
+import { createRoadmapSource } from '../_shared/roadmap/source.ts';
 import { supabaseStore } from '../_shared/supabase-store.ts';
 import { deselectModule } from '../_shared/lifecycle/engine.ts';
 import { parseLifecycleState } from '../_shared/lifecycle/model.ts';
@@ -144,6 +162,20 @@ const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
 const PUBLIC_FUNCTIONS_BASE = (
   Deno.env.get('ARC_PUBLIC_FUNCTIONS_URL') ?? `${SUPABASE_URL}/functions/v1`
 ).replace(/\/+$/, '');
+
+/* the roadmap assistant. held at module scope so the roadmap is cached across requests on
+   one instance; the model gets the same Anthropic key Lead Recovery uses, and none of it is
+   ever returned. */
+const roadmapCacheSeconds = Number(Deno.env.get('ARC_ROADMAP_CACHE_SECONDS') ?? '60');
+const roadmapSource = createRoadmapSource({
+  url: Deno.env.get('ARC_ROADMAP_SOURCE_URL') || null,
+  ttlMs: Number.isFinite(roadmapCacheSeconds) && roadmapCacheSeconds >= 0 ? roadmapCacheSeconds * 1000 : 60_000,
+});
+const roadmapModel = roadmapModelFor({
+  anthropicKey: ANTHROPIC_API_KEY || null,
+  model: Deno.env.get('ARC_ROADMAP_MODEL') || null,
+});
+const roadmapLimiter = createRoadmapLimiter();
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -169,14 +201,15 @@ const ACTIONS = [
   ...LEAD_RECOVERY_ACTIONS,
   ...CONFIG_ACTIONS,
   ...MODULE_LIFECYCLE_ACTIONS,
+  ...ROADMAP_ACTIONS,
 ];
 
 const RESTORE_STATUSES = ['onboarding', 'active', 'paused'];
 
-function json(body: unknown, status: number) {
+function json(body: unknown, status: number, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json', ...CORS },
+    headers: { 'Content-Type': 'application/json', ...CORS, ...headers },
   });
 }
 
@@ -248,25 +281,18 @@ Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (request.method !== 'POST') return json({ error: 'use POST' }, 405);
 
-  const authorization = request.headers.get('authorization');
-  if (!authorization) return json({ error: 'not signed in' }, 401);
-
   /* the caller's own client, carrying the caller's own JWT. is_arc_admin()
      resolves auth.uid() from that token, so this asks postgres the question
-     rather than deciding it here off a claim. */
-  const asCaller = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: authorization } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  const { data: isAdmin, error: adminError } = await asCaller.rpc('is_arc_admin');
-  if (adminError) return json({ error: 'authorisation check failed' }, 500);
-  if (!isAdmin) return json({ error: 'not an arc admin' }, 403);
-
-  /* who is acting, for the audit row. taken from the verified token rather than
-     from anything in the body — an actor a caller can name is not an actor. */
-  const { data: caller } = await asCaller.auth.getUser();
-  const actorId = caller?.user?.id ?? null;
+     rather than deciding it here off a claim. the actor, for the audit row, comes
+     from the same verified token. */
+  const gate = await operatorGate(request.headers.get('authorization'), (authorization) =>
+    createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: authorization } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    }),
+  );
+  if (!gate.ok) return json({ error: gate.error }, gate.status);
+  const actorId = gate.actorId;
 
   let body: Body;
   try {
@@ -278,6 +304,21 @@ Deno.serve(async (request) => {
   const action = body.action ?? '';
   if (!ACTIONS.includes(action)) {
     return json({ error: 'unknown action' }, 400);
+  }
+
+  // ── roadmap assistant (read-only) ─────────────────────────────────────
+
+  /* before the service-role client exists: answering a roadmap question needs no database
+     and gets none. */
+  if (ROADMAP_ACTIONS.includes(action)) {
+    const result = await handleRoadmapAction(action, {
+      body: body as unknown as Record<string, unknown>,
+      actorId,
+      source: roadmapSource,
+      model: roadmapModel,
+      limiter: roadmapLimiter,
+    });
+    return json(result.body, result.status, result.headers);
   }
 
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
