@@ -69,6 +69,59 @@ forward, retest holds new runs, compliance/number/safety pauses. Publication nev
 activates, the system never un-pauses, and no run is ever repinned. Legal transitions
 live in one list (`LIFECYCLE_TRANSITIONS`), drift-tested against 0015.
 
+**A tenant's provider credentials live in Supabase Vault and nowhere else** (`0016`,
+`_shared/connections/`, ARC-130; decision ADR ARC-010 §20a). `provider_connections` holds
+metadata only; the Vault references and OAuth sessions are in `arc_private`, which no API
+role can reach. 0016 asserts that, and refuses to apply without Vault. There is no "get secret" —
+`withProviderCredential` resolves one credential for one named operation on a connection
+verified for that capability. A token is not readiness: only `verified`/`degraded` serve,
+and ARC-120 reads the live connection rows at every check. A lost connection pauses the
+active modules that needed it; recovery never resumes one. Tests use the synthetic providers
+on `.invalid` hosts and `TestCredentialStore`, both refusing production, and an unset
+`ARC_ENVIRONMENT` counts as production. Log only through `safeLog`; hold secrets only as
+`SecretValue`. Not production-ready until the hosted Vault checklist
+(docs/architecture/ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md §15) passes.
+
+**ARC's durable execution is one queue with two dispatchers** (`0017`, `_shared/scheduler/`,
+ARC-200). `automation_runs` / `scheduled_actions` are 0010's tables, now platform-wide: runs
+that are not lead conversations, a reviewed vocabulary of action types
+(`automation_action_types`, drift-tested against `scheduler/model.ts`), and an attempt row
+per claim (`automation_action_attempts`), which is never deleted or rewritten. Each type names
+its dispatcher, and each claim path takes only its own. The Lead Recovery engine claims its
+seven types and decides a pause at execution, cancelling contact. The scheduler's claim
+re-reads a gate (run, tenant, lifecycle for the run's mode, health, connection) at the claim
+and again at the start, and holds paused work rather than cancelling it. An external effect
+is recorded as started before its outcome is accepted, and an ambiguous outcome, including
+a lease that expired mid-effect, blocks the action until an operator reconciles it. Retries
+back off by type and dead-letter at the cap. There is no in-memory scheduler store; test it
+on real SQL (`tests/scheduler-db.test.js`).
+
+**A runner moves authorised work; it never decides, configures, holds a credential or writes
+state** (`_shared/runner/`, ARC-210, ADR ARC-010 §30). The orchestrator claims → starts →
+dispatches a references-only `RunnerRequest` with a deadline → settles through the scheduler
+service; `settlementFor` is the only place a runner's report becomes an outcome, and an
+external effect whose outcome is unknown (timeout, exception, garbled result) is ambiguous,
+never failed. An unknown runner kind is refused, never substituted. Every runner passes
+`tests/runner-contract.js`; `FakeTestRunner` refuses production like ARC-130's doubles.
+
+**The n8n bridge is built and disabled in production** (`0018`, `_shared/n8n-runner/`,
+`runner-bridge`, ARC-220; ADR §15/§18/§19/§26). `N8nRunner` and the inbound handlers refuse
+production, including an unset `ARC_ENVIRONMENT`, until the licensing gate is closed by a
+recorded decision — never by editing code quietly. A dispatch is identifiers only, recorded
+before it leaves; n8n learns the payload only from a signed, one-time envelope that
+`open_runner_envelope` refuses (and voids) once the gate no longer allows the action. So a
+voided dispatch whose envelope never opened provably did nothing, and is retried; anything
+else unknown is ambiguous. Inbound: HMAC before parse, nonce once, tenant from ARC's rows.
+
+**Which workflow runs is ARC's assignment, never the runner's config** (`0019`,
+`n8n/manifest.json`, `_shared/n8n-runner/{manifest,workflows,sync}.ts`, ARC-230; ADR §21/§29).
+A version is registered from the source-controlled manifest, approved, deployed per environment
+(the only table holding an n8n id) and assigned to one action type of one module version; a
+reassignment retires the old row, and every dispatch records the assignment, checksum and error
+handler it ran under, immutably. A module registered `direct` or n8n-`prohibited` — Lead
+Recovery v1 — is never assigned one, so it can never be dispatched to n8n. The checksum is over
+behaviour, not ids or layout; `checkWorkflowSync` reports drift and changes nothing.
+
 Requires `supabase/migrations/0003_client_ids_and_ops.sql` plus the
 `client-login` and `ops` edge functions; the console's Supabase page probes for
 all of it and says what is missing. Deboarding and restore need `0007`; service

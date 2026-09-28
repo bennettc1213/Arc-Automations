@@ -19,7 +19,7 @@ export * from './schemas.ts';
 export * from './resolve.ts';
 
 import { getModuleVersion, latestSelectableModuleVersion, type ModuleVersion } from './modules.ts';
-import { getConfigSchema, type ConfigSchema } from './schemas.ts';
+import { getConfigSchema, validateConfigSchemas, type ConfigSchema } from './schemas.ts';
 import { validateConnectorRegistry } from './connectors.ts';
 import { validateModuleRegistry } from './modules.ts';
 
@@ -45,7 +45,9 @@ export function resolveModuleRuntime(moduleKey: string, version?: number): Resol
   if (!moduleVersion || !moduleVersion.configSchemaKey) return null;
 
   const schema = getConfigSchema(moduleVersion.configSchemaKey, moduleVersion.configSchemaVersion ?? undefined);
-  if (!schema) return null;
+  /* a module may only ever resolve to a module-scope schema. naming the tenant settings
+     schema would let a module version validate against the wrong document entirely. */
+  if (!schema || schema.scope !== 'module') return null;
 
   return { version: moduleVersion, schema };
 }
@@ -65,4 +67,5 @@ export function validatorFor(moduleKey: string, version?: number): ConfigSchema[
 export function validateRegistries(): void {
   validateModuleRegistry();
   validateConnectorRegistry();
+  validateConfigSchemas();
 }

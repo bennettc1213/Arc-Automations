@@ -29,6 +29,7 @@ import type { ConfigStore } from '../config/store.ts';
 import { MemoryLifecycleStore } from '../lifecycle/memory.ts';
 import { LifecycleStoreError, type RunMode } from '../lifecycle/model.ts';
 import type { LifecycleStore } from '../lifecycle/store.ts';
+import type { ConnectionStore } from '../connections/store.ts';
 import { SELECTABLE_STATUSES } from '../registry/capabilities.ts';
 import { getModule } from '../registry/modules.ts';
 import type { RunState, StopReason } from './state-machine.ts';
@@ -360,7 +361,7 @@ export interface IntakeKeyRow {
 
 /* ── the interface ──────────────────────────────────────── */
 
-export interface EngineStore extends ConfigStore, LifecycleStore {
+export interface EngineStore extends ConfigStore, LifecycleStore, ConnectionStore {
   /* the module switch, a mirror of `tenant_modules.state = 'active'` since 0015 — read by
      nothing that decides. configuration itself is resolved from versions (ConfigStore). */
   getConfig(tenantId: string, moduleKey?: string): Promise<TenantConfigRow | null>;

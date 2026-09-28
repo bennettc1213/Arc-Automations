@@ -16,7 +16,7 @@
  * declared here for that reason and filled by `MemoryStore`.
  */
 
-import { MemoryConfigStore } from '../config/memory.ts';
+import { MemoryConnectionStore } from '../connections/memory.ts';
 import type { ActionRow, ConfigSnapshotRow, IntakeKeyRow, LeadRow, RunRow } from '../engine/store.ts';
 import { getModule, getModuleVersion, isSelectable } from '../registry/modules.ts';
 import { classifyChain, versionsBetween } from './impact.ts';
@@ -53,7 +53,7 @@ const refuse = (code: ConstructorParameters<typeof LifecycleStoreError>[0], mess
 /** Action types that put a person on a lead or close it out — bookkeeping, not contact. */
 const BOOKKEEPING_ACTIONS = ['open_handoff', 'close_run'];
 
-export class MemoryLifecycleStore extends MemoryConfigStore implements LifecycleStore {
+export class MemoryLifecycleStore extends MemoryConnectionStore implements LifecycleStore {
   /* the operational tables 0015's guards read. `MemoryStore` owns their behaviour. */
   intakeKeys: IntakeKeyRow[] = [];
   leads: LeadRow[] = [];

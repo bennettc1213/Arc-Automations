@@ -48,11 +48,15 @@ import {
   validateConnectorRegistry,
 } from '../supabase/functions/_shared/registry/connectors.ts';
 import {
+  CONFIG_SCHEMAS,
   LEAD_RECOVERY_SCHEMA,
+  TENANT_SETTINGS_SCHEMA,
   changeImpact,
   editableFields,
   getConfigSchema,
   getField,
+  ownFields,
+  tenantOwnedFields,
 } from '../supabase/functions/_shared/registry/schemas.ts';
 import {
   evaluateCapabilities,
@@ -763,5 +767,70 @@ describe('0012 protects the registry in SQL', () => {
   test('no secret is stored, and the schema refuses secret-shaped text', () => {
     assert.match(SQL, /registry_connector_versions_no_secrets/);
     assert.ok(!/AC[0-9a-f]{32}|sk-[A-Za-z0-9]{20}|SK[0-9a-f]{32}/.test(SQL));
+  });
+});
+
+/* ══ ARC-110: configuration scopes ════════════════════════ */
+
+describe('configuration schemas carry their scope, and fields their owner', () => {
+  const SQL_0014 = readFileSync(new URL('../supabase/migrations/0014_versioned_configuration.sql', import.meta.url), 'utf8');
+
+  test('the tenant settings schema is registered, at tenant scope, and Lead Recovery at module scope', () => {
+    assert.equal(TENANT_SETTINGS_SCHEMA.scope, 'tenant');
+    assert.equal(getConfigSchema('tenant_settings', 1), TENANT_SETTINGS_SCHEMA);
+    assert.equal(LEAD_RECOVERY_SCHEMA.scope, 'module');
+    assert.deepEqual(CONFIG_SCHEMAS.filter((s) => s.scope === 'tenant'), [TENANT_SETTINGS_SCHEMA], 'exactly one');
+  });
+
+  test('a module never resolves to the tenant settings schema', () => {
+    for (const module of MODULES) {
+      const runtime = resolveModuleRuntime(module.key);
+      if (runtime) assert.equal(runtime.schema.scope, 'module', module.key);
+    }
+  });
+
+  test('every field Lead Recovery takes from the tenant is the tenant field, flag for flag', () => {
+    validateRegistries();
+    const owned = LEAD_RECOVERY_SCHEMA.fields.filter((f) => f.ownerScope === 'tenant');
+    assert.deepEqual(owned.map((f) => f.key), tenantOwnedFields('lead_recovery_config'));
+    assert.deepEqual(owned.map((f) => f.key).sort(), TENANT_SETTINGS_SCHEMA.fields.map((f) => f.key).sort());
+    for (const field of owned) {
+      const { ownerScope, ...rest } = field;
+      assert.equal(ownerScope, 'tenant');
+      assert.deepEqual(rest, { ...getField('tenant_settings', field.key) });
+    }
+  });
+
+  test('the module document and the tenant document never share a key', () => {
+    const moduleKeys = ownFields('lead_recovery_config').map((f) => f.key);
+    const tenantKeys = ownFields('tenant_settings').map((f) => f.key);
+    assert.deepEqual(moduleKeys.filter((k) => tenantKeys.includes(k)), []);
+    assert.deepEqual([...moduleKeys, ...tenantKeys].sort(), Object.keys(defaultConfig()).sort(),
+      'between them they are the whole effective configuration');
+  });
+
+  test('no tenant setting is client editable either', () => {
+    assert.deepEqual(editableFields('tenant_settings', 'client'), []);
+    assert.deepEqual(editableFields('tenant_settings', 'operator').map((f) => f.key).sort(), ['company_name', 'timezone']);
+  });
+
+  test('the tenant settings validator keeps the credential and unknown-key refusals', () => {
+    const tenant = TENANT_SETTINGS_SCHEMA.validate({ company_name: 'Halstead', timezone: 'America/Denver' });
+    assert.equal(tenant.ok, true);
+    assert.equal(TENANT_SETTINGS_SCHEMA.validate({ company_name: 'Halstead', timezone: 'America/Denver', webhook: 'x' }).ok, false);
+    const secret = TENANT_SETTINGS_SCHEMA.validate({ company_name: 'Bearer abcdefghijk', timezone: 'America/Denver' });
+    assert.equal(secret.ok, false);
+    assert.match(secret.errors.join(' '), /bearer token/);
+    assert.equal(TENANT_SETTINGS_SCHEMA.validate({ company_name: 'Halstead' }).ok, false, 'no default timezone at tenant scope');
+  });
+
+  test('every module version the SQL registry seeds names a schema 0014 registers at module scope', () => {
+    const seeded = new Set([...SQL_0014.matchAll(/\('(\w+)',\s*(\d+),\s*'module'/g)].map((m) => `${m[1]}@${m[2]}`));
+    for (const module of MODULES) {
+      for (const version of module.versions) {
+        if (!version.configSchemaKey) continue;
+        assert.ok(seeded.has(`${version.configSchemaKey}@${version.configSchemaVersion}`), `${module.key}@${version.version}`);
+      }
+    }
   });
 });

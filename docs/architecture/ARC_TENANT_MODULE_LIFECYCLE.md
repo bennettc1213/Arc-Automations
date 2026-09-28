@@ -111,7 +111,12 @@ and a deboarding's deselection `deboard:<tenant>:<module>:<version>`.
 | **Test evidence** | `tested_*` = the current versions, with `test_evidence_id` a **passing test-mode run pinned to exactly them** | `test_evidence_missing` ("ran against an earlier configuration" when stale) |
 | **Shadow evidence** | when the registry version `requiresShadowMode` or `shadow` is pending: `shadow_*` = current versions, with a passing operator review | `shadow_evidence_missing`, `shadow_observations_missing` |
 
-**Connection evidence before ARC-130** (the seam ARC-130 replaces). Twilio
+**Connection evidence** (ARC-130 now supplies the tenant half — see
+ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md §12). A provider the tenant connects with a
+credential proves a capability only through a connection that is `verified` or
+`degraded`, verified for that capability, fresh, with a stored credential and a known
+health; `reauthorization_required` reads as `expired`. ARC-managed connectors keep the
+rules below. Twilio
 capabilities: the effective configuration names a number and a messaging service, **and**
 an operator attested `twilio_connected`; the voice capabilities also need `routing_tested`.
 ARC web intake: an unrevoked intake key. Anthropic, and anything else: `unknown`. A
@@ -385,9 +390,11 @@ deselection, health and history have no controls yet: that is ARC-320's console.
 
 ## 16. Boundaries
 
-- **ARC-130** owns real tenant connections, OAuth, credential storage and connection
-  health checks. `capabilityEvidence` is the one function it replaces. `expired` is
-  reserved for it.
+- **ARC-130** (done locally, `0016`) owns tenant connections, OAuth, credential storage
+  and connection verification. It feeds `capabilityEvidence` through
+  `connections/readiness.ts` and uses `expired` for reauthorisation. Losing a connection
+  system-pauses dependent active modules through this lifecycle's own `system_pause` and
+  `report_health`, and recovery never resumes one.
 - **ARC-200** owns the durable scheduler, the reconciliation poller and the DLQ.
   Lifecycle checks sit at the claim → execute → reserve boundary that exists today.
 - **ARC-210** owns the `AutomationRunner` abstraction. The authoriser's decision is the
@@ -416,10 +423,14 @@ deselection, health and history have no controls yet: that is ARC-320's console.
 
 | Suite | What it proves | Runs |
 |---|---|---|
-| `tests/lifecycle-engine.test.js` (169) | the matrix and its drift against 0015; every allowed and every refused (transition, from); selection, testing, shadow, activation, pause, resume, deselect; stale versions, idempotency, concurrent conflicts; unknown and legacy states; permissions; every change-impact classification with real registry fields; just-in-time refusals (29 kinds) and allowances; a pause landing between the dispatcher and the reservation; shadow sends nothing and counts nothing | always |
+| `tests/lifecycle-engine.test.js` (170) | the matrix and its drift against 0015; every allowed and every refused (transition, from); selection, testing, shadow, activation, pause, resume, deselect; stale versions, idempotency, concurrent conflicts; unknown and legacy states; permissions; every change-impact classification with real registry fields; just-in-time refusals (29 kinds) and allowances; a pause landing between the dispatcher and the reservation; shadow sends nothing and counts nothing | always |
 | `tests/lifecycle-adapter.test.js` (18) | the exact RPC arguments and payloads the production adapter sends; every column mapped back; typed errors; `run_mode` on the run insert; intake through the production adapter | always |
-| `tests/lifecycle-db.test.js` (5 text + 33 database) | 0015 **applied** in PGlite: the conservative backfill over a real 0014 database, re-applying; rules = typed policy; SQL/TS impact-classification parity; FKs with the guard switched off; no path around the state machine (direct updates, forged history, forged activation, edited evidence, the switch mirror); actors, locks, keys, impersonation, concurrency; audit rows; the run insert and the reservation refusing on their own; pause cancelling atomically; shadow; change impact over real SQL; RLS for member, operator and anon | when PGlite is available; otherwise `# SKIP` |
-| `tests/config-db.test.js` (+3) | the operator path to live, through the real function, before any live run; the panel's canary, activation and stale pause over real SQL | as above |
+| `tests/lifecycle-db.test.js` (5 text + 35 database) | 0015 **applied** in PGlite: the conservative backfill over a real 0014 database, re-applying; rules = typed policy; SQL/TS impact-classification parity; FKs with the guard switched off; no path around the state machine (direct updates, forged history, forged activation, edited evidence, the switch mirror); actors, locks, keys, impersonation, concurrency; audit rows; the run insert and the reservation refusing on their own; pause cancelling atomically; shadow; change impact over real SQL; RLS for member, operator and anon | when PGlite is available; otherwise `# SKIP` |
+| `tests/config-db.test.js` (47, +2) | the operator path to live, through the real function, before any live run; the panel's explicit selection, canary, activation and stale pause over real SQL | as above |
+
+`npm test`: **848 pass, 0 fail** with PGlite (773 without it, the database suites reported
+as skipped with the reason). The suite was 592 before this work; the other additions
+since are ARC-120's plus another session's `site-impact` tests.
 
 Existing suites changed only where they encoded the old switch. A refused lead now has
 no run. Pausing and switching on go through the lifecycle. Contract tests create runs in
@@ -460,15 +471,17 @@ refused first, so the layer under test was never reached. For #8 the reservation
 For #14 a data-modifying CTE hid the history row, so the guard refused as "history first".
 For #16 a pending retest refused first. #18 was tested in memory only. Three more (#9, #10,
 #13) did not apply, because the mutation script did not match the CRLF files. A test now
-isolates each of the four layers, and all seven are caught.
+isolates each of the four layers, and all seven are caught. (#16's first re-mutation
+disabled only the tenant half of the version check, and the module half still refused;
+with the whole condition removed, the new test catches it.)
 
 ## 20. Known limitations
 
 1. `0015` has not been applied to the Supabase project; it has been applied to real
    Postgres (PGlite, Postgres 18.3) by the test suite, together with 0001–0014.
-2. Connection readiness before ARC-130 rests on operator attestation (`twilio_connected`,
-   `routing_tested`) plus configured references. It is evidence, but weaker evidence than
-   a live check.
+2. Connection readiness for ARC-managed Twilio still rests on operator attestation
+   (`twilio_connected`, `routing_tested`) plus configured references. Tenant-connected
+   providers are proven by ARC-130's verified connections, but none is registered yet.
 3. `unverified` health allows live work (§6) until ARC-LR-450 supplies a monitor.
 4. Shadow evaluates intake only. Replies and follow-ups are not simulated.
 5. Deboarding deselects modules after the deboarding transaction commits, as the login

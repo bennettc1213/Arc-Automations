@@ -28,6 +28,27 @@ const DEFAULTS = {
     lease_token: null, fence: 0, last_error: null, completed_at: null, config_snapshot_id: null,
   }),
   conversations: () => ({ status: 'open', provider_ref: null, last_inbound_at: null, last_outbound_at: null }),
+  /* 0014. the version columns default to null, so an adapter that forgets to send them
+     reads back null — exactly the ARC-015B failure, made visible. */
+  lead_recovery_config_snapshots: () => ({ tenant_config_version_id: null, module_config_version_id: null }),
+  tenant_config_drafts: () => ({ revision: 1, status: 'open', published_version_id: null, closed_at: null }),
+  module_config_drafts: () => ({ revision: 1, status: 'open', published_version_id: null, closed_at: null }),
+};
+
+/* 0014's two views: the highest-numbered version per scope. derived here as Postgres
+   derives them, so a head is never a separately stored fact in the double either. */
+function headsOf(rows, keys) {
+  const best = new Map();
+  for (const row of rows) {
+    const key = keys.map((k) => row[k]).join('|');
+    if (!best.has(key) || best.get(key).version < row.version) best.set(key, row);
+  }
+  return [...best.values()];
+}
+
+const VIEWS = {
+  tenant_config_heads: (rows) => headsOf(rows('tenant_config_versions'), ['tenant_id']),
+  module_config_heads: (rows) => headsOf(rows('module_config_versions'), ['tenant_id', 'module_key']),
 };
 
 /* jsonb `@>`: every key and value in `sub` is present in `value`. */
@@ -54,17 +75,22 @@ function matches(row, filter) {
   }
 }
 
-export function supabaseDouble(seed = {}) {
+/**
+ * `options.rpc` maps a function name to `(args, double) => ({ data, error })`, for the
+ * tests that need a database function's answer. Unscripted calls answer `{ data: [] }`.
+ */
+export function supabaseDouble(seed = {}, options = {}) {
   const tables = new Map(Object.entries(seed).map(([t, rows]) => [t, rows.map((r) => ({ ...r }))]));
   const writes = [];
   const rpcs = [];
   const rows = (table) => {
+    if (VIEWS[table]) return VIEWS[table](rows);
     if (!tables.has(table)) tables.set(table, []);
     return tables.get(table);
   };
 
   function from(table) {
-    const q = { op: 'select', payload: null, filters: [], mode: 'many', returning: false, limit: null, conflict: null };
+    const q = { op: 'select', payload: null, filters: [], mode: 'many', returning: false, limit: null, conflict: null, order: null };
     const builder = {
       select() { if (q.op !== 'select') q.returning = true; return builder; },
       insert(payload) { q.op = 'insert'; q.payload = payload; return builder; },
@@ -76,7 +102,7 @@ export function supabaseDouble(seed = {}) {
       not(col, op, v) { q.filters.push(['not', col, op, v]); return builder; },
       contains(col, v) { q.filters.push(['contains', col, v]); return builder; },
       or(expr) { q.filters.push(['or', null, expr]); return builder; },
-      order() { return builder; },
+      order(col, opts = {}) { q.order = { col, ascending: opts.ascending !== false }; return builder; },
       limit(n) { q.limit = n; return builder; },
       single() { q.mode = 'single'; return builder; },
       maybeSingle() { q.mode = 'maybe'; return builder; },
@@ -90,6 +116,10 @@ export function supabaseDouble(seed = {}) {
     let result;
     if (q.op === 'select') {
       result = store.filter((r) => q.filters.every((f) => matches(r, f)));
+      if (q.order) {
+        const { col, ascending } = q.order;
+        result = [...result].sort((a, b) => (a[col] === b[col] ? 0 : (a[col] < b[col]) === ascending ? -1 : 1));
+      }
       if (q.limit !== null) result = result.slice(0, q.limit);
     } else if (q.op === 'insert' || q.op === 'upsert') {
       const list = Array.isArray(q.payload) ? q.payload : [q.payload];
@@ -127,7 +157,8 @@ export function supabaseDouble(seed = {}) {
     from,
     async rpc(name, args) {
       rpcs.push({ name, args });
-      return { data: [], error: null };
+      const handler = options.rpc?.[name];
+      return handler ? handler(args, { rows }) : { data: [], error: null };
     },
     /** every row currently stored, by table — what the adapter actually persisted. */
     table: (name) => rows(name).map((r) => ({ ...r })),

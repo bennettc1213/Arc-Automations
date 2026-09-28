@@ -174,8 +174,11 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  * key the whitelist is about to drop is still reported. A rejected field that silently
  * discarded somebody's auth token would leave them believing it had been stored somewhere
  * safe.
+ *
+ * Exported for the tenant-wide settings schema (ARC-110), which applies the same refusal
+ * rather than keeping a second copy of the credential shapes.
  */
-function scanForForbidden(value: unknown, path: string, errors: string[], depth = 0): void {
+export function scanForForbidden(value: unknown, path: string, errors: string[], depth = 0): void {
   if (depth > 6) return;
   if (typeof value === 'string') {
     for (const { pattern, what } of CREDENTIAL_SHAPES) {

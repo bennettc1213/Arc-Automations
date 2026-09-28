@@ -106,6 +106,74 @@ as between steps 2 and 3 of 0014. Any legacy run still in flight cannot act (it 
 never authorised by a lifecycle); its handoffs and closes still run, and the
 customer's next contact starts a properly authorised run.
 
+### 0016 — provider connections (ARC-130): Vault first, and a canary before production
+
+0016 stores tenant provider credentials in **Supabase Vault** and nowhere else
+(decision: ADR ARC-010 §20a; design: docs/architecture/ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md).
+It creates `provider_connections`, their append-only events and transition rules, and a
+non-exposed `arc_private` schema holding credential versions and OAuth sessions. It
+revokes every API role's access to `vault` and `arc_private`, and then **asserts**
+that: a project where any of `anon`, `authenticated` or `service_role` can still reach
+either schema **fails the migration**. It also fails on a database without Vault.
+
+It changes no existing table, creates no connection, migrates no credential (there are
+none to migrate) and activates nothing.
+
+1. **Staging first.** `supabase db push` on a non-production project, then run the
+   hosted Vault checklist (ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md §15) with a synthetic
+   canary. Record the results there. Do not continue to production until every item passes.
+2. Set `ARC_ENVIRONMENT`, `ARC_SITE_URL` and `ARC_OAUTH_REDIRECT_URL` on the
+   `connections` function (§4 below).
+3. `supabase db push` on production, then `supabase functions deploy connections`.
+4. Redeploy `ops`, `twilio`, `lead-intake` and `dispatch`: their shared code now reads
+   connection evidence for ARC-120 readiness. With no tenant connections this changes
+   no decision, because Lead Recovery's providers are ARC-managed.
+
+If the migration stops with `arc_connection:vault_unavailable: <role> can still …`, a
+Vault privilege could not be revoked by the migration role on that project. Do not work
+around it: that is the "permissions cannot be safely restricted" stop condition, and it
+needs Supabase support or an ADR revisit.
+
+### 0017 — durable runs, actions and scheduling (ARC-200): after 0016
+
+0017 makes the 0010 queue the platform's: a reviewed vocabulary of action types
+(`automation_action_types`), runs that are not lead conversations, an attempt history
+(`automation_action_attempts`), stored lease expiries, a claim-time gate (lifecycle,
+tenant, run and connection state) and the scheduler's service-role functions. It
+references `provider_connections`, so it applies **after 0016** — and therefore not
+before the hosted Vault checklist that gates 0016.
+
+What changes for Lead Recovery, which shares the tables:
+
+- its claim takes only its own seven action types (the only ones that exist today), and
+  every claim now writes an attempt row that its completion settles;
+- a module pause still cancels its queued contact exactly as before; only the new
+  scheduler types are held instead of cancelled.
+
+Nothing is sent, activated or backfilled beyond typing the existing rows. No function
+calls the scheduler yet — its runner arrives with ARC-210 — so after `supabase db push`
+the only functions to redeploy are the ones 0016 already required.
+
+### 0018 — the runner bridge's ledger (ARC-220): after 0017, staging only for now
+
+0018 adds `runner_dispatches`, `runner_nonces` and `runner_bridge_log` and seven
+service-role functions. It creates no rows and changes nothing existing. The n8n runner
+and the `runner-bridge` function **refuse production** (ADR ARC-010 §26) until written
+licensing confirmation from n8n is on record and the check is deliberately changed, so in
+production 0018 is inert. Apply it, and deploy `runner-bridge`, on staging to prove the
+bridge end to end (ARC-OPS-520).
+
+### 0019 — workflow manifest, deployments and assignments (ARC-230): after 0018
+
+0019 adds `runner_workflow_versions`, `runner_workflow_deployments` (the only place an
+n8n workflow id is kept, per environment) and `runner_workflow_assignments`, records on
+every dispatch which workflow version and checksum it ran, and replaces 0018's
+`record_runner_dispatch` with one that takes an assignment. It creates no rows. Nothing can
+be dispatched until an operator registers a version from `n8n/manifest.json`, approves it,
+records its staging deployment and assigns it — and nothing can be assigned to Lead
+Recovery v1, which the registry marks `direct` and n8n-`prohibited`. Deployments to
+`production` are refused by a check constraint until the ADR §26 gate closes.
+
 ---
 
 ## 3. Edge functions
@@ -124,6 +192,12 @@ supabase functions deploy ops
 supabase functions deploy twilio      --no-verify-jwt   # the HMAC is the gate
 supabase functions deploy lead-intake --no-verify-jwt   # the intake key is the gate
 supabase functions deploy dispatch    --no-verify-jwt   # a shared secret, or an admin JWT
+
+# provider connections (0016) — JWT verification ON; only after the hosted Vault checklist
+supabase functions deploy connections
+
+# the n8n runner bridge (0018) — staging only; answers 503 in production (ADR §26)
+supabase functions deploy runner-bridge --no-verify-jwt   # the HMAC is the gate
 ```
 
 `ingest` must be **redeployed** for 0010 even though its own code barely
@@ -147,6 +221,14 @@ Set on the Supabase project, never in this repository.
 | **`ARC_PUBLIC_FUNCTIONS_URL`** | `twilio`, `lead-intake`, `ops`, `dispatch` | falls back to `${SUPABASE_URL}/functions/v1`. Set it explicitly if anything sits in front of the functions — signatures are computed over this string |
 | **`ARC_DISPATCH_KEY`** | `dispatch` | the scheduler cannot authenticate; an operator can still run the queue by hand |
 | `ANTHROPIC_API_KEY` | `twilio`, `dispatch`, `ops` | **optional.** Without it every lead is handed to a person with the reason stated — the designed degradation, not a failure |
+| **`ARC_ENVIRONMENT`** | `connections` | `production`, `staging`, `development` or `test`. **Unset is treated as production**, which is safe: only Vault and the real registry are ever used |
+| **`ARC_OAUTH_REDIRECT_URL`** | `connections` | OAuth cannot begin. It must be exactly the redirect URI registered with each provider, on `ARC_SITE_URL`'s origin, https |
+| `<PROVIDER>_CLIENT_ID`, `<PROVIDER>_CLIENT_SECRET` | `connections` | that provider cannot be connected. The names come from the registry's `clientIdEnv`/`clientSecretEnv`; none are registered yet |
+| `ARC_RUNNER_CALLBACK_SECRET` | `runner-bridge` (staging) | every envelope and callback request is answered 503 `bridge_unconfigured`. ≥ 32 characters; the shared workflows sign with it. `ARC_ENVIRONMENT` must also be set to a non-production value, or the bridge answers 503 |
+| `ARC_RUNNER_DISPATCH_SECRET` | the worker that runs `N8nRunner` (staging; none deployed yet) | nothing can be dispatched to n8n. ≥ 32 characters, **different** from the callback secret; the same value is n8n's JWT credential on its webhooks |
+
+Tenant credentials are **never** function secrets. They live in Supabase Vault, written
+and read only through 0016's service-role functions (ARC-130).
 
 ```bash
 supabase secrets set \

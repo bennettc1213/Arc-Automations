@@ -324,10 +324,16 @@ ARC-130 replaces with real connections), gates activation on `activationTestKeys
 consequence (`CHANGE_IMPACT_POLICY`). `tenant_modules.module_key` carries a foreign key
 to `registry_modules(key)`. See ARC_TENANT_MODULE_LIFECYCLE.md.
 
-**ARC-130** uses connector definitions as the types a tenant connection instantiates:
-`auth.type` drives the OAuth or key flow, `connection_owner` decides who is asked to
-reconnect, `behaviour.webhookSignature` says how to verify inbound calls. Tokens live
-in ARC's connector boundary, never in the registry.
+**ARC-130** (done locally, `0016`) uses connector definitions as the types a tenant
+connection instantiates. `auth.type` drives the OAuth or key flow, and `connection_owner`
+decides who is asked to reconnect. A tenant-credentialed version (`owner: 'tenant'`,
+`oauth2` or `api_key`) now declares a `connection: TenantConnectionSpec`: its adapter,
+its registered https endpoints on a host allowlist, base and per-capability scopes, PKCE,
+OIDC, the environment-variable *names* of its OAuth client, write-only credential fields,
+and freshness. `validateTenantConnectionSpec` refuses anything else, and an ARC-managed
+connector may not declare one. No registered connector has one yet: every
+tenant-connected provider is still `planned`. Tokens live in Supabase Vault, never in the
+registry. See ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md.
 
 ## 26. Work deferred
 
@@ -336,8 +342,9 @@ in ARC's connector boundary, never in the registry.
 | ~~Tenant module selection and lifecycle~~ | **Done in ARC-120** (`0015`) — `module_configs.enabled` is now a mirror of `tenant_modules.state`; `tenants.modules` stays the portal's reporting declaration, deliberately |
 | ~~Versioned tenant configuration, history, drafts~~ | **Done in ARC-110** (`0014`) |
 | Configuration beyond one module | ARC-110 made the version tables module-generic (keyed on `registry_modules`, schema dispatched through the registry); `module_configs` stays the Lead Recovery switch until ARC-120 replaces it |
-| OAuth, tenant connections, credential storage | ARC-130 |
-| Real connection health checks | ARC-130 |
+| ~~OAuth, tenant connections, credential storage~~ | **Done locally in ARC-130** (`0016`, Vault); hosted verification pending |
+| Real connection health checks | ARC-130 verifies identity, scopes and capabilities on demand; a monitor that re-verifies on a schedule is ARC-200 / ARC-LR-450 |
+| First real tenant provider adapter | ARC-LR-4xx |
 | Workflow deployment registry, environment-specific n8n IDs | ARC-220 |
 | Configuration UI driven by field metadata | ARC-310 |
 | Real-Postgres tests for registry RLS and triggers | ARC-QA-500 |

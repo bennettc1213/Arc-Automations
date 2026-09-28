@@ -7,6 +7,185 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+Not yet released: verified locally, and waiting on the hosted Vault checklist
+(ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md §15) before it may be deployed. The version bumps
+when it ships.
+
+### Added
+
+- **ARC-130: secure provider connections and OAuth**, with tenant credentials in
+  **Supabase Vault** and nowhere else (ADR ARC-010 §20a, accepted 2026-09-25). Migration
+  `0016_provider_connections.sql`:
+  - adds `provider_connections` and its append-only events and transition rules;
+  - adds a non-exposed `arc_private` schema for credential versions and OAuth sessions;
+  - adds fourteen service-role-only `connection_*` wrappers;
+  - revokes every API role from `vault` and `arc_private`, then asserts it, and fails
+    without Vault.
+- The OAuth Authorization Code flow, built for safety:
+  - PKCE S256, state and nonce stored as digests, one-time actor-bound sessions;
+  - a server-derived redirect and a bounded return path;
+  - scopes taken from the registry, never from a request;
+  - OIDC checks: RS256 via JWKS, issuer, audience, nonce, subject and expiry;
+  - server-side exchange, then separate verification of identity, scopes and capabilities.
+- Write-only API keys: provider-defined fields, verified with the provider before they
+  are stored, never echoed.
+- Single-flight token refresh: rotation is kept, a temporary failure is distinguished
+  from a permanent one, and the old credential is kept on any failure.
+- Revocation and disconnection block local use in the same transaction and purge the
+  stored secrets.
+- ARC-120 now reads live connection evidence at every check. Losing a connection pauses
+  the modules that needed it, and recovery never resumes one.
+- A connector-gateway seam whose runner contract carries no credential (the n8n
+  boundary). A new `connections` edge function exposes the backend contract; there is
+  no UI yet (ARC-320).
+- Tests: `connections-oauth` (62), `connections-credentials` (58) and
+  `connections-db` (35 with real Postgres, plus a shared credential-store contract).
+  The PGlite harness gains a contract-compatible Vault double.
+- **ARC-200: durable runs, actions and scheduling.** Migration
+  `0017_durable_scheduler.sql` (after 0016) extends the 0010 queue rather than building
+  a second one:
+  - adds `automation_action_types`, a reviewed vocabulary of 16 action types, each with
+    its dispatcher, effect class, pause policy, connection requirement and retry policy;
+  - lets `automation_runs` hold runs that are not lead conversations (connector tests,
+    observation windows), with a generic status, correlation id, idempotency key,
+    runner kind, and the module version and lifecycle state it started under;
+  - gives `scheduled_actions` a module, first-due time, stored lease expiry, connection
+    reference, gate verdict, and the `running`, `skipped` and `dead_letter` statuses;
+  - adds `automation_action_attempts`, one row per claim, never deleted and never
+    rewritten once settled.
+- The scheduler's claim gate is re-read at the claim and again at the start: run status,
+  tenant status, the lifecycle for the run's mode, module health, and connection
+  readiness. Only an action type that touches nothing outside ARC proceeds while paused.
+- The scheduler's send-once behaviour:
+  - an external effect must be recorded as started before its outcome is accepted;
+  - an ambiguous outcome, or a lease that expires mid-effect, blocks the action until an
+    operator reconciles it;
+  - retries back off by the type's policy, never sooner, and dead-letter at the cap.
+- `_shared/scheduler/`: the model, a store interface, the Supabase adapter and the
+  service API (create run, schedule, claim, start, succeed, fail, retry, mark
+  ambiguous, skip, reconcile, pause, block, resume, cancel, finish, due and upcoming
+  lists, run timeline). It has no in-memory twin, by design.
+- Tests: `scheduler` (24, including drift against the migration) and `scheduler-db` (24
+  with real Postgres). The PGlite REST client gains `lt`/`lte`/`gt`/`gte`.
+- **ARC-210: the `AutomationRunner` interface and `FakeTestRunner`** (ADR ARC-010 §30).
+  `_shared/runner/`, no migration:
+  - `model.ts` defines the contract:
+    - a `RunnerRequest` holds references only: the pinned snapshot id, the idempotency
+      key, ARC's attempt number and connection metadata. It never carries configuration
+      values or a credential;
+    - `validateRunnerResult` rejects unknown fields and contradictory results;
+    - `settlementFor` is the one place a runner's report becomes an outcome.
+  - `orchestrator.ts` runs claim → start (the gate is re-read) → dispatch with a deadline
+    → settle → close the run, through the ARC-200 service alone. For an external effect,
+    a timeout, an exception or a malformed result is recorded as ambiguous, never as
+    failed. Work that touches nothing outside ARC is retried instead. An unknown or
+    unsuitable runner kind is refused without a dispatch, and nothing substitutes for it.
+  - `registry.ts` builds a fixed set of runners with one default.
+  - `fake.ts` adds `FakeTestRunner`:
+    - it is scripted per logical action and contacts nothing outside the process;
+    - it refuses production, staging and an unset environment, as ARC-130's doubles do;
+    - it refuses any request that is secret-shaped, unpinned or missing its idempotency
+      key.
+- Tests:
+  - `runner`: 26 tests, including a shared `runner-contract.js` suite that every runner
+    must pass;
+  - `runner-db`: 16 tests with real Postgres, running the orchestrator over the real
+    scheduler.
+  - `scheduler-fixtures.js` now holds the tenant setup both database suites share.
+- **ARC-220: the n8n runner bridge.** It is **disabled in production** until the ADR §26
+  licensing gate is closed by a recorded decision. It follows ADR §18, which sends
+  identifiers only, not the roadmap's safe payload. Migration `0018_runner_bridge.sql`
+  adds:
+  - `runner_dispatches`, recording each dispatch before it is sent, with:
+    - a single-use nonce and a 15-minute maximum expiry;
+    - the runner key and workflow version, and the n8n execution id once known;
+    - when the envelope was opened, whether the dispatch was voided, and the first callback.
+  - `runner_nonces`, which refuses replayed requests.
+  - `runner_bridge_log`, an append-only log with an `alert` flag.
+  - Seven service-role-only functions:
+    - The envelope opens once, only for the right tenant, action and nonce, before
+      expiry, and only if 0017's gate still allows the action. Any refusal voids the
+      dispatch.
+- `_shared/n8n-runner/`:
+  - `N8nRunner` records the dispatch first, then posts §18's minimal reference with an
+    HS256 JWT bound to the body, and reports `accepted`.
+  - When a send's outcome is unknown, `N8nRunner` voids the dispatch. If the envelope
+    never opened, the attempt provably took no effect and is retried; if it opened, the
+    attempt is ambiguous.
+  - Inbound envelope and callback requests are checked in this order: an HMAC over the
+    raw body before parsing, a five-minute window, a single-use nonce, then strict schemas.
+    The tenant is taken from ARC's rows, never from the request body.
+  - A callback settles the attempt through the scheduler service. A re-sent report with
+    the same outcome is a duplicate, and a different outcome is flagged as a conflict. A
+    callback after settlement is kept as evidence only.
+- New edge function `runner-bridge`, with `/envelope` and `/callback` routes. It answers
+  503 in production.
+- Tests: `n8n-runner` (27, including the shared runner contract) and `n8n-runner-db`
+  (16 with real Postgres, with the test playing n8n).
+- **ARC-230: the workflow manifest, versions, deployments and assignments** (ADR §21,
+  §29). `n8n/manifest.json` is the source-controlled list of shared workflow versions. It
+  is empty until ARC-240 adds the exports. Migration `0019_workflow_manifest.sql` adds:
+  - `runner_workflow_versions`, registered from the manifest as drafts:
+    - each version records what it executes, its effect class, required capabilities,
+      contract versions, error handler and `auto_retry`;
+    - the checksum of the reviewed content;
+    - a status that only moves forward: draft, approved, deprecated, disabled.
+  - `runner_workflow_deployments`, the per-environment lookup. It is the only table that
+    holds an n8n workflow id. Production is refused until the §26 gate closes.
+  - `runner_workflow_assignments`: one active workflow version per module version and
+    action type. A reassignment retires the old row and never rewrites it.
+    - A module registered `direct` or n8n-`prohibited`, which Lead Recovery v1 is, is
+      never assigned a workflow.
+    - A new assignment needs an approved, compatible version that requires no capability
+      the module version doesn't declare.
+  - Attribution on every dispatch: the assignment, deployment, workflow checksum, error
+    handler and `auto_retry`. ARC writes these from the assignment and they never change.
+    `runner_attempt_attribution` shows them next to each attempt (for ARC-OPT-460).
+  - Operator-only service functions: register, review, deploy, assign, retire, resolve.
+- `_shared/n8n-runner/`:
+  - `manifest.ts`: a strict manifest schema, and a checksum over a workflow's behaviour
+    rather than its ids, layout, timestamps or environment-specific error-workflow link;
+  - `workflows.ts`: the operator decisions and their Supabase adapter;
+  - `sync.ts`: compares the manifest, ARC's rows and one environment's n8n, and reports
+    eleven kinds of drift. Tests use a mocked n8n only.
+- Tests:
+  - `workflow-manifest`: 12;
+  - `workflow-manifest-db`: 13 with real Postgres, including Lead Recovery's real posture
+    being refused;
+  - `workflow-fixtures.js`.
+
+### Fixed
+
+- ARC-220's `N8nRunner` could dispatch an action of a module the registry forbids from
+  using n8n, which is how its own tests exercised Lead Recovery `send_message`. It now
+  resolves ARC's assignment on every dispatch and sends nothing without one. Its fixed
+  `routes` option is gone.
+- `parseBridgeError` did not recognise refusal codes containing digits, such as
+  `n8n_prohibited`.
+
+### Changed
+
+- A workflow whose manifest sets `auto_retry: false` is not retried, even if its callback
+  reports a retryable failure.
+
+- The ARC-210 runner contract gains an `accepted` status for runners that answer by
+  callback. The orchestrator leaves such an attempt running under its lease. If no callback
+  arrives, 0017's lease sweep records an external effect as ambiguous.
+  `FakeTestRunner` gains an `accept` step.
+
+- ARC-200 changes to Lead Recovery's shared path:
+  - its claim takes only its own seven action types;
+  - each claim writes an attempt row, which its completion or reschedule settles;
+  - `0015`'s pause cancels only the Lead Recovery engine's queued work, and holds the
+    scheduler's; a deselection still cancels both;
+  - Lead Recovery's own pause behaviour is unchanged.
+
+- `registry/connectors.ts`: connector versions may declare a `TenantConnectionSpec`,
+  which is validated fail-closed. No existing connector gains one.
+- `lifecycle/readiness.ts`: `capabilityEvidence` proves a tenant-credentialed
+  capability only from a verified, fresh connection, replacing the "unknown until ARC-130"
+  seam.
+
 ## [1.22.0] - 2026-09-24
 
 The roadmap lived in a Markdown file that had to be pasted into a chat every time someone

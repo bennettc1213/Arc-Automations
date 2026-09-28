@@ -23,7 +23,9 @@ import { TENANT_SCOPE, moduleScope, type ConfigFailure } from '../config/model.t
 import type { ConfigStore } from '../config/store.ts';
 import { canActivate, REQUIRED_STEPS } from '../lead-recovery-config.ts';
 import { getCapability } from '../registry/capabilities.ts';
-import { connectorsProviding } from '../registry/connectors.ts';
+import { isTenantCredentialed } from '../registry/connectors.ts';
+import { REGISTRY_CATALOG } from '../connections/catalog.ts';
+import { tenantConnectionCapability, tenantConnectionEvidence, type TenantConnectionEvidence } from '../connections/readiness.ts';
 import { getModule, latestSelectableModuleVersion, type ModuleVersion } from '../registry/modules.ts';
 import { evaluateCapabilities, requiredCapabilities } from '../registry/resolve.ts';
 import {
@@ -86,7 +88,7 @@ export async function currentHeads(store: ConfigStore, tenantId: string, moduleK
   return tenant && module ? { tenantVersionId: tenant.id, moduleVersionId: module.id } : null;
 }
 
-/* ── connections — the seam ARC-130 replaces ─────────────── */
+/* ── connections — ARC-130 evidence through this seam ───── */
 
 /**
  * What ARC can prove about a capability, before ARC-130 gives tenants real connections.
@@ -94,7 +96,8 @@ export async function currentHeads(store: ConfigStore, tenantId: string, moduleK
  *   ready        evidence exists that ARC's adapter can do this for this tenant
  *   missing      a thing the capability needs is absent (no number, no intake key)
  *   invalid      present but unusable
- *   expired      a credential that was valid is not now — ARC-130's, reserved
+ *   expired      a credential that was valid is not now (ARC-130: reauthorisation
+ *                required, or expired with no way to refresh)
  *   unhealthy    the health overlay names this capability as failing
  *   unsupported  no available connector provides it
  *   unknown      nothing proves it either way — never treated as ready
@@ -117,7 +120,12 @@ export interface ConnectionEvidence {
   hasActiveIntakeKey: boolean;
   /** capabilities the health overlay reports as failing. */
   unhealthyCapabilities: readonly string[];
+  /** ARC-130: the tenant's provider connections and the catalog serving them. Absent = none. */
+  tenant?: TenantConnectionEvidence;
 }
+
+/** The connection evidence a store can give for one tenant (ARC-130), for every caller of this seam. */
+export const connectionEvidenceFor = tenantConnectionEvidence;
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -129,45 +137,57 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
  * Twilio: the tenant's configuration names a number and a messaging service, and an
  * operator attested the resources are connected (`twilio_connected`) — for the voice
  * capabilities, also that a routing dry-run was checked (`routing_tested`). The ARC web
- * intake: an unrevoked intake key. Anything else: unknown until ARC-130 records a
- * connection. A configured reference is never taken as proof of health.
+ * intake: an unrevoked intake key. A connector the TENANT connects with a credential
+ * (ARC-130): a provider connection verified for exactly this capability, fresh, with a
+ * stored credential and a known health (`connections/readiness.ts`). Anything else:
+ * unknown. A configured reference is never taken as proof of health.
  */
 export function capabilityEvidence(capability: string, evidence: ConnectionEvidence): { status: CapabilityStatus; reason: string } {
   if (!getCapability(capability)) return { status: 'unsupported', reason: `${capability} is not a registered capability` };
-  const connectors = connectorsProviding(capability).map((v) => v.connectorKey);
-  if (connectors.length === 0) return { status: 'unsupported', reason: `no available connector provides ${capability}` };
+  const tenant = evidence.tenant ?? { connections: [], catalog: REGISTRY_CATALOG, now: new Date() };
+  const versions = tenant.catalog.connectorsProviding(capability);
+  if (versions.length === 0) return { status: 'unsupported', reason: `no available connector provides ${capability}` };
   if (evidence.unhealthyCapabilities.includes(capability)) {
     return { status: 'unhealthy', reason: `the health overlay reports ${capability} as failing` };
   }
 
   const done = new Set(evidence.completedSteps);
-  const reasons: string[] = [];
-  for (const connector of connectors) {
+  const results: { status: CapabilityStatus; reason: string }[] = [];
+  for (const version of versions) {
+    const connector = version.connectorKey;
     if (connector === 'twilio') {
       const twilio = isRecord(evidence.config) && isRecord(evidence.config.twilio) ? evidence.config.twilio : null;
       if (!twilio?.phone_number || !twilio?.messaging_service_sid) {
-        reasons.push('no Twilio number and messaging service are recorded');
+        results.push({ status: 'missing', reason: 'no Twilio number and messaging service are recorded' });
         continue;
       }
       if (!done.has('twilio_connected')) {
-        reasons.push('nobody has attested the Twilio resources are connected');
+        results.push({ status: 'unknown', reason: 'nobody has attested the Twilio resources are connected' });
         continue;
       }
       if ((capability === 'receive_calls' || capability === 'receive_call_status') && !done.has('routing_tested')) {
-        reasons.push('the voice routing dry-run has not been checked');
+        results.push({ status: 'unknown', reason: 'the voice routing dry-run has not been checked' });
         continue;
       }
       return { status: 'ready', reason: 'Twilio references recorded and attested' };
     }
     if (connector === 'arc_web_intake') {
       if (evidence.hasActiveIntakeKey) return { status: 'ready', reason: 'an unrevoked website intake key exists' };
-      reasons.push('no unrevoked website intake key');
+      results.push({ status: 'missing', reason: 'no unrevoked website intake key' });
       continue;
     }
-    reasons.push(`no ${connector} connection evidence exists until ARC-130`);
+    if (isTenantCredentialed(version)) {
+      const one = tenantConnectionCapability(capability, version, tenant);
+      if (one.status === 'ready') return one;
+      results.push(one);
+      continue;
+    }
+    results.push({ status: 'unknown', reason: `ARC holds no evidence for ${connector}` });
   }
-  const missing = reasons.some((r) => /^no (Twilio|unrevoked)/.test(r));
-  return { status: missing ? 'missing' : 'unknown', reason: reasons.join('; ') };
+  /* the most specific reason wins; nothing here is ever read as ready. */
+  const order: CapabilityStatus[] = ['unhealthy', 'expired', 'invalid', 'missing', 'unknown'];
+  const status = order.find((s) => results.some((x) => x.status === s)) ?? 'unknown';
+  return { status, reason: results.map((x) => x.reason).join('; ') };
 }
 
 export interface ConnectionReadiness {
@@ -274,8 +294,9 @@ export async function evaluateActivation(
     ? (lifecycle!.healthEvidence.capabilities as unknown[]).filter((c): c is string => typeof c === 'string')
     : [];
 
+  const tenant = await tenantConnectionEvidence(store, tenantId);
   const connections = version
-    ? evaluateConnectionReadiness(version, { config: effective, completedSteps, hasActiveIntakeKey: hasIntakeKey, unhealthyCapabilities })
+    ? evaluateConnectionReadiness(version, { config: effective, completedSteps, hasActiveIntakeKey: hasIntakeKey, unhealthyCapabilities, tenant })
     : null;
   if (connections && !connections.ready) blockers.push(...connections.blockers);
 

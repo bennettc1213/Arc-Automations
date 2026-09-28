@@ -15,8 +15,8 @@
  *   Messaging Service → delivery status         POST  …/functions/v1/twilio/message-status
  *
  * Tenant routing is one rule and one rule only: **the number that was called owns the
- * request**. `To` on a voice or SMS webhook is matched against
- * `module_configs.config.twilio.phone_number`. There is no tenant id in the URL, no
+ * request**. `To` on a voice or SMS webhook is matched against `twilio.phone_number` in
+ * each tenant's current published Lead Recovery version (0014). There is no tenant id in the URL, no
  * subaccount in a header and no query parameter, because every one of those is something a
  * caller could change. A number claimed by two tenants is refused rather than guessed at.
  *

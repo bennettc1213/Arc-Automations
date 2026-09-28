@@ -50,6 +50,7 @@ import {
   currentHeads,
   evaluateActivation,
   evaluateConfigReadiness,
+  connectionEvidenceFor,
   evaluateConnectionReadiness,
 } from './readiness.ts';
 import type { LifecycleStore, TransitionChange, TransitionResult } from './store.ts';
@@ -508,15 +509,16 @@ export async function connectionContext(
   config: Record<string, unknown> | null,
 ) {
   const version = latestSelectableModuleVersion(moduleKey);
-  const [completedSteps, hasIntakeKey] = await Promise.all([
+  const [completedSteps, hasIntakeKey, tenant] = await Promise.all([
     store.listCompletedOnboardingSteps(tenantId, moduleKey),
     store.hasActiveIntakeKey(tenantId),
+    connectionEvidenceFor(store, tenantId),
   ]);
   const unhealthy = Array.isArray(lifecycle?.healthEvidence?.capabilities)
     ? (lifecycle!.healthEvidence.capabilities as unknown[]).filter((c): c is string => typeof c === 'string')
     : [];
   if (!version) return { ready: false, readyCapabilities: [] as string[], capabilities: [], blockers: [{ code: 'module_unavailable', message: `${moduleKey} has no selectable version` }] };
-  return evaluateConnectionReadiness(version, { config, completedSteps, hasActiveIntakeKey: hasIntakeKey, unhealthyCapabilities: unhealthy });
+  return evaluateConnectionReadiness(version, { config, completedSteps, hasActiveIntakeKey: hasIntakeKey, unhealthyCapabilities: unhealthy, tenant });
 }
 
 /**

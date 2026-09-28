@@ -40,6 +40,7 @@ import type {
 import { storeFail, storeOk } from './engine/store.ts';
 import { supabaseConfigStore } from './config/supabase-config-store.ts';
 import { raiseLifecycle, supabaseLifecycleStore } from './lifecycle/supabase-lifecycle-store.ts';
+import { supabaseConnectionStore } from './connections/supabase-connection-store.ts';
 
 /* the shape of the client this needs. `any` on the builder because PostgREST's fluent
    builder is not worth restating, and every call below is one line. */
@@ -253,6 +254,9 @@ export function supabaseStore(db: Db): EngineStore {
     ...supabaseConfigStore(db),
     /* ARC-120's lifecycle, history and evidence tables (0015), likewise. */
     ...supabaseLifecycleStore(db),
+    /* ARC-130's provider connections (0016): metadata reads, and every write and every
+       credential use through a service-role-only RPC. Credentials are Vault's alone. */
+    ...supabaseConnectionStore(db),
 
     /* the module switch. `config` on this row is frozen by 0014 and read by nothing. */
     async getConfig(tenantId, moduleKey = 'lead_recovery') {

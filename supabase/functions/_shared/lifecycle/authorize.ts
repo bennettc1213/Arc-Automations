@@ -45,7 +45,7 @@ import {
   type VersionPair,
 } from './model.ts';
 import { healthPermits, healthUseFor } from './policy.ts';
-import { capabilityEvidence, currentHeads, evaluateConnectionReadiness } from './readiness.ts';
+import { capabilityEvidence, connectionEvidenceFor, currentHeads, evaluateConnectionReadiness } from './readiness.ts';
 import type { LifecycleStore } from './store.ts';
 import { latestSelectableModuleVersion } from '../registry/modules.ts';
 
@@ -228,12 +228,14 @@ export async function authorizeModuleExecution(store: AuthorizerStore, req: Exec
   /* ── 10. connections, for anything that reaches the world. ── */
   if (mode === 'live' && req.kind !== 'continue') {
     const version = latestSelectableModuleVersion(req.moduleKey);
-    const [completedSteps, hasIntakeKey] = await Promise.all([
+    const [completedSteps, hasIntakeKey, tenant] = await Promise.all([
       store.listCompletedOnboardingSteps(req.tenantId, req.moduleKey),
       store.hasActiveIntakeKey(req.tenantId),
+      /* ARC-130: the tenant's provider connections, read now — never a stored verdict. */
+      connectionEvidenceFor(store, req.tenantId),
     ]);
     const unhealthy = unhealthyCapabilities(lifecycle!);
-    const evidence = { config: req.config ?? null, completedSteps, hasActiveIntakeKey: hasIntakeKey, unhealthyCapabilities: unhealthy };
+    const evidence = { config: req.config ?? null, completedSteps, hasActiveIntakeKey: hasIntakeKey, unhealthyCapabilities: unhealthy, tenant };
     if (req.kind === 'start') {
       const readiness = evaluateConnectionReadiness(version!, evidence);
       if (!readiness.ready) {

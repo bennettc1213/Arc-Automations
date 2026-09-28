@@ -78,6 +78,79 @@ export interface ConnectorVersion {
   deprecatedBy?: { connectorKey: string; version: number };
   /** why this is not `available`, in words an operator can act on. */
   limitation?: string;
+
+  /**
+   * ARC-130: how a TENANT connects this provider. Required for a selectable version whose
+   * auth is tenant-owned `oauth2` or `api_key`; forbidden otherwise (an ARC-managed
+   * connector has no tenant connection to describe). Endpoints are data ARC controls —
+   * never a value a browser or a tenant supplies.
+   */
+  connection?: TenantConnectionSpec;
+}
+
+/**
+ * ARC-130 — the server-controlled description of a tenant connection. Names of the
+ * environment variables holding an OAuth client's id and secret appear here; their values
+ * never do.
+ */
+export interface OAuthSpec {
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+  revocationEndpoint: string | null;
+  /** where the account identity is read when the provider is not OIDC. */
+  userinfoEndpoint: string | null;
+  /** OIDC only. */
+  issuer: string | null;
+  jwksEndpoint: string | null;
+  oidc: boolean;
+  /** `S256` whenever the provider supports it; `none` only for one that cannot. */
+  pkce: 'S256' | 'none';
+  clientAuth: 'client_secret_post' | 'client_secret_basic';
+  scopeSeparator: ' ' | ',';
+  /** always requested. */
+  baseScopes: readonly string[];
+  /** requested when a capability is needed; the whole allowlist of scopes. */
+  capabilityScopes: Readonly<Record<string, readonly string[]>>;
+  clientIdEnv: string;
+  clientSecretEnv: string;
+  /** fixed extra authorisation parameters (e.g. `access_type=offline`), never user-supplied. */
+  extraAuthorizationParams?: Readonly<Record<string, string>>;
+}
+
+/** One field of a write-only credential, as the provider defines it. */
+export interface CredentialFieldSpec {
+  name: string;
+  /** a regular expression the whole value must match. */
+  pattern: string;
+  minLength: number;
+  maxLength: number;
+  /** whether the last four characters may be shown to tell two keys apart. */
+  hintSafe: boolean;
+}
+
+export interface TenantConnectionSpec {
+  /** the provider adapter that serves it (`connections/adapter.ts`). */
+  adapter: string;
+  /** whether one connection may satisfy every module that needs its capabilities. */
+  reusableAcrossModules: boolean;
+  verification: {
+    /** whether the account identity can be read from the provider, and so must be. */
+    identity: 'required' | 'unsupported';
+    /** how capabilities are proven: a provider call, or the granted scopes alone. */
+    capabilities: 'provider_check' | 'scopes_only';
+  };
+  freshness: {
+    /** a verification older than this is not proof of readiness. */
+    reverifyAfterHours: number;
+    /** refresh an access token this long before it expires. */
+    refreshSkewSeconds: number;
+  };
+  /** display fields an adapter may record about the account (never a credential). */
+  safeMetadataFields: readonly string[];
+  /** every host an operation against this provider may reach — the SSRF allowlist. */
+  apiHosts: readonly string[];
+  oauth?: OAuthSpec;
+  credentialFields?: readonly CredentialFieldSpec[];
 }
 
 export interface ConnectorDefinition {
@@ -113,7 +186,8 @@ export const CONNECTORS: readonly ConnectorDefinition[] = Object.freeze([
         ],
         auth: {
           /* one Arc platform account. a tenant's subaccount SID, messaging service SID
-             and number are non-secret identifiers in `module_configs.config.twilio`. */
+             and number are non-secret identifiers in the published Lead Recovery
+             configuration's `twilio` field. */
           type: 'arc_managed',
           owner: 'arc',
           supportsReauthorization: false,
@@ -287,6 +361,94 @@ export function connectorsProviding(capability: string): ConnectorVersion[] {
   return out;
 }
 
+/** Whether a connector version is connected by the tenant with a credential ARC must hold. */
+export function isTenantCredentialed(version: ConnectorVersion): boolean {
+  return version.auth.owner === 'tenant' && (version.auth.type === 'oauth2' || version.auth.type === 'api_key');
+}
+
+const HTTPS_URL = (value: unknown): value is string => {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password && !url.hash;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * ARC-130: a tenant-credentialed connector must say exactly how it is connected, from
+ * endpoints ARC controls; anything else must say nothing. Every endpoint must be https on
+ * a host in the connector's own allowlist, and every scope must belong to a capability the
+ * version declares — so a scope cannot be requested for something no adapter does.
+ */
+export function validateTenantConnectionSpec(version: ConnectorVersion): void {
+  const where = `connector ${version.connectorKey}@${version.version}`;
+  const spec = version.connection;
+  if (!isTenantCredentialed(version)) {
+    if (spec) throw new Error(`${where} is ${version.auth.owner}-owned ${version.auth.type}; it has no tenant connection to describe`);
+    return;
+  }
+  if (!spec) {
+    if (SELECTABLE_STATUSES.includes(version.status)) throw new Error(`${where} is tenant-connected but declares no connection spec`);
+    return;
+  }
+  if (!spec.adapter) throw new Error(`${where} names no provider adapter`);
+  if (!Array.isArray(spec.apiHosts) || spec.apiHosts.length === 0) throw new Error(`${where} lists no API hosts`);
+  if (!(spec.freshness.reverifyAfterHours > 0) || !(spec.freshness.refreshSkewSeconds >= 0)) {
+    throw new Error(`${where} has an invalid freshness policy`);
+  }
+  const hosts = new Set(spec.apiHosts);
+  const onAllowlist = (value: string) => hosts.has(new URL(value).host);
+
+  if (version.auth.type === 'oauth2') {
+    const oauth = spec.oauth;
+    if (!oauth) throw new Error(`${where} is oauth2 but declares no oauth spec`);
+    if (spec.credentialFields) throw new Error(`${where} is oauth2 and may not declare write-only credential fields`);
+    for (const [name, value] of Object.entries({
+      authorizationEndpoint: oauth.authorizationEndpoint,
+      tokenEndpoint: oauth.tokenEndpoint,
+      revocationEndpoint: oauth.revocationEndpoint,
+      userinfoEndpoint: oauth.userinfoEndpoint,
+      jwksEndpoint: oauth.jwksEndpoint,
+    })) {
+      if (value === null) continue;
+      if (!HTTPS_URL(value)) throw new Error(`${where} ${name} is not a plain https URL`);
+      if (!onAllowlist(value)) throw new Error(`${where} ${name} is on a host outside its API allowlist`);
+    }
+    if (oauth.oidc && (!oauth.issuer || !oauth.jwksEndpoint)) throw new Error(`${where} is OIDC but names no issuer and JWKS endpoint`);
+    if (!oauth.oidc && !oauth.userinfoEndpoint && spec.verification.identity === 'required') {
+      throw new Error(`${where} requires identity verification but has neither OIDC nor a userinfo endpoint`);
+    }
+    if (!/^[A-Z][A-Z0-9_]*$/.test(oauth.clientIdEnv) || !/^[A-Z][A-Z0-9_]*$/.test(oauth.clientSecretEnv)) {
+      throw new Error(`${where} must name its client credentials by environment variable, never by value`);
+    }
+    for (const capability of Object.keys(oauth.capabilityScopes)) {
+      if (!version.capabilities.includes(capability)) {
+        throw new Error(`${where} maps scopes to ${capability}, which the version does not declare`);
+      }
+    }
+    for (const capability of version.capabilities) {
+      if (!oauth.capabilityScopes[capability] && spec.verification.capabilities === 'scopes_only') {
+        throw new Error(`${where} proves capabilities by scope but maps none to ${capability}`);
+      }
+    }
+    if (version.auth.expectsRefreshToken && version.behaviour.tokenRefresh !== 'automatic') {
+      throw new Error(`${where} expects a refresh token but does not refresh automatically`);
+    }
+  } else {
+    if (spec.oauth) throw new Error(`${where} is api_key and may not declare an oauth spec`);
+    if (!spec.credentialFields || spec.credentialFields.length === 0) throw new Error(`${where} is api_key but declares no credential fields`);
+    for (const field of spec.credentialFields) {
+      if (!/^[a-z][a-z0-9_]{0,40}$/.test(field.name)) throw new Error(`${where} credential field ${field.name} has an invalid name`);
+      new RegExp(field.pattern); // throws on an invalid pattern
+      if (!(field.minLength >= 8) || !(field.maxLength <= 4096) || field.minLength > field.maxLength) {
+        throw new Error(`${where} credential field ${field.name} has unsafe length bounds`);
+      }
+    }
+  }
+}
+
 /** Called by the drift tests: every declared capability must be a real one. */
 export function validateConnectorRegistry(): void {
   const seen = new Set<string>();
@@ -312,6 +474,7 @@ export function validateConnectorRegistry(): void {
           `connector ${connector.key}@${version.version} is ${version.status} but claims capabilities`,
         );
       }
+      validateTenantConnectionSpec(version);
     }
 
     if (SELECTABLE_STATUSES.includes(connector.status) && connector.versions.length === 0) {

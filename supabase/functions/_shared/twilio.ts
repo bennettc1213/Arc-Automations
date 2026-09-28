@@ -12,7 +12,8 @@
  *     Arc's, one pair, and they never appear in configuration, in a database row, in an
  *     event or in a response body.
  *   - a tenant's subaccount SID, messaging service SID and phone number are **non-secret
- *     identifiers**. They live in `module_configs.config.twilio` and are how a webhook is
+ *     identifiers**. They live under `twilio` in the tenant's published Lead Recovery
+ *     configuration (0014) and are how a webhook is
  *     resolved to a tenant. Knowing them grants nothing.
  *
  * Every inbound webhook is signature-checked before its body is read for anything except

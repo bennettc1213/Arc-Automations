@@ -19,23 +19,86 @@
 import {
   CONFIG_SCHEMA_VERSION,
   defaultConfig,
-  type ConfigResult,
   validateLeadRecoveryConfig,
 } from '../lead-recovery-config.ts';
+import {
+  defaultTenantSettings,
+  TENANT_SETTINGS_SCHEMA_KEY,
+  TENANT_SETTINGS_SCHEMA_VERSION,
+  validateTenantSettings,
+} from '../tenant-settings-config.ts';
 import type { FieldMetadata } from './modules.ts';
+
+/** What every registered validator returns. `config` is the normalised document. */
+export type SchemaValidation =
+  | { ok: true; config: object; warnings: string[] }
+  | { ok: false; errors: string[]; warnings: string[] };
 
 export interface ConfigSchema {
   key: string;
   version: number;
   displayName: string;
+  /**
+   * Which configuration scope a document of this schema belongs to (ARC-110). A
+   * `module` schema describes a module's *effective* configuration; the fields it marks
+   * `ownerScope: 'tenant'` are stored in the tenant-wide document and composed in.
+   */
+  scope: 'tenant' | 'module';
   /** the trusted server-side validator. the only thing permitted to accept config. */
-  validate(input: unknown): ConfigResult;
+  validate(input: unknown): SchemaValidation;
   /** a complete, valid configuration to start from. */
   defaults(): Record<string, unknown>;
   /** the schema rejects any key it does not know, by name. */
   rejectsUnknownFields: true;
   fields: readonly FieldMetadata[];
 }
+
+/* ── fields every module of a tenant shares (ARC-110) ── */
+
+const COMPANY_NAME_FIELD: FieldMetadata = Object.freeze({
+  key: 'company_name',
+  type: 'string',
+  label: 'company name',
+  help: 'How the business names itself in a text to a customer.',
+  required: true,
+  clientEditable: false,
+  operatorEditable: true,
+  protected: false,
+  secretProhibited: true,
+  requiresRetest: false,
+  requiresShadow: false,
+  requiresReactivation: false,
+  sensitiveDisplay: false,
+  control: 'text',
+});
+
+const TIMEZONE_FIELD: FieldMetadata = Object.freeze({
+  key: 'timezone',
+  type: 'timezone',
+  label: 'timezone',
+  help: 'Drives business hours and the after-hours branch.',
+  required: true,
+  clientEditable: false,
+  operatorEditable: true,
+  protected: false,
+  secretProhibited: true,
+  /* changes when a message may be sent, so a routing dry-run should be repeated. */
+  requiresRetest: true,
+  requiresShadow: false,
+  requiresReactivation: false,
+  sensitiveDisplay: false,
+  control: 'select',
+});
+
+/**
+ * The tenant-wide settings document. One definition of each field, shared by
+ * reference with every module schema that composes it in, so the metadata a change to
+ * `timezone` is judged by is the same whichever scope the change is seen from.
+ */
+const TENANT_SETTINGS_FIELDS: readonly FieldMetadata[] = Object.freeze([COMPANY_NAME_FIELD, TIMEZONE_FIELD]);
+
+/** A module field whose value is the tenant-wide one. */
+const fromTenant = (field: FieldMetadata): FieldMetadata => Object.freeze({ ...field, ownerScope: 'tenant' as const });
 
 /**
  * Field metadata for Lead Recovery.
@@ -51,39 +114,10 @@ export interface ConfigSchema {
  * the intent now means that decision is a metadata change, not a hunt through a form.
  */
 const LEAD_RECOVERY_FIELDS: readonly FieldMetadata[] = Object.freeze([
-  {
-    key: 'company_name',
-    type: 'string',
-    label: 'company name',
-    help: 'How the business names itself in a text to a customer.',
-    required: true,
-    clientEditable: false,
-    operatorEditable: true,
-    protected: false,
-    secretProhibited: true,
-    requiresRetest: false,
-    requiresShadow: false,
-    requiresReactivation: false,
-    sensitiveDisplay: false,
-    control: 'text',
-  },
-  {
-    key: 'timezone',
-    type: 'timezone',
-    label: 'timezone',
-    help: 'Drives business hours and the after-hours branch.',
-    required: true,
-    clientEditable: false,
-    operatorEditable: true,
-    protected: false,
-    secretProhibited: true,
-    /* changes when a message may be sent, so a routing dry-run should be repeated. */
-    requiresRetest: true,
-    requiresShadow: false,
-    requiresReactivation: false,
-    sensitiveDisplay: false,
-    control: 'select',
-  },
+  /* the business's name and its day are tenant-wide (ARC-110): Lead Recovery reads them,
+     but they are stored once, in the tenant settings document. */
+  fromTenant(COMPANY_NAME_FIELD),
+  fromTenant(TIMEZONE_FIELD),
   {
     key: 'business_hours',
     type: 'object',
@@ -308,13 +342,30 @@ export const LEAD_RECOVERY_SCHEMA: ConfigSchema = Object.freeze({
   key: 'lead_recovery_config',
   version: CONFIG_SCHEMA_VERSION,
   displayName: 'Lead Recovery configuration',
+  scope: 'module' as const,
   validate: validateLeadRecoveryConfig,
   defaults: () => defaultConfig() as unknown as Record<string, unknown>,
   rejectsUnknownFields: true,
   fields: LEAD_RECOVERY_FIELDS,
 });
 
-export const CONFIG_SCHEMAS: readonly ConfigSchema[] = Object.freeze([LEAD_RECOVERY_SCHEMA]);
+/**
+ * The tenant-wide settings schema (ARC-110). Not tied to a module version: every module
+ * of a tenant composes the same document, and `registry_config_schemas` (0014) is its
+ * relational identity, drift-tested against this definition.
+ */
+export const TENANT_SETTINGS_SCHEMA: ConfigSchema = Object.freeze({
+  key: TENANT_SETTINGS_SCHEMA_KEY,
+  version: TENANT_SETTINGS_SCHEMA_VERSION,
+  displayName: 'Tenant settings',
+  scope: 'tenant' as const,
+  validate: validateTenantSettings,
+  defaults: () => defaultTenantSettings() as unknown as Record<string, unknown>,
+  rejectsUnknownFields: true,
+  fields: TENANT_SETTINGS_FIELDS,
+});
+
+export const CONFIG_SCHEMAS: readonly ConfigSchema[] = Object.freeze([TENANT_SETTINGS_SCHEMA, LEAD_RECOVERY_SCHEMA]);
 
 const BY_KEY = new Map(CONFIG_SCHEMAS.map((s) => [s.key, s]));
 
@@ -323,6 +374,50 @@ export function getConfigSchema(key: string, version?: number): ConfigSchema | n
   if (!schema) return null;
   if (version !== undefined && schema.version !== version) return null;
   return schema;
+}
+
+/** The schema every tenant-wide settings document is written in. There is one. */
+export function tenantSettingsSchema(): ConfigSchema {
+  return TENANT_SETTINGS_SCHEMA;
+}
+
+/** Keys a module takes from the tenant-wide document. A module document may not carry them. */
+export function tenantOwnedFields(schemaKey: string): string[] {
+  return (BY_KEY.get(schemaKey)?.fields ?? []).filter((f) => f.ownerScope === 'tenant').map((f) => f.key);
+}
+
+/** Keys a document of this schema stores itself — for a tenant schema, every field. */
+export function ownFields(schemaKey: string): FieldMetadata[] {
+  return (BY_KEY.get(schemaKey)?.fields ?? []).filter((f) => f.ownerScope === undefined);
+}
+
+/**
+ * Registry self-check for configuration schemas.
+ *
+ * A module field marked `ownerScope: 'tenant'` must name a field the tenant schema
+ * actually has, with the same consequences — otherwise the same change to `timezone`
+ * would be judged one way from the tenant side and another from the module side.
+ */
+export function validateConfigSchemas(): void {
+  const tenant = TENANT_SETTINGS_SCHEMA;
+  if (tenant.scope !== 'tenant') throw new Error('the tenant settings schema must have tenant scope');
+  if (CONFIG_SCHEMAS.filter((s) => s.scope === 'tenant').length !== 1) {
+    throw new Error('exactly one tenant-scope configuration schema may be registered');
+  }
+  for (const schema of CONFIG_SCHEMAS) {
+    for (const field of schema.fields) {
+      if (field.ownerScope !== 'tenant') continue;
+      if (schema.scope !== 'module') throw new Error(`${schema.key}.${field.key}: only a module schema can take a field from the tenant`);
+      const source = tenant.fields.find((f) => f.key === field.key);
+      if (!source) throw new Error(`${schema.key}.${field.key} claims a tenant-wide field the tenant schema does not have`);
+      const { ownerScope: _drop, ...rest } = field;
+      for (const [key, value] of Object.entries(rest)) {
+        if ((source as unknown as Record<string, unknown>)[key] !== value) {
+          throw new Error(`${schema.key}.${field.key} disagrees with the tenant schema on ${key}`);
+        }
+      }
+    }
+  }
 }
 
 export function getField(schemaKey: string, fieldKey: string): FieldMetadata | null {
