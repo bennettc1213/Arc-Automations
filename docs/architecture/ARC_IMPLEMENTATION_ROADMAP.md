@@ -1,12 +1,12 @@
 # ARC / n8n Integration — Canonical Implementation Handoff
 
-**Roadmap revision date:** September 23, 2026  
+**Roadmap revision date:** September 28, 2026  
 **Project:** ARC / Arc Automations  
 **Owner:** Bennett Church  
-**Last reported application version:** `1.17.1`  
+**Last reported application version:** `1.26.0`  
 **Primary niche:** HVAC first; plumbing second  
-**Current reported implementation state:** ARC-110 is complete locally  
-**Immediate next implementation prompt:** `ARC-120 — Tenant Module Lifecycle and Activation State Machine`  
+**Current reported implementation state:** `ARC-120` is live on `main` (pushed and deployed). `ARC-110`, `ARC-130`, `ARC-200`, `ARC-210`, `ARC-220` and `ARC-230` are complete in the repository (commit `d7d32d8`, "Add ARC platform backend") but not yet pushed to `main` — held pending Bennett's explicit push authorization. `ARC-240` (shared n8n core workflows and error handler) is in progress in the working tree, uncommitted.  
+**Immediate next implementation prompt:** Finish and commit the `ARC-240` work in progress, then push commit `d7d32d8` plus the `ARC-240` commit to `main` when Bennett authorizes it, before starting `ARC-300`.  
 **New future product phase:** ARC Performance Intelligence and Continuous Improvement
 
 ---
@@ -17,12 +17,12 @@ When Bennett supplies this handoff in a new chat:
 
 1. Read this file completely before responding.
 2. Do not restart niche selection, product research, or the ARC/n8n architecture discussion.
-3. Treat ARC-110 as **reported complete locally**, while verifying its actual repository evidence before beginning dependent implementation work.
+3. Treat ARC-110 through ARC-230 as **complete in the repository** (ARC-120 pushed to `main`; ARC-110, ARC-130, ARC-200, ARC-210, ARC-220 and ARC-230 committed locally in `d7d32d8` but not yet pushed) and ARC-240 as **in progress, uncommitted**, while verifying actual repository evidence (`git log origin/main..HEAD`, the migration sequence, the shared modules) before beginning dependent implementation work.
 4. Confirm that the immediate next implementation prompt is:
 
-   `ARC-120 — Tenant Module Lifecycle and Activation State Machine`
+   Finish and commit `ARC-240 — Shared n8n Core Workflows and Error Handler`, then push the pending commits to `main` when Bennett authorizes it, before starting `ARC-300 — ARC Ops Tenant Creation and Module Selection`.
 
-5. Do not replace, delay, or merge ARC-120 with the new optimization work.
+5. Do not replace, delay, or merge ARC-240 or ARC-300 with the new optimization work.
 6. Do not implement ARC Performance Intelligence yet. It belongs after `ARC-LR-450` and before `ARC-QA-500`.
 7. Preserve the architectural rule:
 
@@ -38,60 +38,51 @@ When Bennett supplies this handoff in a new chat:
 
 # 1. Exact current execution position
 
-The reported sequence through ARC-110 is:
+The verified sequence, checked against `git log origin/main..HEAD`, the migration files under `supabase/migrations/`, and the shared modules under `supabase/functions/_shared/`, is:
 
-1. `ARC-000` — complete
-2. `ARC-010` — complete
-3. `ARC-015` — completed except for the defect later isolated as ARC-015B
-4. `ARC-015B` — reported complete
-5. `ARC-100` — complete
-6. `ARC-110` — reported complete locally
-7. `ARC-120` — **next**
+1. `ARC-000` — complete, pushed
+2. `ARC-010` — complete, pushed
+3. `ARC-015` — completed except for the defect later isolated as ARC-015B, pushed
+4. `ARC-015B` — complete, pushed
+5. `ARC-100` — complete, pushed
+6. `ARC-120` — complete, pushed (migration `0015_tenant_module_lifecycle.sql` is live on `main`)
+7. `ARC-110` — complete in the repository (migration `0014_versioned_configuration.sql`, `_shared/config/`), committed locally in `d7d32d8`, **not yet pushed**
+8. `ARC-130` — complete in the repository (migration `0016_provider_connections.sql`, `_shared/connections/`), committed locally in `d7d32d8`, **not yet pushed**
+9. `ARC-200` — complete in the repository (migration `0017_durable_scheduler.sql`, `_shared/scheduler/`), committed locally in `d7d32d8`, **not yet pushed**
+10. `ARC-210` — complete in the repository (`_shared/runner/`), committed locally in `d7d32d8`, **not yet pushed**
+11. `ARC-220` — complete in the repository (migration `0018_runner_bridge.sql`, `_shared/n8n-runner/`, `runner-bridge` function; refuses production until the ADR §26 licensing gate closes), committed locally in `d7d32d8`, **not yet pushed**
+12. `ARC-230` — complete in the repository (migration `0019_workflow_manifest.sql`, `n8n/manifest.json`), committed locally in `d7d32d8`, **not yet pushed**
+13. `ARC-240` — **in progress**, uncommitted (migration `0020_runner_failure_reports.sql`, `_shared/n8n-runner/exports.ts` and `failures.ts`, `n8n/workflows/`, ADR §18 amendments)
 
-The prior ARC-110 blocker was production configuration-snapshot persistence:
+Note the out-of-order landing: `ARC-120` reached `main` before `ARC-110` did. `ARC-110` was reported "complete locally" for several days before it was actually committed — that gap, plus this file not being revised in step with the repository, is why an operator asking the roadmap assistant "where are we" was told `ARC-110` when the repository had already moved past it. Keep this file current every time repository state changes; the roadmap assistant answers only from what is written here, never from the code directly.
 
-- The runtime created a snapshot but the production Postgres `createRun` path dropped `config_snapshot_id`.
-- Scheduled actions were not pinned to the same snapshot.
-- Existing claim guards therefore failed closed and executed nothing.
-- In-memory tests passed because the in-memory store retained fields the production adapter omitted.
+`d7d32d8`'s own commit message records why ARC-110–230 have not been pushed: "Nothing reaches the database or Supabase until the `supabase db push` and function deploys in DEPLOYMENT.md. This stays under [Unreleased] until the hosted Vault checklist passes." That checklist is `docs/architecture/ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md` §15. Do not push it or deploy it without Bennett's explicit authorization.
 
-ARC-015B was created to repair that gap by requiring:
+Before resuming work on ARC-240 or pushing the pending commits, verify from the repository — not from this summary — that ARC-110 through ARC-230 actually provide:
 
-- Production run snapshot persistence
-- Scheduled-action snapshot persistence
-- Tenant/run/action/snapshot equality enforcement
-- Immutable pins
-- Legacy fail-closed behavior
-- Production-adapter contract tests
-- Safe synthetic canary verification
-
-ARC-110 was then completed locally according to the latest supplied project state. Before starting ARC-120, verify from the repository and completion report that ARC-110 actually provides:
-
-- Tenant-wide configuration versions
-- Tenant-module configuration versions
-- Drafts
-- Immutable published versions
-- Operator publication
-- Optimistic concurrency
-- Rollback through a new version
-- Deterministic effective-configuration resolution
-- ARC-100 registry validation and field permissions
-- Registry-driven change-impact analysis
+- Tenant-wide and tenant-module configuration versions, drafts, immutable published versions, operator publication, optimistic concurrency, rollback through a new version, deterministic effective-configuration resolution
+- ARC-100 registry validation, field permissions, and registry-driven change-impact analysis
 - Legacy Lead Recovery configuration migration
 - Generalized version provenance connected to ARC-015 snapshots, runs, and actions
+- Tenant module lifecycle, just-in-time authorization, and health overlay (ARC-120)
+- Vault-only provider credentials, capability-scoped resolution, and connection readiness (ARC-130)
+- The durable scheduler, claim/settle contract, and retry/dead-letter behavior (ARC-200)
+- The runner contract and `FakeTestRunner` (ARC-210)
+- The n8n bridge's production refusal gate and signed envelope handling (ARC-220)
+- Workflow manifest registration, assignment, and sync-drift detection (ARC-230)
 - No regression of live consent, suppression, reply, safety, takeover, or send-once protections
 
 Do not infer missing implementation details from this handoff. Verify them in code, migrations, tests, and current architecture documents.
 
 ---
 
-# 2. Immediate next task: ARC-120
+# 2. ARC-120 (delivered) and the actual immediate next task
 
-The immediate next prompt remains:
+`ARC-120` is complete and live on `main` (migration `0015_tenant_module_lifecycle.sql`, `_shared/lifecycle/`). The list below is kept as a record of its delivered scope, not as a pending task.
 
-> `ARC-120 — Tenant Module Lifecycle and Activation State Machine`
+The actual immediate next task is finishing and committing `ARC-240`, then pushing the pending `d7d32d8` commit and the ARC-240 commit to `main` when Bennett authorizes it, before starting `ARC-300 — ARC Ops Tenant Creation and Module Selection`.
 
-ARC-120 should implement the lifecycle and authorization layer for tenant modules, including the repository-approved equivalents of:
+ARC-120 implemented the lifecycle and authorization layer for tenant modules, including the repository-approved equivalents of:
 
 - Module selection
 - Configuration readiness
@@ -105,9 +96,9 @@ ARC-120 should implement the lifecycle and authorization layer for tenant module
 - Just-in-time authorization before module execution
 - Change-impact handling that determines when a configuration change requires retesting, shadow mode, operator review, or reactivation
 
-ARC-120 must consume ARC-100 change-impact classifications and ARC-110 configuration versions. It must not implement the future performance-diagnosis engine.
+ARC-120 consumes ARC-100 change-impact classifications and ARC-110 configuration versions. It does not implement the future performance-diagnosis engine.
 
-The new optimization roadmap does not interrupt or replace ARC-120.
+The new optimization roadmap does not interrupt or replace ARC-240 or ARC-300.
 
 ---
 
@@ -187,14 +178,14 @@ The roadmap is now:
 3. `ARC-015 — Lead Recovery Safety and Configuration Pinning` — complete except for the extracted repair
 4. `ARC-015B — Production Configuration Snapshot Pinning Repair` — reported complete
 5. `ARC-100 — Module and Connector Registry Foundation` — complete
-6. `ARC-110 — Versioned Tenant Configuration Engine` — reported complete locally
-7. `ARC-120 — Tenant Module Lifecycle and Activation State Machine` — **next**
-8. `ARC-130 — Secure Provider Connection and OAuth Framework`
-9. `ARC-200 — Durable Actions, Runs, and Scheduling Engine`
-10. `ARC-210 — AutomationRunner Interface and Fake Test Runner`
-11. `ARC-220 — Secure n8n Runner Bridge`
-12. `ARC-230 — n8n Workflow Manifest, Versioning, and Synchronization`
-13. `ARC-240 — Shared n8n Core Workflows and Error Handler`
+6. `ARC-110 — Versioned Tenant Configuration Engine` — complete in the repository, committed locally in `d7d32d8`, not yet pushed to `main`
+7. `ARC-120 — Tenant Module Lifecycle and Activation State Machine` — complete, live on `main`
+8. `ARC-130 — Secure Provider Connection and OAuth Framework` — complete in the repository, committed locally in `d7d32d8`, not yet pushed to `main`
+9. `ARC-200 — Durable Actions, Runs, and Scheduling Engine` — complete in the repository, committed locally in `d7d32d8`, not yet pushed to `main`
+10. `ARC-210 — AutomationRunner Interface and Fake Test Runner` — complete in the repository, committed locally in `d7d32d8`, not yet pushed to `main`
+11. `ARC-220 — Secure n8n Runner Bridge` — complete in the repository, committed locally in `d7d32d8`, not yet pushed to `main`
+12. `ARC-230 — n8n Workflow Manifest, Versioning, and Synchronization` — complete in the repository, committed locally in `d7d32d8`, not yet pushed to `main`
+13. `ARC-240 — Shared n8n Core Workflows and Error Handler` — **next**, in progress and uncommitted
 14. `ARC-300 — ARC Ops Tenant Creation and Module Selection`
 15. `ARC-310 — Schema-Driven Client Workflow Settings UI`
 16. `ARC-320 — Connections, Readiness, Testing, and Activation UI`
@@ -625,13 +616,13 @@ Before every implementation prompt:
 
 When Bennett sends:
 
-> `ARC-120`
+> `ARC-240`
 
 Provide the complete copy-and-paste Claude Code prompt for:
 
-> `ARC-120 — Tenant Module Lifecycle and Activation State Machine`
+> `ARC-240 — Shared n8n Core Workflows and Error Handler`
 
-The prompt must begin with a prerequisite gate that verifies ARC-015B, ARC-100, and ARC-110 in the actual repository.
+The prompt must begin with a prerequisite gate that verifies ARC-015B, ARC-100, ARC-110, ARC-120, ARC-130, ARC-200, ARC-210, ARC-220, and ARC-230 in the actual repository, and must note that ARC-110 through ARC-230 are committed locally (`d7d32d8`) but not yet pushed to `main`.
 
 Do not implement ARC-OPT-460, ARC-OPT-470, or ARC-OPT-480 yet.
 
@@ -649,10 +640,10 @@ After ARC-LR-450 completes and produces trustworthy outcome and health data, the
 
 # 17. Suggested first response in the next chat
 
-> I have read the complete handoff. ARC-015B and ARC-110 are reported complete locally, and ARC-120 remains the immediate next implementation prompt. The roadmap now includes a dedicated Performance Intelligence and Continuous Improvement phase after ARC-LR-450 and before ARC-QA-500: ARC-OPT-460 for trustworthy attribution and anomaly detection, ARC-OPT-470 for evidence-based diagnosis, and ARC-OPT-480 for client recommendations and guided experiments. I will not implement those phases early, and I will preserve immutable history, run pinning, operator authorization, and the rule that recommendations cannot silently change settings.
+> I have read the complete handoff. ARC-120 is live on `main`. ARC-015B, ARC-100, ARC-110, ARC-130, ARC-200, ARC-210, ARC-220 and ARC-230 are complete in the repository (commit `d7d32d8`) but not yet pushed. ARC-240 is the immediate next implementation prompt, in progress and uncommitted; pushing the pending commits requires Bennett's explicit authorization. The roadmap now includes a dedicated Performance Intelligence and Continuous Improvement phase after ARC-LR-450 and before ARC-QA-500: ARC-OPT-460 for trustworthy attribution and anomaly detection, ARC-OPT-470 for evidence-based diagnosis, and ARC-OPT-480 for client recommendations and guided experiments. I will not implement those phases early, and I will preserve immutable history, run pinning, operator authorization, and the rule that recommendations cannot silently change settings.
 
 ---
 
 # 18. Final summary
 
-ARC’s configuration-driven, multi-tenant architecture remains settled. ARC is the control plane; Postgres is the operational system of record; shared runners remain replaceable; and each run remains pinned to the configuration under which it began. ARC-110 is reported complete locally, making ARC-120 the immediate next implementation prompt. The roadmap now adds three major optimization phases after Lead Recovery proof and health monitoring: ARC-OPT-460 builds trustworthy version-aware measurement and anomaly detection, ARC-OPT-470 performs evidence-based investigations across competing internal, external, data, configuration, workflow, connector, and provider explanations, and ARC-OPT-480 presents reviewed recommendations and safe guided experiments to clients. Historical versions remain immutable, restorations create new drafts and versions, weak evidence may produce no recommendation, and ARC must neither unfairly blame itself nor hide verified system faults. No optimization implementation should begin until the underlying lifecycle, execution, workflow attribution, and outcome data are trustworthy.
+ARC’s configuration-driven, multi-tenant architecture remains settled. ARC is the control plane; Postgres is the operational system of record; shared runners remain replaceable; and each run remains pinned to the configuration under which it began. ARC-120 is live on `main`; ARC-110, ARC-130, ARC-200, ARC-210, ARC-220 and ARC-230 are complete in the repository but not yet pushed (commit `d7d32d8`), making ARC-240 the immediate next implementation prompt, followed by pushing the pending commits under Bennett's authorization and then ARC-300. The roadmap now adds three major optimization phases after Lead Recovery proof and health monitoring: ARC-OPT-460 builds trustworthy version-aware measurement and anomaly detection, ARC-OPT-470 performs evidence-based investigations across competing internal, external, data, configuration, workflow, connector, and provider explanations, and ARC-OPT-480 presents reviewed recommendations and safe guided experiments to clients. Historical versions remain immutable, restorations create new drafts and versions, weak evidence may produce no recommendation, and ARC must neither unfairly blame itself nor hide verified system faults. No optimization implementation should begin until the underlying lifecycle, execution, workflow attribution, and outcome data are trustworthy.
