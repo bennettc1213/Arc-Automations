@@ -36,6 +36,15 @@ capacity and availability targets. §35 carries them as production gates.
 One decision this ADR *does* make, which the audit left open as §15 decision 1:
 **n8n is not in Lead Recovery v1's execution path at all.** See §11 and §30.
 
+**Amended 2026-09-28 (ARC-240), by Ben's decision:** n8n → ARC requests are signed
+with **n8n's own JWT node**, not an in-workflow HMAC. n8n has no node that computes
+an HMAC with a secret held in a credential; an HMAC would have put the secret in a
+workflow or in n8n's Variables, where anyone who can open the instance reads it. The
+JWT node signs with a credential that never appears in an export. ARC still checks
+everything before the body is parsed — the signature, a hash of the exact body, a
+five-minute window, a single-use nonce — and additionally the route the token was
+issued for. §18 and §24 are updated in place; nothing else in the ADR changes.
+
 ## 3. Date
 
 2026-09-22. Repository state at authoring: branch `main`, version `1.17.0`
@@ -605,9 +614,14 @@ policy decision.
 has **no built-in HMAC verification** (§39). Therefore: **ARC→n8n uses JWT auth**
 — natively verified by n8n, carries `exp`, and needs no in-workflow verification
 code that could be edited away. ARC→n8n also carries the nonce as a claim.
-**n8n→ARC (envelope retrieval and callbacks) uses HMAC over the raw body plus a
-timestamp header**, verified by ARC before the body is parsed — the same
-discipline already proven in `twilio/index.ts:121–130`.
+**n8n→ARC (envelope retrieval, callbacks and the error handler's failure
+reports) uses an HS256 JWT signed by n8n's JWT node** with a secret held in an n8n
+credential, carrying `aud`, the route it is for (`purpose`), `iat`/`exp` at most
+five minutes apart, a single-use `jti`, and `body_sha256` of the exact bytes sent.
+ARC verifies all of it before the body is parsed — the same discipline already
+proven in `twilio/index.ts:121–130`. *(Amended by ARC-240; originally an HMAC over
+the raw body plus a timestamp header, which n8n cannot compute without exposing
+the secret — see §2.)*
 
 **Replay protection.** `nonce` stored with a TTL exceeding `expires_at`; a second
 presentation is rejected. **Expiration:** minutes; an expired dispatch is
@@ -830,7 +844,7 @@ either (S-L2).
 |---|---|---|
 | TLS | Required on every hop; no plaintext internal calls | ✅ Supabase + n8n Cloud are HTTPS |
 | Signed dispatch | JWT (n8n-native verification) + nonce + `exp` | ❌ Not built |
-| Signed callbacks | HMAC over raw body + timestamp, verified **before parsing** | ❌ Not built; pattern proven at `twilio/index.ts:121–130` |
+| Signed callbacks | n8n JWT node (HS256, credential-held secret) over a hash of the raw body, bound to one route, with timestamp and nonce, verified **before parsing** *(amended by ARC-240; was HMAC)* | ⚠️ Built (ARC-220, ARC-240); not yet exercised against a real n8n |
 | Short-lived service tokens | Minutes for dispatch; rotate service creds on a schedule | ❌ Not built |
 | Secret rotation | Documented owner + cadence per secret | ⚠️ Secrets exist; no documented rotation |
 | Replay protection | Single-use nonce, TTL > `exp` | ❌ Not built |

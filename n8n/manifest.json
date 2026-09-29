@@ -1,4 +1,25 @@
 {
   "manifest_version": 1,
-  "workflows": []
+  "workflows": [
+    {
+      "runner_key": "arc-runner-error-handler-v1",
+      "workflow_version": "1.0.0",
+      "role": "error_handler",
+      "display_name": "ARC runner error handler",
+      "module_key": null,
+      "module_versions": [],
+      "action_types": [],
+      "runner_kind": "n8n",
+      "export_path": "workflows/arc-runner-error-handler-v1@1.0.0.json",
+      "checksum": "sha256:b01f88046992f6bad387e9233428372a357526d4c5e0eb6e82ebc087d42f5dfe",
+      "input_contract_version": 1,
+      "output_contract_version": 1,
+      "effect_class": "none",
+      "required_capabilities": [],
+      "auto_retry": false,
+      "timeout_ambiguous": false,
+      "error_handler": null,
+      "owner": "ARC platform"
+    }
+  ]
 }

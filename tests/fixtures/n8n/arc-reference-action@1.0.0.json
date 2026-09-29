@@ -1,0 +1,189 @@
+{
+  "name": "arc-reference-action@1.0.0",
+  "nodes": [
+    {
+      "name": "ARC dispatch",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "arc-reference-action",
+        "authentication": "jwtAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "credentials": { "jwtAuth": { "name": "ARC dispatch" } }
+    },
+    {
+      "name": "Accept",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [220, 0],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ n8n_execution_id: String($execution.id) }) }}",
+        "options": { "responseCode": 202 }
+      }
+    },
+    {
+      "name": "ARC environment",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [440, 0],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "arc-bridge-url", "name": "arc_bridge_url", "value": "https://arc-bridge.invalid/functions/v1/runner-bridge", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Prepare envelope request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 0],
+      "parameters": {
+        "jsCode": "// ARC shared frame. The dispatch holds identifiers only (ADR ARC-010 §18); the webhook has\n// already verified ARC's token. Ask ARC for the envelope: it re-checks everything first.\nconst request = $('ARC dispatch').first().json.body;\nif (!request || request.contract_version !== 1) throw new Error('arc:validation_failed');\nconst now = Math.floor(Date.now() / 1000);\nconst envelopeRequest = {\n  contract_version: 1,\n  job_id: request.job_id,\n  action_id: request.action_id,\n  tenant_id: request.tenant_id,\n  nonce: request.nonce,\n};\nreturn [{ json: {\n  body: JSON.stringify(envelopeRequest),\n  claims: { aud: 'arc-runner-bridge', purpose: 'envelope', iat: now, exp: now + 120, jti: `arc-n8n-${$execution.id}-envelope` },\n} }];\n"
+      }
+    },
+    {
+      "name": "Hash envelope request",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [880, 0],
+      "parameters": {
+        "action": "hash",
+        "type": "SHA256",
+        "value": "={{ $json.body }}",
+        "dataPropertyName": "body_sha256",
+        "encoding": "hex"
+      }
+    },
+    {
+      "name": "Sign envelope request",
+      "type": "n8n-nodes-base.jwt",
+      "typeVersion": 1,
+      "position": [1100, 0],
+      "parameters": {
+        "operation": "sign",
+        "useJson": true,
+        "claimsJson": "={{ JSON.stringify({ ...$json.claims, body_sha256: $json.body_sha256 }) }}",
+        "options": {}
+      },
+      "credentials": { "jwtAuth": { "name": "ARC bridge signing" } }
+    },
+    {
+      "name": "Send envelope request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1320, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('ARC environment').first().json.arc_bridge_url }}/envelope",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.token }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $('Prepare envelope request').first().json.body }}",
+        "options": { "timeout": 10000 }
+      }
+    },
+    {
+      "name": "Perform action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1540, 0],
+      "parameters": {
+        "jsCode": "// The module step. A real shared workflow does its module's work here, through ARC's\n// connector gateway, never with a credential of its own. This reference workflow acts on\n// nothing outside the execution: it exists to prove the frame around it.\nconst SUPPORTED = ['send_message'];\nconst answer = $('Send envelope request').first().json;\nif (!answer || answer.contract_version !== 1 || !answer.envelope) throw new Error('arc:validation_failed');\nconst envelope = answer.envelope;\nif (!SUPPORTED.includes(envelope.action_type)) throw new Error('arc:unsupported_capability');\n// how the reference step behaves is the action's own payload, set by a test: never a tenant's settings.\nconst outcome = String(envelope.payload?.reference_outcome ?? 'succeed');\nif (outcome.startsWith('fail:')) throw new Error(`arc:${outcome.slice(5)}`);\nif (outcome === 'crash') throw new Error('the reference step crashed');\nconst status = outcome === 'skip' ? 'skipped' : 'succeeded';\nreturn [{ json: {\n  envelope,\n  status,\n  provider_refs: status === 'succeeded' ? [`reference:${envelope.job_id}`] : [],\n  safe_output_meta: { reference: true },\n} }];\n"
+      }
+    },
+    {
+      "name": "Prepare callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1760, 0],
+      "parameters": {
+        "jsCode": "// ARC shared frame. The outcome, proposed to ARC (ADR ARC-010 §19): ARC validates it and decides.\nconst WORKFLOW = { runner_key: 'arc-reference-action', workflow_version: '1.0.0' };\nconst done = $('Perform action').first().json;\nconst e = done.envelope;\nconst now = Math.floor(Date.now() / 1000);\nconst callback = {\n  contract_version: 1,\n  job_id: e.job_id,\n  action_id: e.action_id,\n  tenant_id: e.tenant_id,\n  arc_attempt: e.attempt,\n  n8n_execution_id: String($execution.id),\n  runner_key: WORKFLOW.runner_key,\n  workflow_version: WORKFLOW.workflow_version,\n  status: done.status,\n  provider_refs: done.provider_refs,\n  safe_output_meta: done.safe_output_meta,\n  error_category: null,\n  retryable: false,\n  completed_at: new Date().toISOString(),\n  correlation_id: e.correlation_id,\n  idempotency_key: e.idempotency_key,\n};\nreturn [{ json: {\n  body: JSON.stringify(callback),\n  claims: { aud: 'arc-runner-bridge', purpose: 'callback', iat: now, exp: now + 120, jti: `arc-n8n-${$execution.id}-callback` },\n} }];\n"
+      }
+    },
+    {
+      "name": "Hash callback",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [1980, 0],
+      "parameters": {
+        "action": "hash",
+        "type": "SHA256",
+        "value": "={{ $json.body }}",
+        "dataPropertyName": "body_sha256",
+        "encoding": "hex"
+      }
+    },
+    {
+      "name": "Sign callback",
+      "type": "n8n-nodes-base.jwt",
+      "typeVersion": 1,
+      "position": [2200, 0],
+      "parameters": {
+        "operation": "sign",
+        "useJson": true,
+        "claimsJson": "={{ JSON.stringify({ ...$json.claims, body_sha256: $json.body_sha256 }) }}",
+        "options": {}
+      },
+      "credentials": { "jwtAuth": { "name": "ARC bridge signing" } }
+    },
+    {
+      "name": "Send callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2420, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('ARC environment').first().json.arc_bridge_url }}/callback",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.token }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $('Prepare callback').first().json.body }}",
+        "options": { "timeout": 10000 }
+      }
+    }
+  ],
+  "connections": {
+    "ARC dispatch": { "main": [[{ "node": "Accept", "type": "main", "index": 0 }]] },
+    "Accept": { "main": [[{ "node": "ARC environment", "type": "main", "index": 0 }]] },
+    "ARC environment": { "main": [[{ "node": "Prepare envelope request", "type": "main", "index": 0 }]] },
+    "Prepare envelope request": { "main": [[{ "node": "Hash envelope request", "type": "main", "index": 0 }]] },
+    "Hash envelope request": { "main": [[{ "node": "Sign envelope request", "type": "main", "index": 0 }]] },
+    "Sign envelope request": { "main": [[{ "node": "Send envelope request", "type": "main", "index": 0 }]] },
+    "Send envelope request": { "main": [[{ "node": "Perform action", "type": "main", "index": 0 }]] },
+    "Perform action": { "main": [[{ "node": "Prepare callback", "type": "main", "index": 0 }]] },
+    "Prepare callback": { "main": [[{ "node": "Hash callback", "type": "main", "index": 0 }]] },
+    "Hash callback": { "main": [[{ "node": "Sign callback", "type": "main", "index": 0 }]] },
+    "Sign callback": { "main": [[{ "node": "Send callback", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {}
+}

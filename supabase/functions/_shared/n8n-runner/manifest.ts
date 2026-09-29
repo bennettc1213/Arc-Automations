@@ -183,12 +183,54 @@ export function parseManifest(value: unknown): ManifestCheck {
   return problems.length ? { ok: false, problems } : { ok: true, manifest: value as unknown as Manifest };
 }
 
+/* ── the one environment-specific node ────────────────────── */
+
+/**
+ * Where ARC's bridge is differs per environment, and nothing ARC sends an error workflow can
+ * say it — so a shared workflow holds it in exactly one node of exactly this shape (ARC-240).
+ * The repository's export holds the placeholder; an import sets the environment's URL; the
+ * checksum hashes a stand-in for the value, so one reviewed version checks out the same in
+ * every environment; and the sync check compares the value itself. A node of any other shape
+ * is hashed like every other node, so an edit to it is drift, never a hiding place.
+ */
+export const ENVIRONMENT_NODE = Object.freeze({ name: 'ARC environment', type: 'n8n-nodes-base.set', field: 'arc_bridge_url' });
+export const BRIDGE_URL_PLACEHOLDER = 'https://arc-bridge.invalid/functions/v1/runner-bridge';
+/** How every bridge call in a shared workflow reads it. */
+export const BRIDGE_URL_EXPRESSION = `$('${ENVIRONMENT_NODE.name}').first().json.${ENVIRONMENT_NODE.field}`;
+
+/** A bridge URL: https, no credentials, query or fragment, ending in the bridge function. */
+export function isBridgeUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash
+      && /\/runner-bridge$/.test(url.pathname) && url.href === value;
+  } catch {
+    return false;
+  }
+}
+
+/** The bridge URL an environment node holds, or null for any node not exactly that shape. */
+export function environmentNodeUrl(node: unknown): string | null {
+  if (!isPlainObject(node) || node.name !== ENVIRONMENT_NODE.name || node.type !== ENVIRONMENT_NODE.type) return null;
+  const p = node.parameters;
+  if (!isPlainObject(p) || !Object.keys(p).every((k) => ['mode', 'assignments', 'options'].includes(k))) return null;
+  if ('mode' in p && p.mode !== 'manual') return null;
+  if ('options' in p && !(isPlainObject(p.options) && Object.keys(p.options).length === 0)) return null;
+  const list = isPlainObject(p.assignments) && Object.keys(p.assignments).length === 1 ? p.assignments.assignments : null;
+  if (!Array.isArray(list) || list.length !== 1) return null;
+  const a = list[0];
+  if (!isPlainObject(a) || !Object.keys(a).every((k) => ['id', 'name', 'value', 'type'].includes(k))) return null;
+  if (a.name !== ENVIRONMENT_NODE.field || a.type !== 'string' || !isBridgeUrl(a.value)) return null;
+  return a.value;
+}
+
 /* ── the checksum ─────────────────────────────────────────── */
 
 /** Node fields that describe behaviour. Everything else — id, position, credentials, notes — is not the reviewed content. */
 const NODE_FIELDS = ['name', 'type', 'typeVersion', 'parameters', 'disabled', 'onError', 'retryOnFail', 'maxTries', 'waitBetweenTries', 'alwaysOutputData', 'executeOnce'];
 /** `errorWorkflow` is left out: it is an environment's n8n id. The sync check follows it instead. */
-const SETTING_FIELDS = ['executionOrder', 'timezone', 'saveDataErrorExecution', 'saveDataSuccessExecution', 'callerPolicy'];
+const SETTING_FIELDS = ['executionOrder', 'timezone', 'saveDataErrorExecution', 'saveDataSuccessExecution', 'saveManualExecutions', 'callerPolicy'];
 
 /**
  * The part of an n8n workflow export that is its behaviour, in a stable form. The same
@@ -201,7 +243,7 @@ export function workflowContent(exported: unknown): Record<string, unknown> | nu
     Object.fromEntries(fields.filter((f) => source[f] !== undefined).map((f) => [f, source[f]]));
   const nodes = (exported.nodes as unknown[])
     .filter(isPlainObject)
-    .map((n) => pick(n, NODE_FIELDS))
+    .map((n) => pick(environmentNodeUrl(n) === null ? n : { ...n, parameters: { environment: ENVIRONMENT_NODE.field } }, NODE_FIELDS))
     .sort((x, y) => String(x.name).localeCompare(String(y.name)));
   const settings = isPlainObject(exported.settings) ? pick(exported.settings, SETTING_FIELDS) : {};
   return { name: exported.name ?? null, nodes, connections: exported.connections, settings };

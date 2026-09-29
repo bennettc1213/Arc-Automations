@@ -174,6 +174,30 @@ records its staging deployment and assigns it — and nothing can be assigned to
 Recovery v1, which the registry marks `direct` and n8n-`prohibited`. Deployments to
 `production` are refused by a check constraint until the ADR §26 gate closes.
 
+### 0020 — failure reports from the shared error handler (ARC-240): after 0019
+
+0020 adds `resolve_runner_failure` — which dispatch a failed n8n execution was, checked
+against the failed workflow's deployment and the reporting handler — an index to find it,
+and the `failure` route in the bridge's nonce ledger and log. It creates no rows and changes
+no existing one. Redeploy `runner-bridge` with it: the function gains `/failure`, and every
+inbound request is now checked as n8n's JWT (ADR §18 as amended), so 0020 and the function go
+together.
+
+**Setting up the shared workflows in a staging n8n — only when Ben authorises a hosted sync.**
+Nothing here has been done against a real n8n yet.
+
+1. In n8n, create two **JWT** credentials (passphrase, HS256), named exactly:
+   `ARC dispatch` — the value of `ARC_RUNNER_DISPATCH_SECRET` — and `ARC bridge signing` —
+   the value of `ARC_RUNNER_CALLBACK_SECRET`. Nothing else: a shared workflow holds no other
+   credential, and never a tenant's.
+2. `node scripts/n8n-manifest.mjs` — every export valid and matching its checksum.
+3. Import `n8n/workflows/arc-runner-error-handler-v1@1.0.0.json`. In its **ARC environment**
+   node, replace the placeholder with this environment's
+   `https://<ref>.supabase.co/functions/v1/runner-bridge`. Change nothing else — the checksum
+   leaves only that value out, and the sync check (`bridgeUrl`) compares it.
+4. Register, approve and record the staging deployment (0019) with its n8n id, then run the
+   sync check. There is no action workflow to assign until a module version may use n8n.
+
 ---
 
 ## 3. Edge functions
@@ -197,7 +221,7 @@ supabase functions deploy dispatch    --no-verify-jwt   # a shared secret, or an
 supabase functions deploy connections
 
 # the n8n runner bridge (0018) — staging only; answers 503 in production (ADR §26)
-supabase functions deploy runner-bridge --no-verify-jwt   # the HMAC is the gate
+supabase functions deploy runner-bridge --no-verify-jwt   # n8n's own JWT over the body is the gate
 ```
 
 `ingest` must be **redeployed** for 0010 even though its own code barely
@@ -224,8 +248,8 @@ Set on the Supabase project, never in this repository.
 | **`ARC_ENVIRONMENT`** | `connections` | `production`, `staging`, `development` or `test`. **Unset is treated as production**, which is safe: only Vault and the real registry are ever used |
 | **`ARC_OAUTH_REDIRECT_URL`** | `connections` | OAuth cannot begin. It must be exactly the redirect URI registered with each provider, on `ARC_SITE_URL`'s origin, https |
 | `<PROVIDER>_CLIENT_ID`, `<PROVIDER>_CLIENT_SECRET` | `connections` | that provider cannot be connected. The names come from the registry's `clientIdEnv`/`clientSecretEnv`; none are registered yet |
-| `ARC_RUNNER_CALLBACK_SECRET` | `runner-bridge` (staging) | every envelope and callback request is answered 503 `bridge_unconfigured`. ≥ 32 characters; the shared workflows sign with it. `ARC_ENVIRONMENT` must also be set to a non-production value, or the bridge answers 503 |
-| `ARC_RUNNER_DISPATCH_SECRET` | the worker that runs `N8nRunner` (staging; none deployed yet) | nothing can be dispatched to n8n. ≥ 32 characters, **different** from the callback secret; the same value is n8n's JWT credential on its webhooks |
+| `ARC_RUNNER_CALLBACK_SECRET` | `runner-bridge` (staging) | every envelope, callback and failure request is answered 503 `bridge_unconfigured`. ≥ 32 characters; the same value is n8n's `ARC bridge signing` JWT credential, which the shared workflows sign with. `ARC_ENVIRONMENT` must also be set to a non-production value, or the bridge answers 503 |
+| `ARC_RUNNER_DISPATCH_SECRET` | the worker that runs `N8nRunner` (staging; none deployed yet) | nothing can be dispatched to n8n. ≥ 32 characters, **different** from the callback secret; the same value is n8n's `ARC dispatch` JWT credential on its webhooks |
 
 Tenant credentials are **never** function secrets. They live in Supabase Vault, written
 and read only through 0016's service-role functions (ARC-130).

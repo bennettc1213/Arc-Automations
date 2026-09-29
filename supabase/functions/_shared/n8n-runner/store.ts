@@ -101,10 +101,20 @@ export interface AttemptLease {
   leaseToken: string;
 }
 
+/**
+ * Which dispatch a failed execution was, from ARC's rows (0020's `resolve_runner_failure`):
+ * `ok`, or unknown_execution, execution_ambiguous, workflow_mismatch, handler_mismatch.
+ */
+export interface FailureRoute {
+  code: string;
+  attemptId: string | null;
+  tenantId: string | null;
+}
+
 export interface LogEntry {
   tenantId: string | null;
   attemptId: string | null;
-  direction: 'dispatch' | 'envelope' | 'callback';
+  direction: 'dispatch' | 'envelope' | 'callback' | 'failure';
   disposition: 'accepted' | 'applied' | 'duplicate' | 'late' | 'conflict' | 'rejected' | 'voided';
   code: string;
   alert: boolean;
@@ -128,7 +138,9 @@ export interface BridgeStore extends BridgeLedger {
   getDispatch(attemptId: string): Promise<Dispatch | null>;
   getAttemptLease(attemptId: string, tenantId: string): Promise<AttemptLease | null>;
   /** true the first time; false on a replay. */
-  claimNonce(nonce: string, purpose: 'envelope' | 'callback', ttlSeconds: number): Promise<boolean>;
+  claimNonce(nonce: string, purpose: 'envelope' | 'callback' | 'failure', ttlSeconds: number): Promise<boolean>;
+  /** the dispatch a failed execution was — checked against the failed workflow and the reporting handler. */
+  resolveFailure(input: { executionId: string; n8nWorkflowId: string; handlerKey: string; handlerVersion: string }): Promise<FailureRoute>;
   openEnvelope(input: { attemptId: string; tenantId: string; actionId: string; nonce: string }): Promise<{ code: string; detail: string | null }>;
   /** first, duplicate, conflict — or why the callback is not ARC's to hear. */
   recordCallback(input: CallbackRecord): Promise<string>;

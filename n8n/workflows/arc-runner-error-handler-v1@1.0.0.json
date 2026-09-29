@@ -1,0 +1,99 @@
+{
+  "name": "arc-runner-error-handler-v1@1.0.0",
+  "nodes": [
+    {
+      "name": "Workflow failed",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "name": "ARC environment",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 0],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "arc-bridge-url", "name": "arc_bridge_url", "value": "https://arc-bridge.invalid/functions/v1/runner-bridge", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Prepare failure report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "parameters": {
+        "jsCode": "// ARC shared error handler. A shared workflow failed: say so to ARC, in ARC's words.\n// Only a category, the failed node's name and an HTTP status leave n8n, never the\n// error's text, which can hold anything a provider said. ARC decides the outcome.\nconst HANDLER = { runner_key: 'arc-runner-error-handler-v1', workflow_version: '1.0.0' };\nconst CATEGORIES = ['provider_timeout', 'provider_rate_limited', 'provider_auth_failed', 'provider_unreachable', 'provider_error', 'validation_failed', 'unsupported_capability', 'ambiguous_result', 'n8n_internal', 'unexpected_exception'];\n// a failure here happened after the module step: its outcome is unknown, not refused.\nconst AFTER_EFFECT = ['Prepare callback', 'Hash callback', 'Sign callback', 'Send callback'];\n\nconst trigger = $('Workflow failed').first().json;\nconst execution = trigger.execution;\n// a trigger that failed before an execution existed ran no job: there is nothing to report.\nif (!execution || execution.id === undefined || execution.id === null || !trigger.workflow || trigger.workflow.id === undefined) return [];\n\nconst error = execution.error || {};\nconst message = String(error.message || '');\nconst code = Number.parseInt(String(error.httpCode ?? ''), 10);\nconst status = Number.isInteger(code) && code >= 100 && code <= 599 ? code : null;\nconst node = typeof error.node?.name === 'string' && error.node.name ? error.node.name\n  : typeof execution.lastNodeExecuted === 'string' && execution.lastNodeExecuted ? execution.lastNodeExecuted : null;\n\nfunction categorise() {\n  const deliberate = /^arc:([a-z_]+)/.exec(message);\n  if (deliberate && CATEGORIES.includes(deliberate[1])) return deliberate[1];\n  if (node && AFTER_EFFECT.includes(node)) return 'ambiguous_result';\n  if (status === 429) return 'provider_rate_limited';\n  if (status === 401 || status === 403) return 'provider_auth_failed';\n  if (status === 408 || status === 504) return 'provider_timeout';\n  if (status !== null && status >= 500) return 'provider_error';\n  if (status !== null && status >= 400) return 'validation_failed';\n  if (/ETIMEDOUT|ESOCKETTIMEDOUT|ECONNABORTED|timed out|timeout/i.test(message)) return 'provider_timeout';\n  if (/ECONNREFUSED|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH/.test(message)) return 'provider_unreachable';\n  if (/ECONNRESET|EPIPE|socket hang up/i.test(message)) return 'ambiguous_result';\n  if (!node || /^Workflow(Operation|Activation)Error$/.test(String(error.name || ''))) return 'n8n_internal';\n  return 'unexpected_exception';\n}\n\nconst now = Math.floor(Date.now() / 1000);\nconst report = {\n  contract_version: 1,\n  n8n_execution_id: String(execution.id),\n  n8n_workflow_id: String(trigger.workflow.id),\n  error_category: categorise(),\n  failed_node: node ? node.slice(0, 100) : null,\n  http_status: status,\n  reported_at: new Date().toISOString(),\n  handler: HANDLER,\n};\nreturn [{ json: {\n  body: JSON.stringify(report),\n  claims: { aud: 'arc-runner-bridge', purpose: 'failure', iat: now, exp: now + 120, jti: `arc-n8n-${$execution.id}-failure` },\n} }];\n"
+      }
+    },
+    {
+      "name": "Hash failure report",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [660, 0],
+      "parameters": {
+        "action": "hash",
+        "type": "SHA256",
+        "value": "={{ $json.body }}",
+        "dataPropertyName": "body_sha256",
+        "encoding": "hex"
+      }
+    },
+    {
+      "name": "Sign failure report",
+      "type": "n8n-nodes-base.jwt",
+      "typeVersion": 1,
+      "position": [880, 0],
+      "parameters": {
+        "operation": "sign",
+        "useJson": true,
+        "claimsJson": "={{ JSON.stringify({ ...$json.claims, body_sha256: $json.body_sha256 }) }}",
+        "options": {}
+      },
+      "credentials": { "jwtAuth": { "name": "ARC bridge signing" } }
+    },
+    {
+      "name": "Send failure report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('ARC environment').first().json.arc_bridge_url }}/failure",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.token }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $('Prepare failure report').first().json.body }}",
+        "options": { "timeout": 10000 }
+      }
+    }
+  ],
+  "connections": {
+    "Workflow failed": { "main": [[{ "node": "ARC environment", "type": "main", "index": 0 }]] },
+    "ARC environment": { "main": [[{ "node": "Prepare failure report", "type": "main", "index": 0 }]] },
+    "Prepare failure report": { "main": [[{ "node": "Hash failure report", "type": "main", "index": 0 }]] },
+    "Hash failure report": { "main": [[{ "node": "Sign failure report", "type": "main", "index": 0 }]] },
+    "Sign failure report": { "main": [[{ "node": "Send failure report", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {}
+}

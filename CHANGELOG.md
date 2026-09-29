@@ -153,6 +153,35 @@ when it ships.
   - `workflow-manifest-db`: 13 with real Postgres, including Lead Recovery's real posture
     being refused;
   - `workflow-fixtures.js`.
+- **ARC-240: the shared n8n workflow frame and error handler.** No module version may use
+  n8n yet (Lead Recovery v1 is n8n-prohibited), so, by Ben's decision, this ships the
+  shared parts and proves them with a reference workflow that is never registered:
+  - `n8n/workflows/arc-runner-error-handler-v1@1.0.0.json`, the first real manifest entry:
+    n8n's Error Trigger reports one closed category, the failed execution's id, the failed
+    node's name and an HTTP status to ARC — never the error's text.
+  - `_shared/n8n-runner/exports.ts`: `workflowExportProblems`, the frame every shared workflow
+    must be. Only reviewed node types; every HTTP call goes to the bridge; ARC's two JWT
+    credentials, by name, and no other; no tenant id, `$env`/`$vars`, credential-shaped value,
+    environment id or retained execution data.
+  - `_shared/n8n-runner/failures.ts`: ten failure categories, each recording whether the
+    provider provably did not act and whether a retry can succeed. `failureOutcome` is ARC's
+    decision: before the envelope opened, a plain failure; after it, an external effect is
+    ambiguous unless the failure proves the provider refused.
+  - Migration `0020_runner_failure_reports.sql`: `resolve_runner_failure` finds the dispatch a
+    failed execution was, refusing a failed workflow that is not the dispatch's deployment, or
+    a handler that is not the one it recorded. A new `runner-bridge` route, `/failure`,
+    records ARC's decision exactly as a callback, so the first report for an attempt wins.
+  - One environment-specific node per workflow, `ARC environment`, holds the bridge URL. The
+    repository keeps a placeholder, an import sets it, the checksum leaves out only that value
+    and only in that exact shape, and the sync check reports `bridge_url_mismatch`.
+  - `scripts/n8n-manifest.mjs`: checks every export against the manifest without n8n;
+    `--write` recomputes checksums after an edit.
+- Tests:
+  - `n8n-workflows`: 54;
+  - `n8n-workflows-db`: 10 with real Postgres, running the workflows through the orchestrator;
+  - `tests/n8n-sim.js`, a strict stand-in for n8n. It runs the real exports (graph, Code nodes,
+    expressions) and signs with node:crypto, independent of ARC's code;
+  - the reference workflow, a fixture: `tests/fixtures/n8n/arc-reference-action@1.0.0.json`.
 
 ### Fixed
 
@@ -164,6 +193,15 @@ when it ships.
   `n8n_prohibited`.
 
 ### Changed
+
+- **n8n → ARC requests are signed by n8n's own JWT node, not an HMAC** (ADR ARC-010 §18 and
+  §24, amended by ARC-240). n8n cannot compute an HMAC with a secret held in a credential. The
+  JWT binds one route, a hash of the exact body, a five-minute window and a single-use nonce,
+  all checked before the body is parsed. `runner-bridge` now reads the Authorization header;
+  the `x-arc-*` headers are gone. It changes no deployed behaviour: `runner-bridge` has never
+  been deployed.
+- The workflow checksum now also covers `saveManualExecutions`, and leaves out the
+  environment node's bridge URL.
 
 - A workflow whose manifest sets `auto_retry: false` is not retried, even if its callback
   reports a retryable failure.

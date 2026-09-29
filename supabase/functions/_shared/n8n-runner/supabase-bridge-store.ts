@@ -125,6 +125,17 @@ export function supabaseBridgeStore(db: Db): BridgeStore {
       return await scalar('claim_runner_nonce', { p_nonce: nonce, p_purpose: purpose, p_ttl_seconds: ttlSeconds }) === true;
     },
 
+    async resolveFailure(input) {
+      const { data, error } = await db.rpc('resolve_runner_failure', {
+        p_execution_id: input.executionId, p_n8n_workflow_id: input.n8nWorkflowId,
+        p_handler_key: input.handlerKey, p_handler_version: input.handlerVersion,
+      });
+      if (error) raise('failure resolve', error);
+      const row = first(data);
+      if (!row) throw new BridgeError('failure_unresolved', 'resolve_runner_failure returned nothing');
+      return { code: row.code, attemptId: row.attempt_id ?? null, tenantId: row.tenant_id ?? null };
+    },
+
     async openEnvelope(input) {
       const { data, error } = await db.rpc('open_runner_envelope', {
         p_attempt: input.attemptId, p_tenant: input.tenantId, p_action: input.actionId, p_nonce: input.nonce,

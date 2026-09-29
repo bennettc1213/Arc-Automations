@@ -251,7 +251,7 @@ describe('ARC-230 against real Postgres', { skip }, () => {
     };
     const rawBody = JSON.stringify(callback);
     const out = await handleCallback({ environment: 'test', callbackSecret: CALLBACK_SECRET, bridge, scheduler: store },
-      { rawBody, headers: await signBridgeRequest(rawBody, CALLBACK_SECRET, { timestamp: Math.floor(Date.now() / 1000), nonce: crypto.randomUUID() }) });
+      { rawBody, headers: await signBridgeRequest(rawBody, CALLBACK_SECRET, { purpose: 'callback', timestamp: Math.floor(Date.now() / 1000), nonce: crypto.randomUUID() }) });
     assert.deepEqual([out.body.disposition, out.body.action_status], ['applied', 'failed']);
     assert.equal(await status(note.id), 'failed');
   });

@@ -94,9 +94,9 @@ describe('ARC-220 against real Postgres', { skip }, () => {
     }), 'schedule').action;
   }
   /** a signed request, exactly as the shared workflow sends one. */
-  async function signed(body, { secret = CALLBACK_SECRET, timestamp = nowSeconds(), nonce = crypto.randomUUID() } = {}) {
+  async function signed(body, { purpose = 'callback', secret = CALLBACK_SECRET, timestamp = nowSeconds(), nonce = crypto.randomUUID() } = {}) {
     const rawBody = JSON.stringify(body);
-    return { rawBody, headers: await signBridgeRequest(rawBody, secret, { timestamp, nonce }) };
+    return { rawBody, headers: await signBridgeRequest(rawBody, secret, { purpose, timestamp, nonce }) };
   }
   const envelopeAsk = (d, o = {}) => ({ contract_version: 1, job_id: d.job_id, action_id: d.action_id, tenant_id: d.tenant_id, nonce: d.nonce, ...o });
   const callbackFor = (d, o = {}) => ({
@@ -105,7 +105,7 @@ describe('ARC-220 against real Postgres', { skip }, () => {
     status: 'succeeded', provider_refs: ['SM0001'], safe_output_meta: { segments: 1 }, error_category: null, retryable: false,
     completed_at: new Date().toISOString(), correlation_id: d.correlation_id, idempotency_key: d.idempotency_key, ...o,
   });
-  const envelope = async (d, o = {}, opts = {}) => handleEnvelopeRequest(handlerDeps(), await signed(envelopeAsk(d, o), opts));
+  const envelope = async (d, o = {}, opts = {}) => handleEnvelopeRequest(handlerDeps(), await signed(envelopeAsk(d, o), { purpose: 'envelope', ...opts }));
   const callback = async (d, o = {}, opts = {}) => handleCallback(handlerDeps(), await signed(callbackFor(d, o), opts));
 
   const row = async (id) => (await db.query('select * from scheduled_actions where id = $1', [id])).rows[0];
@@ -186,7 +186,10 @@ describe('ARC-220 against real Postgres', { skip }, () => {
 
   test('a replayed request is refused and flagged; a bad, missing or stale signature is refused before parsing', async () => {
     const { d } = await dispatched(a);
-    const request = await signed(envelopeAsk(d));
+    // a token for one route is no good at another, even untouched and in time.
+    const misrouted = await handleEnvelopeRequest(handlerDeps(), await signed(envelopeAsk(d), { purpose: 'callback' }));
+    assert.deepEqual([misrouted.status, misrouted.body.error], [401, 'wrong_purpose']);
+    const request = await signed(envelopeAsk(d), { purpose: 'envelope' });
     assert.equal((await handleEnvelopeRequest(handlerDeps(), request)).status, 200);
     const replay = await handleEnvelopeRequest(handlerDeps(), request);
     assert.deepEqual([replay.status, replay.body.error], [409, 'replayed']);
@@ -199,7 +202,7 @@ describe('ARC-220 against real Postgres', { skip }, () => {
     assert.deepEqual([unsigned.status, unsigned.body.error], [401, 'missing_signature']);
     const garbage = await handleCallback(handlerDeps(), await (async () => {
       const rawBody = '{not json';
-      return { rawBody, headers: await signBridgeRequest(rawBody, CALLBACK_SECRET, { timestamp: nowSeconds(), nonce: crypto.randomUUID() }) };
+      return { rawBody, headers: await signBridgeRequest(rawBody, CALLBACK_SECRET, { purpose: 'callback', timestamp: nowSeconds(), nonce: crypto.randomUUID() }) };
     })());
     assert.equal(garbage.status, 400);
     assert.equal((await attempts(d.action_id))[0].status, 'running', 'none of it touched the attempt');

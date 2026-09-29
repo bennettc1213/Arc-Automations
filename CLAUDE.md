@@ -111,7 +111,9 @@ recorded decision — never by editing code quietly. A dispatch is identifiers o
 before it leaves; n8n learns the payload only from a signed, one-time envelope that
 `open_runner_envelope` refuses (and voids) once the gate no longer allows the action. So a
 voided dispatch whose envelope never opened provably did nothing, and is retried; anything
-else unknown is ambiguous. Inbound: HMAC before parse, nonce once, tenant from ARC's rows.
+else unknown is ambiguous. Inbound: n8n's own JWT node signs (ADR §18 as amended by ARC-240 —
+never an HMAC secret in a workflow); ARC checks signature, route, window and body hash before
+parse, the nonce once, and takes the tenant from its own rows.
 
 **Which workflow runs is ARC's assignment, never the runner's config** (`0019`,
 `n8n/manifest.json`, `_shared/n8n-runner/{manifest,workflows,sync}.ts`, ARC-230; ADR §21/§29).
@@ -121,6 +123,17 @@ reassignment retires the old row, and every dispatch records the assignment, che
 handler it ran under, immutably. A module registered `direct` or n8n-`prohibited` — Lead
 Recovery v1 — is never assigned one, so it can never be dispatched to n8n. The checksum is over
 behaviour, not ids or layout; `checkWorkflowSync` reports drift and changes nothing.
+
+**A shared workflow is a fixed frame around one module step** (`n8n/workflows/`,
+`_shared/n8n-runner/{exports,failures}.ts`, `0020`, ARC-240). `workflowExportProblems` is the
+frame, checked without n8n: ARC's JWT-verified webhook → answer the execution id → fetch the
+envelope → the step → call back; only reviewed node types; every HTTP call to the bridge URL in
+the one "ARC environment" node (a placeholder in the repo, set at import, left out of the
+checksum); no credential but ARC's two JWT ones, no tenant id, no `$env`/`$vars`, no retained
+execution data. A failed execution reaches ARC only through `arc-runner-error-handler-v1`, which
+reports a category and the execution id — never the error's text — and ARC decides the outcome
+(`failureOutcome`) from its own rows. `tests/n8n-sim.js` runs the real exports locally; conformance
+with a real n8n is a hosted gate. After editing an export, `node scripts/n8n-manifest.mjs --write`.
 
 Requires `supabase/migrations/0003_client_ids_and_ops.sql` plus the
 `client-login` and `ops` edge functions; the console's Supabase page probes for

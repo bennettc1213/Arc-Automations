@@ -12,7 +12,7 @@
  */
 
 import { BRIDGE_CONTRACT_VERSION } from './contract.ts';
-import { type Manifest, refOf, workflowChecksum } from './manifest.ts';
+import { environmentNodeUrl, type Manifest, refOf, workflowChecksum } from './manifest.ts';
 import type { Assignment, Deployment, RegisteredVersion } from './workflows.ts';
 
 /** What n8n holds for one workflow id: its export, or null if it has none. */
@@ -28,6 +28,7 @@ export const SYNC_FINDINGS = [
   'missing_in_n8n',             // deployed in ARC's lookup, absent from n8n
   'checksum_drift',             // n8n's content is not the reviewed content
   'error_handler_unlinked',     // n8n's errorWorkflow is not this version's deployed handler
+  'bridge_url_mismatch',        // its environment node sends to somewhere other than this environment's ARC
   'contract_mismatch',          // speaks a bridge contract ARC does not
   'assignment_not_runnable',    // an active assignment to a draft or disabled version
   'assignment_wrong_action',    // an active assignment to a version that does not execute it
@@ -48,6 +49,8 @@ export async function checkWorkflowSync(input: {
   assignments: Assignment[];
   environment: string;
   n8n: N8nWorkflowSource;
+  /** this environment's runner-bridge URL. The checksum leaves it out, so it is compared here. */
+  bridgeUrl?: string;
 }): Promise<SyncFinding[]> {
   const findings: SyncFinding[] = [];
   const add = (code: SyncFindingCode, ref: string, detail: string) => findings.push({ code, ref, detail });
@@ -84,6 +87,13 @@ export async function checkWorkflowSync(input: {
     }
     const actual = await workflowChecksum(exported);
     if (actual !== v.checksum) add('checksum_drift', ref, `n8n's content (${actual ?? 'unreadable'}) is not the reviewed ${v.checksum}`);
+    if (input.bridgeUrl !== undefined) {
+      const nodes = (exported as { nodes?: unknown }).nodes;
+      const urls = (Array.isArray(nodes) ? nodes : []).map(environmentNodeUrl).filter((u): u is string => u !== null);
+      if (urls.length !== 1 || urls[0] !== input.bridgeUrl) {
+        add('bridge_url_mismatch', ref, `it reports to ${urls.join(', ') || 'nowhere'}, not ${input.environment}'s ${input.bridgeUrl}`);
+      }
+    }
     if (v.role === 'action' && v.errorHandlerKey) {
       const handler = deployed.get(`${v.errorHandlerKey}@${v.errorHandlerVersion}`);
       const linked = (exported as { settings?: { errorWorkflow?: unknown } }).settings?.errorWorkflow;

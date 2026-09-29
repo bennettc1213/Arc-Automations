@@ -13,7 +13,7 @@ import { findSecretShaped } from '../supabase/functions/_shared/scheduler/model.
 import { validateRunnerResult } from '../supabase/functions/_shared/runner/model.ts';
 import { buildRunnerRequest } from '../supabase/functions/_shared/runner/orchestrator.ts';
 import {
-  BRIDGE_HEADERS, sha256Hex, signBridgeRequest, signDispatchToken, verifyBridgeRequest, verifyDispatchToken,
+  BRIDGE_AUDIENCE, sha256Hex, signBridgeRequest, signDispatchToken, verifyBridgeRequest, verifyDispatchToken,
 } from '../supabase/functions/_shared/n8n-runner/signing.ts';
 import { callbackOutcome, callbackToResult, dispatchBody, envelopeFrom, parseCallback, parseEnvelopeRequest } from '../supabase/functions/_shared/n8n-runner/contract.ts';
 import { N8nRunner } from '../supabase/functions/_shared/n8n-runner/runner.ts';
@@ -141,25 +141,55 @@ describe('ARC → n8n: a short-lived JWT bound to one body, one attempt and one 
   });
 });
 
-describe('n8n → ARC: an HMAC over the raw body, checked before anything reads it', () => {
+describe('n8n → ARC: n8n\'s own JWT over the exact body, checked before anything reads it', () => {
   const body = JSON.stringify({ hello: 'world' });
-  const sign = (o = {}) => signBridgeRequest(o.body ?? body, o.secret ?? CALLBACK_SECRET, { timestamp: o.timestamp ?? nowSeconds(), nonce: o.nonce ?? crypto.randomUUID() });
-
-  test('a correctly signed request verifies and yields its nonce', async () => {
-    const headers = await sign({ nonce: 'nonce-aaaaaaaaaaaaaaaa' });
-    const out = await verifyBridgeRequest(body, headers, CALLBACK_SECRET, nowSeconds());
-    assert.deepEqual([out.ok, out.nonce], [true, 'nonce-aaaaaaaaaaaaaaaa']);
+  const sign = (o = {}) => signBridgeRequest(o.body ?? body, o.secret ?? CALLBACK_SECRET, {
+    purpose: o.purpose ?? 'callback', timestamp: o.timestamp ?? nowSeconds(), nonce: o.nonce ?? crypto.randomUUID(), ttlSeconds: o.ttl,
+  });
+  const check = (headers, o = {}) => verifyBridgeRequest(o.body ?? body, headers, CALLBACK_SECRET, nowSeconds(), o.purpose ?? 'callback');
+  /** a token over hand-made claims, signed the way any HS256 signer would. */
+  const tokenOver = async (claims, header = { alg: 'HS256', typ: 'JWT' }, secret = CALLBACK_SECRET) => {
+    const { createHmac } = await import('node:crypto');
+    const part = (x) => Buffer.from(JSON.stringify(x)).toString('base64url');
+    const signingInput = `${part(header)}.${part(claims)}`;
+    return { authorization: `Bearer ${signingInput}.${createHmac('sha256', secret.reveal()).update(signingInput).digest('base64url')}` };
+  };
+  const claims = async (o = {}) => ({
+    aud: BRIDGE_AUDIENCE, purpose: 'callback', iat: nowSeconds(), exp: nowSeconds() + 60, jti: crypto.randomUUID(), body_sha256: await sha256Hex(body), ...o,
   });
 
-  test('a changed byte, another secret, a missing header or an old timestamp is refused', async () => {
+  test('a correctly signed request verifies and yields its nonce — and so does one any HS256 signer made', async () => {
+    const out = await check(await sign({ nonce: 'nonce-aaaaaaaaaaaaaaaa' }));
+    assert.deepEqual([out.ok, out.nonce], [true, 'nonce-aaaaaaaaaaaaaaaa']);
+    assert.equal((await check(await tokenOver(await claims()))).ok, true, 'what n8n\'s JWT node makes, ARC accepts');
+  });
+
+  test('a changed byte, another secret, a missing header or an old token is refused', async () => {
     const headers = await sign();
-    assert.equal((await verifyBridgeRequest(`${body} `, headers, CALLBACK_SECRET, nowSeconds())).code, 'invalid_signature');
-    assert.equal((await verifyBridgeRequest(body, await sign({ secret: OTHER_SECRET }), CALLBACK_SECRET, nowSeconds())).code, 'invalid_signature');
-    assert.equal((await verifyBridgeRequest(body, { ...headers, [BRIDGE_HEADERS.signature]: null }, CALLBACK_SECRET, nowSeconds())).code, 'missing_signature');
-    const stale = await sign({ timestamp: nowSeconds() - 301 });
-    assert.equal((await verifyBridgeRequest(body, stale, CALLBACK_SECRET, nowSeconds())).code, 'stale_signature');
+    assert.equal((await check(headers, { body: `${body} ` })).code, 'body_mismatch');
+    assert.equal((await check(await sign({ secret: OTHER_SECRET }))).code, 'invalid_signature');
+    assert.equal((await check({})).code, 'missing_signature');
+    assert.equal((await check({ authorization: 'Basic abc' })).code, 'invalid_signature');
+    assert.equal((await check(await sign({ timestamp: nowSeconds() - 301, ttl: 300 }))).code, 'stale_signature');
+    assert.equal((await check(await sign({ timestamp: nowSeconds() - 200, ttl: 100 }))).code, 'stale_signature', 'an expired token');
     const staleForged = await sign({ timestamp: nowSeconds() - 3600, secret: OTHER_SECRET });
-    assert.equal((await verifyBridgeRequest(body, staleForged, CALLBACK_SECRET, nowSeconds())).code, 'invalid_signature', 'a forgery is reported as a forgery');
+    assert.equal((await check(staleForged)).code, 'invalid_signature', 'a forgery is reported as a forgery');
+  });
+
+  test('a token is for one route: a callback token is no good at the envelope door', async () => {
+    assert.equal((await check(await sign({ purpose: 'callback' }), { purpose: 'envelope' })).code, 'wrong_purpose');
+    assert.equal((await check(await sign({ purpose: 'failure' }), { purpose: 'failure' })).ok, true);
+  });
+
+  test('only exactly the expected claims, HS256, a short life and a nonce-shaped jti', async () => {
+    assert.equal((await check(await tokenOver(await claims(), { alg: 'none' }))).code, 'invalid_signature');
+    assert.equal((await check(await tokenOver(await claims(), { alg: 'HS512' }))).code, 'invalid_signature');
+    assert.equal((await check(await tokenOver(await claims({ tenant_id: 'x' })))).code, 'invalid_signature', 'an unknown claim');
+    assert.equal((await check(await tokenOver(await claims({ aud: 'someone-else' })))).code, 'invalid_signature');
+    assert.equal((await check(await tokenOver(await claims({ exp: nowSeconds() + 3600 })))).code, 'invalid_signature', 'a token that lives an hour');
+    assert.equal((await check(await tokenOver(await claims({ jti: 'short' })))).code, 'invalid_signature');
+    const { body_sha256: _, ...missing } = await claims();
+    assert.equal((await check(await tokenOver(missing))).code, 'invalid_signature');
   });
 });
 

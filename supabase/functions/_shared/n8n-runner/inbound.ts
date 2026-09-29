@@ -1,12 +1,14 @@
 /**
- * ARC-220 — the two requests n8n makes to ARC: fetch an envelope, and report an outcome
- * (ADR ARC-010 §15, §18, §19). Framework-free: the `runner-bridge` edge function hands
- * these the raw body and three headers, and returns what they answer.
+ * ARC-220 / ARC-240 — the three requests n8n makes to ARC: fetch an envelope, report an
+ * outcome, and (from the shared error handler) report that an execution failed (ADR
+ * ARC-010 §15, §18, §19). Framework-free: the `runner-bridge` edge function hands these the
+ * raw body and the Authorization header, and returns what they answer.
  *
  * Every request passes the same door, in this order, and each step refuses on its own:
  *
  *   1. the bridge is disabled in production (ADR §26) — nothing else is looked at;
- *   2. the HMAC over the raw bytes, before they are parsed;
+ *   2. the token over the raw bytes, before they are parsed: signature, purpose, window,
+ *      body hash;
  *   3. the nonce, once (0018) — a replay is refused, and flagged;
  *   4. the body, strictly — unknown fields and anything secret-shaped are refused;
  *   5. the job, re-derived from ARC's own rows. The tenant in the body is compared,
@@ -19,6 +21,10 @@
  * it through the scheduler's service — the same four calls the orchestrator makes — and a
  * repeat of it is a no-op. A callback that arrives after the attempt was settled is kept
  * as evidence and changes nothing. Nothing here trusts n8n's execution history.
+ *
+ * A failure report names only an execution. ARC finds the dispatch it was, decides the
+ * outcome itself (`failureOutcome`), and records it exactly as a callback — so a failure
+ * after a workflow already reported success is a conflict, never an overwrite.
  */
 
 import type { RuntimeEnvironment } from '../connections/runtime-env.ts';
@@ -27,8 +33,11 @@ import { actionType } from '../scheduler/model.ts';
 import type { SchedulerStore } from '../scheduler/store.ts';
 import { settlementFor, validateRunnerResult } from '../runner/model.ts';
 import { buildRunnerRequest, finishRunIfSettled, settleAttempt } from '../runner/orchestrator.ts';
-import { BRIDGE_CONTRACT_VERSION, callbackOutcome, callbackToResult, envelopeFrom, parseCallback, parseEnvelopeRequest } from './contract.ts';
-import { NONCE_TTL_SECONDS, sha256Hex, verifyBridgeRequest } from './signing.ts';
+import {
+  BRIDGE_CONTRACT_VERSION, type Callback, callbackOutcome, callbackToResult, envelopeFrom, parseCallback, parseEnvelopeRequest,
+} from './contract.ts';
+import { failureOutcome, parseFailureReport } from './failures.ts';
+import { type BridgePurpose, NONCE_TTL_SECONDS, sha256Hex, verifyBridgeRequest } from './signing.ts';
 import type { BridgeStore, LogEntry } from './store.ts';
 
 export interface BridgeHandlerDeps {
@@ -52,10 +61,8 @@ export interface BridgeAnswer {
 
 const answer = (status: number, body: Record<string, unknown>): BridgeAnswer => ({ status, body });
 
-type Direction = 'envelope' | 'callback';
-
 /** Steps 1–3, and the parse. Returns the parsed body, or the answer that ends the request. */
-async function door(deps: BridgeHandlerDeps, direction: Direction, input: BridgeInbound): Promise<{ parsed: unknown; digest: string } | BridgeAnswer> {
+async function door(deps: BridgeHandlerDeps, direction: BridgePurpose, input: BridgeInbound): Promise<{ parsed: unknown; digest: string } | BridgeAnswer> {
   if (deps.environment === 'production') {
     return answer(503, { error: 'bridge_disabled', detail: 'the runner bridge is disabled in production (ADR ARC-010 §26)' });
   }
@@ -66,7 +73,7 @@ async function door(deps: BridgeHandlerDeps, direction: Direction, input: Bridge
     return answer(status, { error: code });
   };
 
-  const checked = await verifyBridgeRequest(input.rawBody, input.headers, deps.callbackSecret, Math.floor(now().getTime() / 1000));
+  const checked = await verifyBridgeRequest(input.rawBody, input.headers, deps.callbackSecret, Math.floor(now().getTime() / 1000), direction);
   if (!checked.ok) return await reject(401, checked.code, checked.code !== 'missing_signature');
   if (!(await deps.bridge.claimNonce(checked.nonce, direction, NONCE_TTL_SECONDS))) return await reject(409, 'replayed', true);
 
@@ -196,7 +203,13 @@ export async function handleCallback(deps: BridgeHandlerDeps, input: BridgeInbou
     await log({ tenantId: null, attemptId: c.job_id, disposition: 'rejected', code: 'contract_version_unsupported', alert: true, detail: null });
     return answer(409, { error: 'contract_version_unsupported' });
   }
+  return await applyCallback(deps, c, log);
+}
 
+type Log = (entry: Omit<LogEntry, 'direction' | 'bodyDigest'>) => Promise<void>;
+
+/** Record a verified report about one attempt, then settle the attempt if it still runs under its dispatch's lease. */
+async function applyCallback(deps: BridgeHandlerDeps, c: Callback, log: Log): Promise<BridgeAnswer> {
   const recorded = await deps.bridge.recordCallback({
     attemptId: c.job_id, tenantId: c.tenant_id, actionId: c.action_id, attemptNo: c.arc_attempt,
     idempotencyKey: c.idempotency_key, runnerKey: c.runner_key, workflowVersion: c.workflow_version,
@@ -245,4 +258,84 @@ export async function handleCallback(deps: BridgeHandlerDeps, input: BridgeInbou
   const runStatus = await finishRunIfSettled(deps.scheduler, c.tenant_id, lease.runId);
   await log({ tenantId: c.tenant_id, attemptId: c.job_id, disposition: 'applied', code: `outcome_${settlement.outcome}`, alert: false, detail: null });
   return answer(200, { disposition: 'applied', outcome: settlement.outcome, action_status: settled.value.actionStatus, run_status: runStatus });
+}
+
+/* ── failure report (the shared error handler) ────────────── */
+
+const FAILURE_REFUSALS: Record<string, { status: number; alert: boolean }> = {
+  // a failure before ARC correlated the execution: the lease sweep settles that attempt.
+  unknown_execution: { status: 404, alert: false },
+  execution_ambiguous: { status: 409, alert: true },
+  // the failed workflow is not the one the dispatch was deployed as.
+  workflow_mismatch: { status: 403, alert: true },
+  // a handler other than the one the dispatch recorded — a rolled-back or foreign one.
+  handler_mismatch: { status: 409, alert: true },
+};
+
+export async function handleFailureReport(deps: BridgeHandlerDeps, input: BridgeInbound): Promise<BridgeAnswer> {
+  const opened = await door(deps, 'failure', input);
+  if (isAnswer(opened)) return opened;
+  const { parsed, digest } = opened;
+  const log: Log = (entry) => deps.bridge.log({ ...entry, direction: 'failure', bodyDigest: digest });
+
+  const checked = parseFailureReport(parsed);
+  if (!checked.ok) {
+    const secret = /credential/.test(checked.problem);
+    await log({ tenantId: null, attemptId: null, disposition: 'rejected', code: secret ? 'secret_in_report' : 'invalid_report', alert: secret, detail: secret ? null : checked.problem });
+    return answer(400, { error: secret ? 'secret_in_report' : 'invalid_report', detail: secret ? undefined : checked.problem });
+  }
+  const r = checked.value;
+  if (r.contract_version !== BRIDGE_CONTRACT_VERSION) {
+    await log({ tenantId: null, attemptId: null, disposition: 'rejected', code: 'contract_version_unsupported', alert: true, detail: null });
+    return answer(409, { error: 'contract_version_unsupported' });
+  }
+
+  const route = await deps.bridge.resolveFailure({
+    executionId: r.n8n_execution_id, n8nWorkflowId: r.n8n_workflow_id,
+    handlerKey: r.handler.runner_key, handlerVersion: r.handler.workflow_version,
+  });
+  const refusal = FAILURE_REFUSALS[route.code];
+  if (route.code !== 'ok' || !route.attemptId || !route.tenantId) {
+    await log({ tenantId: route.tenantId, attemptId: route.attemptId, disposition: 'rejected', code: refusal ? route.code : 'failure_unresolved', alert: refusal?.alert ?? true, detail: null });
+    return answer(refusal?.status ?? 409, { error: refusal ? route.code : 'failure_unresolved' });
+  }
+
+  /* everything the callback needs comes from ARC's rows, not from the report. */
+  const tenantId = route.tenantId;
+  const [dispatch, lease] = await Promise.all([deps.bridge.getDispatch(route.attemptId), deps.bridge.getAttemptLease(route.attemptId, tenantId)]);
+  const [action, run] = dispatch && lease
+    ? await Promise.all([deps.scheduler.getAction(tenantId, dispatch.actionId), deps.scheduler.getRun(tenantId, dispatch.runId)])
+    : [null, null];
+  const type = action ? actionType(action.actionType) : null;
+  if (!dispatch || !lease || !action || !run?.correlationId || !type) {
+    await log({ tenantId, attemptId: route.attemptId, disposition: 'rejected', code: 'failure_unresolved', alert: true, detail: null });
+    return answer(409, { error: 'failure_unresolved' });
+  }
+
+  const outcome = failureOutcome(r.error_category, { envelopeOpened: dispatch.envelopeOpenedAt !== null, effectClass: type.effectClass });
+  const callback: Callback = {
+    contract_version: BRIDGE_CONTRACT_VERSION,
+    job_id: dispatch.attemptId,
+    action_id: dispatch.actionId,
+    tenant_id: tenantId,
+    arc_attempt: lease.attemptNo,
+    n8n_execution_id: r.n8n_execution_id,
+    runner_key: dispatch.runnerKey,
+    workflow_version: dispatch.workflowVersion,
+    status: outcome.status,
+    provider_refs: [],
+    safe_output_meta: { reported_by: 'error_handler', failed_node: r.failed_node, http_status: r.http_status },
+    error_category: r.error_category,
+    retryable: outcome.retryable,
+    completed_at: r.reported_at,
+    correlation_id: run.correlationId,
+    idempotency_key: action.idempotencyKey,
+  };
+  // the same strict check a workflow's own callback passes.
+  const valid = parseCallback(callback);
+  if (!valid.ok) {
+    await log({ tenantId, attemptId: dispatch.attemptId, disposition: 'rejected', code: 'failure_unresolved', alert: true, detail: valid.problem });
+    return answer(409, { error: 'failure_unresolved' });
+  }
+  return await applyCallback(deps, valid.value, log);
 }
