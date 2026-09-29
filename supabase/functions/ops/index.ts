@@ -96,6 +96,16 @@
  *   409 with `code`, never a silent overwrite. `lead-recovery-save-config` above now
  *   publishes through the same engine.
  *
+ * Tenant creation and module selection — ARC-300 (migration 0021). Documented in
+ * ./tenants.ts:
+ *
+ *   tenant-create    the tenant, its chosen modules selected (configuring, never active),
+ *                    the creation record and the audit row, in one transaction
+ *   tenant-modules   every registered module for one client: selectable or why not, what
+ *                    it needs, its lifecycle status and readiness, its configuration scopes
+ *
+ *   A client can no longer be created by a browser insert; 0021 drops that policy.
+ *
  * Roadmap assistant — read-only, so not audited. Documented in ./roadmap.ts and
  * docs/architecture/ARC_ROADMAP_ASSISTANT.md:
  *
@@ -135,6 +145,8 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { handleLeadRecoveryAction, LEAD_RECOVERY_ACTIONS } from './lead-recovery.ts';
 import { CONFIG_ACTIONS, handleConfigAction } from './config.ts';
 import { handleLifecycleAction, LIFECYCLE_ACTIONS as MODULE_LIFECYCLE_ACTIONS } from './lifecycle.ts';
+import { handleTenantAction, TENANT_ACTIONS } from './tenants.ts';
+import { supabaseTenantStore } from '../_shared/tenants/supabase-tenant-store.ts';
 import { createRoadmapLimiter, handleRoadmapAction, ROADMAP_ACTIONS } from './roadmap.ts';
 import { operatorGate } from '../_shared/operator-gate.ts';
 import { roadmapModelFor } from '../_shared/roadmap/model.ts';
@@ -201,6 +213,7 @@ const ACTIONS = [
   ...LEAD_RECOVERY_ACTIONS,
   ...CONFIG_ACTIONS,
   ...MODULE_LIFECYCLE_ACTIONS,
+  ...TENANT_ACTIONS,
   ...ROADMAP_ACTIONS,
 ];
 
@@ -393,6 +406,29 @@ Deno.serve(async (request) => {
         return json({ error: 'the module lifecycle needs supabase/migrations/0015_tenant_module_lifecycle.sql applied first', detail: message }, 501);
       }
       console.error(`lifecycle action ${action} failed`, error);
+      return json({ error: message }, 500);
+    }
+  }
+
+  // ── tenant creation and module selection (0021) ───────────────────────
+
+  /* delegated whole. create_tenant checks the actor against arc_admins again and writes
+     its own audit row in the same transaction as the tenant. */
+  if (TENANT_ACTIONS.includes(action)) {
+    try {
+      const result = await handleTenantAction(action, {
+        store: supabaseStore(db),
+        tenants: supabaseTenantStore(db),
+        body: body as unknown as Record<string, unknown>,
+        actorId,
+      });
+      return json(result.body, result.status);
+    } catch (error) {
+      const message = (error as Error)?.message ?? 'the action failed';
+      if (/create_tenant|tenant_creations/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'creating a client needs supabase/migrations/0021_ops_tenant_creation.sql applied first', detail: message }, 501);
+      }
+      console.error(`tenant action ${action} failed`, error);
       return json({ error: message }, 500);
     }
   }

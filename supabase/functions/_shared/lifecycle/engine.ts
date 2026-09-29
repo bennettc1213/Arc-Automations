@@ -55,6 +55,7 @@ import {
 } from './readiness.ts';
 import type { LifecycleStore, TransitionChange, TransitionResult } from './store.ts';
 import { latestSelectableModuleVersion } from '../registry/modules.ts';
+import { unsupportedRequirements } from '../registry/resolve.ts';
 
 export type LifecycleServiceStore = ConfigStore & LifecycleStore & Pick<EngineStore, 'getRun' | 'getLead' | 'getConfigSnapshot' | 'getTenant'>;
 
@@ -182,6 +183,12 @@ export async function selectModule(store: LifecycleServiceStore, req: OperatorRe
   return await transition(store, req, 'select', async () => {
     if (!isSelectable(req.moduleKey)) {
       return lifecycleFailure('module_unavailable', `${req.moduleKey} has no selectable version — it cannot be given to a client`);
+    }
+    /* ARC-300: a requirement no connector ARC offers could meet is refused here, not
+       discovered at activation after the client has been promised it. */
+    const unsupported = unsupportedRequirements(latestSelectableModuleVersion(req.moduleKey)!);
+    if (unsupported.length > 0) {
+      return lifecycleFailure('module_unavailable', `${req.moduleKey} needs what no connector ARC offers provides: ${unsupported.map((o) => o.explanation).join('; ')}`);
     }
     const tenant = await tenantBlocker(store, req.tenantId, false);
     if (tenant) return blocked('this module cannot be selected', [tenant]);

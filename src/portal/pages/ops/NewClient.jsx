@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Icon from '../../components/Icon';
 import { Panel, Pill } from '../../components/ui';
 import {
@@ -12,10 +12,12 @@ import {
   TextInput,
 } from '../../components/ops-ui';
 import { ServicePicker } from '../../components/BuildPanel';
-import { createClient, linkClientAccount, mintToken } from '../../lib/ops';
+import { ModulePicker, PickedRequirements } from '../../components/ModuleSelection';
+import { createTenant, linkClientAccount, mintToken } from '../../lib/ops';
 import { addClientServices, buildProgress, STAGE } from '../../lib/builds';
 import { SERVICE_BY_KEY } from '../../lib/service-catalog';
 import { generateClientId, slugify } from '../../lib/client-id';
+import { parseTenantInput } from '../../../../supabase/functions/_shared/tenants/model.ts';
 
 /**
  * onboarding a client, in the order it actually happens.
@@ -34,7 +36,32 @@ import { generateClientId, slugify } from '../../lib/client-id';
  * the steps after the save are separate buttons rather than one "create
  * everything" action. each one touches a different system, each can fail on its
  * own, and a single button that half-worked would leave you guessing which half.
+ *
+ * the account itself is one server action (ARC-300, `tenant-create`): the tenant, the
+ * modules chosen here selected — configuring, never switched on — and the audit row, in one
+ * transaction. the form is checked by the same `parseTenantInput` the server runs, so a
+ * problem shows against its field as it is typed; the server checks again regardless and
+ * its field errors land in the same place.
  */
+
+/* the form's fields, as the server names them. */
+function toWire(form, clientId, slug) {
+  return {
+    name: form.name,
+    slug,
+    client_id: clientId,
+    company: form.company,
+    timezone: form.timezone,
+    status: form.status,
+    plan: form.plan,
+    notes: form.notes,
+    login_email: form.loginEmail,
+    contact_name: form.contactName,
+    contact_phone: form.contactPhone,
+  };
+}
+
+const newKey = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `create-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 const TIMEZONES = [
   'America/Denver',
@@ -52,13 +79,16 @@ const STATUS_OPTIONS = [
   { value: 'paused', label: 'paused' },
 ];
 
-export default function NewClient({ base, clients, reload }) {
-  const navigate = useNavigate();
-
+export default function NewClient({ base, clients, reload, initial = {} }) {
   const [clientId, setClientId] = useState(generateClientId);
   const [created, setCreated] = useState(null);
   const [freshToken, setFreshToken] = useState(null);
-  const [services, setServices] = useState([]);
+  const [services, setServices] = useState(initial.services ?? []);
+  const [modules, setModules] = useState(initial.modules ?? []);
+  /* one per form: a double press, or a retry after the connection dropped mid-save,
+     returns the client already created instead of making a second. */
+  const [idempotencyKey, setIdempotencyKey] = useState(newKey);
+  const [serverErrors, setServerErrors] = useState(initial.serverErrors ?? []);
   const [form, setForm] = useState({
     name: '',
     company: '',
@@ -70,16 +100,30 @@ export default function NewClient({ base, clients, reload }) {
     contactName: '',
     contactPhone: '',
     notes: '',
+    ...initial.form,
   });
 
-  const set = (key) => (event) => setForm((prev) => ({ ...prev, [key]: event.target.value }));
+  const set = (key) => (event) => {
+    const { value } = event.target;
+    setForm((prev) => ({ ...prev, [key]: value }));
+    setServerErrors([]);
+  };
 
   /* the slug follows the name until somebody types their own, at which point it
      stops following. a field that silently overwrites what you typed into it is a
      field you learn not to trust. */
   const slug = form.slug.trim() || slugify(form.name);
   const slugTaken = clients.some((client) => client.tenant.slug === slug);
-  const canSave = form.name.trim().length > 0 && slug.length > 0 && !slugTaken && services.length > 0;
+
+  /* the server's own check, run here as the operator types. a field shows its problem
+     once there is something in it — an empty form is not a page of red. */
+  const wire = toWire(form, clientId, slug);
+  const check = parseTenantInput(wire);
+  const fieldError = (field) =>
+    serverErrors.find((error) => error.field === field)?.message ??
+    (check.ok || !wire[field] ? null : check.errors.find((error) => error.field === field)?.message ?? null);
+  const moduleErrors = serverErrors.filter((error) => error.field.startsWith('modules'));
+  const canSave = check.ok && !slugTaken && services.length > 0;
   const stepCount = services.reduce((sum, key) => sum + (SERVICE_BY_KEY.get(key)?.steps.length ?? 0), 0);
 
   const welcome = useMemo(
@@ -110,6 +154,34 @@ export default function NewClient({ base, clients, reload }) {
             each one touches a different system and can fail on its own.
           </p>
         </Notice>
+
+        {created.legacy && (
+          <Notice tone="fail" title="created the old way — no module was selected and nothing was audited">
+            <p>
+              the <code>ops</code> function deployed here predates module selection, so the account
+              was written straight from the browser. redeploy <code>ops</code> and apply{' '}
+              <code>0021_ops_tenant_creation.sql</code>, then choose their modules on their page.
+            </p>
+          </Notice>
+        )}
+
+        {!created.legacy && (
+          <Panel title="their modules" note={created.lifecycles.length ? `${created.lifecycles.length} selected` : 'none chosen'}>
+            {created.lifecycles.length > 0 ? (
+              <ul className="bld-created">
+                {created.lifecycles.map((lifecycle) => (
+                  <li key={lifecycle.module_key}>
+                    <span>{lifecycle.module_key}</span>
+                    <Pill tone="idle">{lifecycle.state}</Pill>
+                    <span className="mono">not switched on — activation is its own gate</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="ops-muted">no module was chosen. give them one from their page when it is sold.</p>
+            )}
+          </Panel>
+        )}
 
         <Panel title="their client id" note="hand this over">
           <div className="ops-idcard">
@@ -258,6 +330,9 @@ export default function NewClient({ base, clients, reload }) {
                 setCreated(null);
                 setFreshToken(null);
                 setServices([]);
+                setModules([]);
+                setServerErrors([]);
+                setIdempotencyKey(newKey());
                 setClientId(generateClientId());
                 setForm((prev) => ({
                   ...prev,
@@ -334,6 +409,38 @@ export default function NewClient({ base, clients, reload }) {
       </Panel>
 
       <Panel
+        title="which modules"
+        note={modules.length ? `${modules.length} selected — none switched on` : 'optional'}
+      >
+        <p className="ops-muted" style={{ marginBottom: 14 }}>
+          what arc will run for them, from the module registry. choosing one selects it —
+          configuring — and nothing more: it goes live only after its own activation checks pass on
+          their page. planned modules are listed so you can see what is coming, and cannot be chosen.
+        </p>
+        <ModulePicker
+          selected={modules}
+          onToggle={(key) => {
+            setServerErrors([]);
+            setModules((prev) => (prev.includes(key) ? prev.filter((entry) => entry !== key) : [...prev, key]));
+          }}
+        />
+        {moduleErrors.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <Notice tone="fail" title="a module could not be given to them">
+              <ul>
+                {moduleErrors.map((error) => (
+                  <li key={error.field}>{error.message}</li>
+                ))}
+              </ul>
+            </Notice>
+          </div>
+        )}
+        <div style={{ marginTop: 14 }}>
+          <PickedRequirements selected={modules} />
+        </div>
+      </Panel>
+
+      <Panel
         title="the account"
         actions={
           <ActionButton
@@ -342,13 +449,16 @@ export default function NewClient({ base, clients, reload }) {
             disabled={!canSave}
             title={services.length === 0 ? 'choose at least one service first' : undefined}
             onRun={async () => {
-              const tenant = await createClient({
-                ...form,
-                clientId,
-                slug,
-                name: form.name.trim(),
-                loginEmail: form.loginEmail.trim().toLowerCase(),
-              });
+              let result;
+              try {
+                result = await createTenant({ tenant: check.value, modules, idempotencyKey });
+              } catch (error) {
+                /* every field the server refused, against its field — the button shows the
+                   same list as one line. */
+                setServerErrors(error.payload?.field_errors ?? []);
+                throw error;
+              }
+              const tenant = result.tenant;
               /* the account is real from here. if the services fail to save, the
                  page still moves on and says so, with a retry — sending the
                  operator back to a form whose account already exists would get
@@ -360,7 +470,7 @@ export default function NewClient({ base, clients, reload }) {
                 servicesError = error.message;
               }
               await reload();
-              setCreated({ ...tenant, serviceKeys: services, servicesError });
+              setCreated({ ...tenant, legacy: result.legacy, lifecycles: result.lifecycles, serviceKeys: services, servicesError });
               return null;
             }}
           >
@@ -369,7 +479,7 @@ export default function NewClient({ base, clients, reload }) {
         }
       >
         <div className="ops-form">
-          <Field label="business name" required>
+          <Field label="business name" required hint={fieldError('name')}>
             <TextInput
               value={form.name}
               onChange={set('name')}
@@ -378,16 +488,17 @@ export default function NewClient({ base, clients, reload }) {
             />
           </Field>
 
-          <Field label="company" hint="if it trades under a different name">
+          <Field label="company" hint={fieldError('company') ?? 'if it trades under a different name'}>
             <TextInput value={form.company} onChange={set('company')} placeholder="optional" />
           </Field>
 
           <Field
             label="account handle"
             hint={
-              slugTaken
+              fieldError('slug') ??
+              (slugTaken
                 ? 'another client already uses this handle'
-                : 'used in exports and support email. follows the name unless you set it.'
+                : 'used in exports and support email. follows the name unless you set it.')
             }
           >
             <TextInput
@@ -404,18 +515,18 @@ export default function NewClient({ base, clients, reload }) {
 
           <Field
             label="timezone"
-            hint="every date and figure in their portal renders in this zone"
+            hint={fieldError('timezone') ?? 'every date and figure in their portal renders in this zone'}
           >
             <SelectInput options={TIMEZONES} value={form.timezone} onChange={set('timezone')} />
           </Field>
 
-          <Field label="plan">
+          <Field label="plan" hint={fieldError('plan')}>
             <TextInput value={form.plan} onChange={set('plan')} placeholder="pilot, retainer…" />
           </Field>
 
           <Field
             label="sign-in address"
-            hint="where their sign-in link goes. without it the client id cannot let them in."
+            hint={fieldError('login_email') ?? 'where their sign-in link goes. without it the client id cannot let them in.'}
           >
             <TextInput
               type="email"
@@ -425,15 +536,15 @@ export default function NewClient({ base, clients, reload }) {
             />
           </Field>
 
-          <Field label="contact name">
+          <Field label="contact name" hint={fieldError('contact_name')}>
             <TextInput value={form.contactName} onChange={set('contactName')} placeholder="who you deal with" />
           </Field>
 
-          <Field label="phone">
+          <Field label="phone" hint={fieldError('contact_phone')}>
             <TextInput value={form.contactPhone} onChange={set('contactPhone')} placeholder="(801) 555-0134" />
           </Field>
 
-          <Field label="notes" wide>
+          <Field label="notes" wide hint={fieldError('notes')}>
             <TextArea
               value={form.notes}
               onChange={set('notes')}
@@ -445,10 +556,14 @@ export default function NewClient({ base, clients, reload }) {
 
       <Panel title="what this writes">
         <p className="ops-muted">
-          one row in <code>public.tenants</code>, with the client id above, then one row in{' '}
-          <code>client_services</code> per service chosen, each with its checklist in{' '}
-          <code>client_service_steps</code>. no events, no connections, no token — those come
-          next and each is its own step. the account will
+          one server action, in one transaction: the row in <code>public.tenants</code> with the
+          client id above, each chosen module selected in <code>tenant_modules</code> with its
+          first history row (configuring — never active), the <code>tenant created</code> step of
+          its activation checklist, and who created it, in <code>tenant_creations</code> and the
+          audit log. then one row in <code>client_services</code> per service chosen, each with its
+          checklist in <code>client_service_steps</code>. no events, no connections, no token, no
+          n8n workflow — those come next, each is its own step, and no client ever gets a workflow
+          of their own. the account will
           show in the roster immediately with zeroes against it, which is correct: nothing has
           happened for them yet, and a new client showing invented activity would be the one
           unrecoverable lie in a product sold on only printing what it can prove.

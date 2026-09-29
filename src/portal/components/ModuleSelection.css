@@ -1,0 +1,123 @@
+/* ── modules (ModuleSelection.jsx, ARC-300) ─────────
+   the picker borrows BuildPanel's cards; this is the per-client list. dense on
+   purpose: one row per registered module, the state first. */
+
+.msel-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.msel-row {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--surface);
+  min-width: 0;
+}
+
+.msel-row--selected {
+  box-shadow: inset 2px 0 0 var(--text);
+}
+
+.msel-row__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.msel-row__name {
+  font-weight: 600;
+}
+
+.msel-row__headline {
+  color: var(--muted);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
+.msel-row__actions {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.msel-row__body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.msel-row__why,
+.msel-row__config,
+.msel-row__ready {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
+.msel-row__ready {
+  color: var(--text);
+}
+
+.msel-row__ready--ok {
+  color: var(--ok);
+}
+
+.msel-reqs,
+.msel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 0.85em;
+  min-width: 0;
+}
+
+.msel-reqs__item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.msel-reqs__kind {
+  color: var(--muted);
+  min-width: 92px;
+}
+
+.msel-reqs__caps {
+  overflow-wrap: anywhere;
+}
+
+.msel-reqs__via {
+  color: var(--muted);
+}
+
+.msel-reqs__item--optional,
+.msel-reqs__item--conditional {
+  opacity: 0.75;
+}
+
+.msel-list--history {
+  color: var(--muted);
+}
+
+.msel-picked {
+  display: grid;
+  gap: 14px;
+}
+
+.msel-picked__name {
+  margin: 0 0 6px;
+  font-weight: 600;
+}

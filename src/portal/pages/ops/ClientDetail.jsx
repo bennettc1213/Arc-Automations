@@ -23,6 +23,7 @@ import ConnectionForm from '../../components/ConnectionForm';
 import ServicesPanel from '../../components/ServicesPanel';
 import BuildPanel from '../../components/BuildPanel';
 import LeadRecoveryPanel from '../../components/LeadRecoveryPanel';
+import TenantModulesPanel from '../../components/ModuleSelection';
 import ReportDialog from '../../components/ReportDialog';
 import {
   CONNECTION_KINDS,
@@ -383,6 +384,11 @@ function ClientBody({ client, base, reload, reloadBuilds, probe, runProbe }) {
       {/* ── what we're building ─────────────────────────────── */}
 
       <BuildPanel client={client} reloadBuilds={reloadBuilds} readOnly={archived} />
+
+      {/* which modules arc runs for them (ARC-300): every registered module, its lifecycle
+          state and what it still needs. selecting is here; switching on is the module's own
+          panel below. read-only once they are deboarded. */}
+      <TenantModulesPanel tenantId={tenant.id} timezone={tenant.timezone} base={base} readOnly={archived} />
 
       {/* the execution layer. placed under the build checklist and above the stat row for
           the same reason the live pipeline check is at the top: this is the panel an

@@ -138,6 +138,17 @@ reports a category and the execution id — never the error's text — and ARC d
 (`failureOutcome`) from its own rows. `tests/n8n-sim.js` runs the real exports locally; conformance
 with a real n8n is a hosted gate. After editing an export, `node scripts/n8n-manifest.mjs --write`.
 
+**A client is created by one operator action, and its modules come from the registry** (`0021`,
+`_shared/tenants/`, `ops` `tenant-create` / `tenant-modules`, ARC-300). `create_tenant()` writes
+the tenant, selects each chosen module through 0015's own transition function (configuring —
+never active), ticks `tenant_created`, and records who in `tenant_creations` and `admin_actions`,
+in one transaction; 0021 drops the browser insert policy on `tenants`. `parseTenantInput` and
+`moduleCatalog` (`tenants/model.ts`, portal-safe) are the one definition the form, the function
+and the SQL agree on: a planned module, an alias, or one whose blocking requirements no connector
+offers (`unsupportedRequirements`, also checked by `selectModule`) cannot be chosen. The client
+page's modules panel (`ModuleSelection.jsx`) reads ARC-120's status and uses its select/deselect —
+there is no second way to change a lifecycle. No client ever gets a workflow of its own.
+
 Requires `supabase/migrations/0003_client_ids_and_ops.sql` plus the
 `client-login` and `ops` edge functions; the console's Supabase page probes for
 all of it and says what is missing. Deboarding and restore need `0007`; service

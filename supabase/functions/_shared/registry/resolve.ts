@@ -14,7 +14,7 @@
  */
 
 import { getCapability } from './capabilities.ts';
-import { connectorsProviding } from './connectors.ts';
+import { availableCapabilities, connectorsProviding } from './connectors.ts';
 import type { CapabilityRequirement, ModuleVersion } from './modules.ts';
 
 export interface RequirementOutcome {
@@ -139,6 +139,17 @@ export function evaluateCapabilities(
     missingCapabilities: [...missingCapabilities].sort(),
     reasons,
   };
+}
+
+/**
+ * The blocking requirement groups no selectable connector could ever satisfy (ARC-300).
+ *
+ * Still a design question: a module whose `conversation` group names a capability no
+ * connector ARC offers implements cannot be made ready by any tenant, however patient, so
+ * it is refused at selection rather than discovered at activation.
+ */
+export function unsupportedRequirements(version: ModuleVersion): RequirementOutcome[] {
+  return evaluateCapabilities(version, availableCapabilities()).outcomes.filter((o) => o.blocking && !o.satisfied);
 }
 
 /** Every capability a version can use, blocking or not. */

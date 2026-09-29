@@ -207,6 +207,20 @@ Nothing here has been done against a real n8n yet.
 4. Register, approve and record the staging deployment (0019) with its n8n id, then run the
    sync check. There is no action workflow to assign until a module version may use n8n.
 
+### 0021 — creating a client through ops (ARC-300): after 0015, with `ops` redeployed
+
+0021 adds `create_tenant` — the tenant, each chosen module selected through 0015's
+transition function (configuring, never active), the `tenant created` onboarding step, a
+`tenant_creations` record and an `admin_actions` row, in one transaction — and **drops the
+browser insert policy on `tenants`**, so a client can only be created that way. Redeploy
+`ops` in the same sitting: until both are done, **add a client** in the console either uses
+the old browser insert (old function, no 0021 — it says so on the page, and nothing is
+audited or selected) or is refused (0021 applied, old function). It creates no rows itself
+and changes no existing tenant.
+
+Check afterwards: create a throwaway client with no module, confirm one `tenant.created` row
+in the audit log, then deboard it.
+
 ---
 
 ## 3. Edge functions
@@ -357,12 +371,19 @@ override.
 
 ## 7. Onboarding a client
 
-In `/ops/console/clients/:tenantId`, the **lead recovery** panel. First press
-**select lead recovery for this client** — selection is an explicit, audited
-operator act (ARC-120), and nothing can be tested or activated before it. Then
-eleven steps, eight required, in the order they are actually done:
+**Add a client** (`/ops/console/clients/new`) creates the account and, if you tick
+it under *which modules*, selects Lead Recovery in the same step (ARC-300, 0021).
+Selecting never activates. A client created without it gets it from the **modules**
+panel on their page, or the lead recovery panel's own select button.
 
-1. **tenant created** — the client exists and has a client ID.
+In `/ops/console/clients/:tenantId`, the **lead recovery** panel. If the module
+is not selected yet, press **select lead recovery for this client** first —
+selection is an explicit, audited operator act (ARC-120), and nothing can be
+tested or activated before it. Then eleven steps, eight required, in the order
+they are actually done:
+
+1. **tenant created** — the client exists and has a client ID. Ticked for you
+   when the module was chosen at creation.
 2. **business rules completed** — hours, services, service area, forwarding
    destination, templates. Ticks itself when a valid config saves. A save
    publishes the changed parts as new versions (tenant settings, then Lead

@@ -1181,6 +1181,58 @@ export async function selectLeadRecovery(tenantId, expectedStateVersion) {
   return callOps({ action: 'module-select', tenant_id: tenantId, module_key: 'lead_recovery', expected_state_version: expectedStateVersion });
 }
 
+/* any module, by its registry key (ARC-300's module panel). the same two lifecycle actions
+   as above, with the same state-version rule. */
+export async function selectModule(tenantId, moduleKey, expectedStateVersion) {
+  return callOps({ action: 'module-select', tenant_id: tenantId, module_key: moduleKey, expected_state_version: expectedStateVersion });
+}
+
+export async function deselectModule(tenantId, moduleKey, expectedStateVersion) {
+  return callOps({ action: 'module-deselect', tenant_id: tenantId, module_key: moduleKey, expected_state_version: expectedStateVersion });
+}
+
+/* ── creating a client (0021, ARC-300) ─────────────────────────
+   one server action: the tenant, each chosen module selected (configuring, never active),
+   the creation record and the audit row, in one transaction. the idempotency key is made
+   once per form, so a double press or a retry after a dropped connection returns the same
+   client rather than a second one.
+
+   an `ops` function deployed before ARC-300 does not know the action. then, and only then,
+   the tenant is written the old way — straight from the browser, unaudited, with no module
+   selected — and the result says `legacy` so the page can say so. once 0021 is applied
+   that browser insert is refused by the database, so this path cannot outlive the deploy. */
+export async function createTenant({ tenant, modules, idempotencyKey }) {
+  try {
+    const result = await callOps({ action: 'tenant-create', tenant, modules, idempotency_key: idempotencyKey });
+    return {
+      legacy: false,
+      replayed: result.replayed === true,
+      tenant: toTenant(result.tenant),
+      lifecycles: result.lifecycles ?? [],
+    };
+  } catch (error) {
+    if (error.status !== 400 || error.payload?.error !== 'unknown action') throw error;
+    const legacy = await createClient({
+      clientId: tenant.client_id,
+      name: tenant.name,
+      slug: tenant.slug,
+      company: tenant.company,
+      timezone: tenant.timezone,
+      status: tenant.status,
+      plan: tenant.plan,
+      notes: tenant.notes,
+      loginEmail: tenant.login_email,
+      contactName: tenant.contact_name,
+      contactPhone: tenant.contact_phone,
+    });
+    return { legacy: true, replayed: false, tenant: legacy, lifecycles: [] };
+  }
+}
+
+export async function getTenantModules(tenantId) {
+  return callOps({ action: 'tenant-modules', tenant_id: tenantId });
+}
+
 export async function activateLeadRecovery(tenantId, expectedStateVersion) {
   return callOps({ action: 'lead-recovery-activate', tenant_id: tenantId, expected_state_version: expectedStateVersion });
 }

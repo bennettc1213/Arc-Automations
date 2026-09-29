@@ -182,6 +182,28 @@ when it ships.
   - `tests/n8n-sim.js`, a strict stand-in for n8n. It runs the real exports (graph, Code nodes,
     expressions) and signs with node:crypto, independent of ARC's code;
   - the reference workflow, a fixture: `tests/fixtures/n8n/arc-reference-action@1.0.0.json`.
+- **ARC-300: creating a client and choosing its modules, in the ops console.**
+  - Migration `0021_ops_tenant_creation.sql`: `create_tenant()`, the service role's alone. In one
+    transaction it writes the tenant, selects each chosen module through 0015's
+    `apply_tenant_module_transition` (configuring, never active), ticks the `tenant_created`
+    onboarding step, and records the operator in a new append-only `tenant_creations` table and
+    in `admin_actions` (`tenant.created`). An idempotency key makes a repeat the same client.
+    The browser insert policy on `tenants` is dropped; creating a client was unaudited before.
+  - `_shared/tenants/model.ts` (portal-safe): `parseTenantInput` returns every field problem at
+    once, and `moduleCatalog` / `moduleSelectionProblem` read module choice off the registry. A
+    planned module, an alias or an unknown key is refused, and so is a module whose blocking
+    requirements no connector ARC offers could meet (`unsupportedRequirements` in
+    `registry/resolve.ts`, which ARC-120's `selectModule` now checks too).
+  - `ops` actions `tenant-create` and `tenant-modules`: every registered module for one client,
+    with ARC-120's lifecycle status and readiness, the connectors that could satisfy each
+    requirement, and whether its configuration scopes are published or drafted.
+  - Console: **add a client** has a registry-backed module picker and shows the server's field
+    errors against their fields. The client page has a new **modules** panel: state, readiness
+    blockers, configuration, needs, recent history, the creation record, and select/deselect
+    through ARC-120. If the deployed `ops` function predates this, the page falls back to the
+    old browser insert and says that nothing was audited or selected.
+  - Tests: `tenant-creation` (23, including the real pages rendered), and `tenant-creation-db`
+    (18) on real Postgres.
 
 ### Fixed
 
