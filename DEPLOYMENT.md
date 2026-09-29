@@ -112,9 +112,16 @@ customer's next contact starts a properly authorised run.
 (decision: ADR ARC-010 §20a; design: docs/architecture/ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md).
 It creates `provider_connections`, their append-only events and transition rules, and a
 non-exposed `arc_private` schema holding credential versions and OAuth sessions. It
-revokes every API role's access to `vault` and `arc_private`, and then **asserts**
-that: a project where any of `anon`, `authenticated` or `service_role` can still reach
-either schema **fails the migration**. It also fails on a database without Vault.
+revokes every API role's access to `vault` and `arc_private`, and then **asserts** the
+result (`public.credential_isolation_problems()`, re-runnable as a query). The migration
+**fails** in three cases:
+- `anon` or `authenticated` can still reach either schema;
+- any API role, `service_role` included, can still reach `arc_private`;
+- the database shows the Data API exposing either schema.
+
+`service_role` keeps the Vault grants Supabase itself makes, which a project cannot revoke
+(ADR ARC-010 §20a, amended 2026-09-28), so the Data API's **Exposed schemas** must stay
+`public` and `graphql_public`. It also fails on a database without Vault.
 
 It changes no existing table, creates no connection, migrates no credential (there are
 none to migrate) and activates nothing.
@@ -129,10 +136,12 @@ none to migrate) and activates nothing.
    connection evidence for ARC-120 readiness. With no tenant connections this changes
    no decision, because Lead Recovery's providers are ARC-managed.
 
-If the migration stops with `arc_connection:vault_unavailable: <role> can still …`, a
-Vault privilege could not be revoked by the migration role on that project. Do not work
-around it: that is the "permissions cannot be safely restricted" stop condition, and it
-needs Supabase support or an ADR revisit.
+If the migration stops with `arc_connection:vault_unavailable: <role> can still …` or
+`… the Data API serves vault or arc_private`, a browser role, or anything touching
+`arc_private`, is not locked out on that project. Do not work around it: that is the
+"permissions cannot be safely restricted" stop condition, and it needs Supabase support or an
+ADR revisit. (`service_role`'s own Vault grants were such a stop, and were decided in that
+ADR amendment.)
 
 ### 0017 — durable runs, actions and scheduling (ARC-200): after 0016
 

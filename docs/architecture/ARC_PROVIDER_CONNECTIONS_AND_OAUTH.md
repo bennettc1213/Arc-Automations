@@ -300,7 +300,8 @@ n8n never stores a customer refresh token and never receives a long-lived creden
 | # | Check | How (no secret values in any output) | Result |
 |---|---|---|---|
 | 1 | Vault extension installation succeeds | `select extname, extversion from pg_extension where extname = 'supabase_vault'` | pending |
-| 2 | ARC migrations apply | `supabase db push` through 0016; the §10 assertion block passes (it fails the migration if any API role can reach `vault` or `arc_private`) | pending |
+| 2 | ARC migrations apply | `supabase db push` through 0016; the §10 assertion passes. It fails the migration if `anon`/`authenticated` can reach `vault` or `arc_private`, if any API role can reach `arc_private`, or if the database shows the Data API exposing either. `service_role` keeps Supabase's own Vault grants (ADR ARC-010 §20a, amended 2026-09-28) | pending |
+| 2a | The Data API exposes neither `vault` nor `arc_private` | Dashboard → Project Settings → Data API → Exposed schemas: `public`, `graphql_public` only | staging: verified by Ben, 2026-09-28 |
 | 3 | A synthetic canary secret can be created | Store a synthetic canary with an obviously fake value through `connection_store_api_key` (a scratch tenant, the `synthetic_api_key` shape, a staging-only test registry, or `vault.create_secret` as `postgres`) | pending |
 | 4 | Its ordinary-table form is encrypted | `select secret <> '<canary>' as encrypted from vault.secrets where name like 'arc130:%'` → true | pending |
 | 5 | ARC's trusted backend can resolve it | `connection_resolve_credential` as `service_role` returns it for the right tenant, connection, operation and capability | pending |
@@ -317,7 +318,7 @@ n8n never stores a customer refresh token and never receives a long-lived creden
 | 16 | The canary is removed | Disconnect it; confirm zero rows in `vault.secrets` for it and zero `active` versions | pending |
 
 Also confirm:
-- **Privileges:** Supabase has not re-granted Vault privileges to `service_role` after a platform upgrade (re-run the §10 assertion as a query).
+- **Privileges:** after a platform upgrade, `select * from public.credential_isolation_problems()` returns no rows, and the exposed schemas are unchanged.
 - **Environment:** `ARC_ENVIRONMENT` is set explicitly on each project.
 - **Function config:** `connections` is deployed with JWT verification on.
 

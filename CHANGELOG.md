@@ -191,6 +191,16 @@ when it ships.
   `routes` option is gone.
 - `parseBridgeError` did not recognise refusal codes containing digits, such as
   `n8n_prohibited`.
+- `0016` could not apply on a hosted Supabase project (found on staging):
+  - its single `revoke … on all functions in schema vault` stopped at one of Vault's own
+    internals. It now revokes function by function and skips only those.
+  - Its final check then refused to finish, because Supabase's admin role grants
+    `service_role` Vault access that a project cannot revoke.
+  - **By Ben's decision (ADR ARC-010 §20a, amended):** `service_role` may keep those
+    grants. `anon` and `authenticated` still reach nothing in `vault` or `arc_private`, and no
+    role, `service_role` included, reaches `arc_private`.
+  - The migration also fails if the database shows the Data API exposing either schema.
+  - The check is now `public.credential_isolation_problems()`, re-runnable as a query.
 
 ### Changed
 

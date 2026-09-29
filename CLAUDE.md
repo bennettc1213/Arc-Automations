@@ -72,7 +72,10 @@ live in one list (`LIFECYCLE_TRANSITIONS`), drift-tested against 0015.
 **A tenant's provider credentials live in Supabase Vault and nowhere else** (`0016`,
 `_shared/connections/`, ARC-130; decision ADR ARC-010 §20a). `provider_connections` holds
 metadata only; the Vault references and OAuth sessions are in `arc_private`, which no API
-role can reach. 0016 asserts that, and refuses to apply without Vault. There is no "get secret" —
+role can reach; browser roles reach nothing in `vault` either, while `service_role` keeps the
+Vault grants Supabase makes and a project cannot revoke (ADR §20a amended; neither schema may be
+Data-API exposed). 0016 asserts all of it (`credential_isolation_problems()`), and refuses to
+apply without Vault. There is no "get secret" —
 `withProviderCredential` resolves one credential for one named operation on a connection
 verified for that capability. A token is not readiness: only `verified`/`degraded` serve,
 and ARC-120 reads the live connection rows at every check. A lost connection pauses the

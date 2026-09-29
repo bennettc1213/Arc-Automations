@@ -87,7 +87,26 @@ $vault$;
 revoke all on schema vault from public, anon, authenticated, service_role;
 revoke all on all tables in schema vault from public, anon, authenticated, service_role;
 revoke all on all sequences in schema vault from public, anon, authenticated, service_role;
-revoke all on all functions in schema vault from public, anon, authenticated, service_role;
+
+-- One function at a time: on a hosted project some of Vault's internals belong to
+-- Supabase's admin role, which this migration's role may not change, and a single
+-- `revoke … on all functions` stops at the first of them. Those are skipped here and
+-- left to §10, which is unchanged and still stops the migration if any API role can
+-- execute anything in vault.
+do $revoke$
+declare
+  r record;
+begin
+  for r in select p.oid::regprocedure as fn from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'vault' loop
+    begin
+      execute format('revoke all on function %s from public, anon, authenticated, service_role', r.fn);
+    exception when insufficient_privilege then
+      raise notice 'arc_connection: % is Supabase''s own; §10 decides whether any API role can still reach it', r.fn;
+    end;
+  end loop;
+end;
+$revoke$;
 
 -- ---------------------------------------------------------------------------
 -- 2. the private schema
@@ -1682,35 +1701,86 @@ grant execute on function public.connection_credential_metadata(jsonb)          
 grant execute on function public.connection_credential_store_status()           to service_role;
 
 -- ---------------------------------------------------------------------------
--- 10. prove it: an API role that can still reach Vault or arc_private stops
---     the migration. (On a hosted project where a revoke above could not take
---     effect, this is where it says so — ARC-130 must not run there.)
+-- 10. prove it: an API role that can reach what it must not stops the
+--     migration, and the same check can be re-run at any time as a query
+--     (`select * from public.credential_isolation_problems()` → no rows).
+--
+--     The rule (ADR ARC-010 §20a, as amended 2026-09-28):
+--       * anon and authenticated reach nothing in vault or arc_private;
+--       * no API role, service_role included, reaches arc_private — ARC's own;
+--       * service_role keeps the Vault grants Supabase itself makes. On a hosted
+--         project they come from Supabase's admin role, and a project's own role
+--         cannot revoke them (verified on staging). They are unreachable over the
+--         Data API while neither vault nor arc_private is an exposed schema, which
+--         is checked here wherever the database can see that setting, and in the
+--         dashboard otherwise (ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md §15).
 -- ---------------------------------------------------------------------------
 
-do $assert$
+create or replace function public.credential_isolation_problems()
+returns setof text
+language plpgsql
+stable
+set search_path = ''
+as $fn$
 declare
   r      record;
   v_role text;
 begin
   foreach v_role in array array['anon', 'authenticated', 'service_role'] loop
-    if pg_catalog.has_schema_privilege(v_role, 'vault', 'USAGE') then
-      raise exception 'arc_connection:vault_unavailable: % can still use the vault schema', v_role using errcode = 'P0001';
-    end if;
     if pg_catalog.has_schema_privilege(v_role, 'arc_private', 'USAGE') then
-      raise exception 'arc_connection:vault_unavailable: % can still use arc_private', v_role using errcode = 'P0001';
+      return next pg_catalog.format('%s can still use arc_private', v_role);
     end if;
     for r in select c.oid::regclass as rel from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
-              where n.nspname in ('vault', 'arc_private') and c.relkind in ('r', 'v', 'm') loop
+              where n.nspname = 'arc_private' and c.relkind in ('r', 'v', 'm') loop
       if pg_catalog.has_table_privilege(v_role, r.rel, 'SELECT') then
-        raise exception 'arc_connection:vault_unavailable: % can still read %', v_role, r.rel using errcode = 'P0001';
+        return next pg_catalog.format('%s can still read %s', v_role, r.rel);
       end if;
     end loop;
     for r in select p.oid::regprocedure as fn from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
-              where n.nspname in ('vault', 'arc_private') loop
+              where n.nspname = 'arc_private' loop
       if pg_catalog.has_function_privilege(v_role, r.fn, 'EXECUTE') then
-        raise exception 'arc_connection:vault_unavailable: % can still execute %', v_role, r.fn using errcode = 'P0001';
+        return next pg_catalog.format('%s can still execute %s', v_role, r.fn);
+      end if;
+    end loop;
+
+    continue when v_role = 'service_role';
+
+    if pg_catalog.has_schema_privilege(v_role, 'vault', 'USAGE') then
+      return next pg_catalog.format('%s can still use the vault schema', v_role);
+    end if;
+    for r in select c.oid::regclass as rel from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+              where n.nspname = 'vault' and c.relkind in ('r', 'v', 'm') loop
+      if pg_catalog.has_table_privilege(v_role, r.rel, 'SELECT') then
+        return next pg_catalog.format('%s can still read %s', v_role, r.rel);
+      end if;
+    end loop;
+    for r in select p.oid::regprocedure as fn from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'vault' loop
+      if pg_catalog.has_function_privilege(v_role, r.fn, 'EXECUTE') then
+        return next pg_catalog.format('%s can still execute %s', v_role, r.fn);
       end if;
     end loop;
   end loop;
+
+  -- the Data API's exposed schemas, where they are set in the database itself.
+  for r in select cfg from pg_catalog.pg_db_role_setting s, pg_catalog.unnest(s.setconfig) cfg
+            where cfg like 'pgrst.db_schemas=%'
+              and cfg ~ '[=,]\s*(vault|arc_private)\s*(,|$)' loop
+    return next pg_catalog.format('the Data API serves vault or arc_private (%s)', r.cfg);
+  end loop;
+  return;
+end;
+$fn$;
+
+revoke all on function public.credential_isolation_problems() from public, anon, authenticated, service_role;
+
+do $assert$
+declare
+  v_problem text;
+begin
+  select p into v_problem from public.credential_isolation_problems() p limit 1;
+  if v_problem is not null then
+    raise exception 'arc_connection:vault_unavailable: %', v_problem using errcode = 'P0001';
+  end if;
 end;
 $assert$;

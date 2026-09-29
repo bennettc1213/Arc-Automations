@@ -726,9 +726,30 @@ first adapter in ARC-130.
 | **n8n access** | Forbidden. n8n asks the connector gateway for an operation by run and capability, and never receives a credential (§20) |
 | **Configuration storage** | No credentials. A module's configuration names capabilities, and the tenant's connection for the provider is resolved at use. No token, key or Vault reference in drafts, versions, diffs or snapshots |
 | **Run/action storage** | No copied credentials. A pinned run resolves the *current* connection's credential at the moment of use, and is refused if that connection is not usable now |
-| **Direct Vault access** | Revoked from `PUBLIC`, `anon`, `authenticated` and `service_role`. 0016 asserts the revocation and fails to apply if any API role can still reach `vault` or `arc_private` |
+| **Direct Vault access** | Revoked from `PUBLIC`, `anon` and `authenticated`, which reach nothing in `vault` or `arc_private`. No API role, `service_role` included, reaches `arc_private`. `service_role` keeps the Vault grants Supabase itself makes, which a project's own role cannot revoke (**amended 2026-09-28**, below). 0016 fails to apply otherwise, or if the Data API exposes `vault` or `arc_private` where the database can see it; `public.credential_isolation_problems()` re-runs the check as a query |
 | **Rotation** | Provider credentials rotate through ARC: new credential stored first, old retired atomically, retired secrets purged. Vault root-key rotation is a separate, controlled infrastructure procedure (ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md §9) |
 | **Production gate** | The hosted Vault permission and lifecycle canary (ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md §15) must pass in a non-production Supabase project before production deployment |
+
+**Amendment, 2026-09-28 — `service_role` and Vault (Ben's decision, from the staging run).**
+On the hosted staging project, 0016 could not revoke `service_role`'s access to Vault: the
+schema usage, `vault.secrets`, `vault.decrypted_secrets`, `create_secret`, `update_secret` and
+the decrypt function are granted by Supabase's own admin role, and a project's role cannot
+take back another role's grant. The original rule, "no API role can reach `vault`", is not
+achievable from the project, so it was narrowed rather than worked around:
+
+- `anon` and `authenticated` still reach nothing in `vault` or `arc_private` (checked).
+- No API role, `service_role` included, reaches `arc_private` (checked).
+- `service_role` keeps Supabase's own Vault grants. It is a server-only key that already
+  bypasses row security. Those grants cannot be exercised over the Data API while
+  neither `vault` nor `arc_private` is an exposed schema. The staging project exposes
+  `public` and `graphql_public` only, which Ben verified in the dashboard on 2026-09-28.
+  0016 checks this wherever the database holds the setting, and the hosted checklist
+  checks it in the dashboard.
+- Application code still reaches credentials only through `withProviderCredential` and the
+  `connection_*` wrappers. That remains the rule for ARC's code, but the database no longer
+  enforces it against a holder of the service-role key. **Re-check** on any change to the
+  exposed schemas, and if Supabase offers a way to revoke its default grants, restore the
+  original rule.
 
 **Why not an external KMS now:**
 

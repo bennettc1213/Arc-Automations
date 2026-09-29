@@ -195,6 +195,39 @@ describe('0016 applied', { skip }, () => {
     }
   });
 
+  test('the isolation check, re-runnable as a query: service_role may keep Supabase\'s own Vault grants, nothing else may reach what it must not', async () => {
+    const db = await freshDatabase();
+    const problems = async () => (await db.query('select p from public.credential_isolation_problems() p')).rows.map((r) => r.p);
+    assert.deepEqual(await problems(), []);
+
+    // what a hosted project leaves behind and its own role cannot revoke (ADR ARC-010 §20a, amended).
+    await db.exec(`grant usage on schema vault to service_role; grant select on vault.secrets, vault.decrypted_secrets to service_role;
+                   grant execute on function vault.create_secret(text, text, text, uuid) to service_role;`);
+    assert.deepEqual(await problems(), [], 'service_role keeping Supabase\'s Vault grants is accepted');
+
+    for (const [grant, undo, expected] of [
+      ['grant usage on schema vault to anon', 'revoke usage on schema vault from anon', /anon can still use the vault schema/],
+      ['grant select on vault.decrypted_secrets to authenticated', 'revoke select on vault.decrypted_secrets from authenticated', /authenticated can still read vault\.decrypted_secrets/],
+      ['grant usage on schema arc_private to service_role', 'revoke usage on schema arc_private from service_role', /service_role can still use arc_private/],
+    ]) {
+      await db.exec(grant);
+      assert.match((await problems()).join('\n'), expected, grant);
+      await db.exec(undo);
+    }
+
+    await db.exec(`do $$ begin if not exists (select 1 from pg_roles where rolname = 'authenticator') then create role authenticator nologin; end if; end $$;
+                   alter role authenticator set pgrst.db_schemas = 'public, graphql_public'`);
+    assert.deepEqual(await problems(), [], 'the default exposed schemas are fine');
+    await db.exec(`alter role authenticator set pgrst.db_schemas = 'public, vault'`);
+    assert.match((await problems()).join('\n'), /the Data API serves vault or arc_private/);
+    await db.exec(`alter role authenticator reset pgrst.db_schemas`);
+
+    const { rows: [who] } = await db.query(`select has_function_privilege('anon', 'public.credential_isolation_problems()', 'execute') as anon,
+      has_function_privilege('authenticated', 'public.credential_isolation_problems()', 'execute') as auth,
+      has_function_privilege('service_role', 'public.credential_isolation_problems()', 'execute') as svc`);
+    assert.deepEqual([who.anon, who.auth, who.svc], [false, false, false], 'only the database owner runs the check');
+  });
+
   test('only the service role may execute the wrappers, and they are the only definer functions', async () => {
     const db = await freshDatabase();
     const { rows } = await db.query(`
