@@ -152,6 +152,15 @@ A client that never did anything real can be deleted (`0022`, `purge_test_tenant
 `tenant-purge`); the append-only guards make exactly one exception, inside that function for the
 client it recorded in `tenant_purges`. Any client with history is refused and deboarded instead.
 
+**A client's settings are edited on one page, drawn from the registry** (`ClientSettings.jsx`,
+`ConfigEditor` / `ConfigHistory` / `ConfigReview`, ARC-310): a tab per configuration scope, each
+a draft → server preview → publish, with history, compare and restore (a restore is the next
+version; no row is rewritten). The screen decides nothing: `config-scope` sends the registry's
+fields and `registry/layouts.ts` (presentation only — its options are the validator's constants,
+drift-tested against the schema defaults), the engine validates, and `config-draft-preview`'s
+`lifecycle_effect` is ARC-120's own classification (`config/settings.ts`). `lib/config-form.js`
+only converts inputs to the document and back.
+
 Requires `supabase/migrations/0003_client_ids_and_ops.sql` plus the
 `client-login` and `ops` edge functions; the console's Supabase page probes for
 all of it and says what is missing. Deboarding and restore need `0007`; service

@@ -378,6 +378,15 @@ Deno.serve(async (request) => {
         body: body as unknown as Record<string, unknown>,
         actorId,
         audit,
+        /* a valid publish from the settings page ticks "business rules" (ARC-310), exactly as
+           the Lead Recovery panel's save does. 0010's check restricts the step to its module. */
+        markStep: async (tenantId, moduleKey, stepKey) => {
+          const { error } = await db.from('module_onboarding').upsert(
+            { tenant_id: tenantId, module_key: moduleKey, step_key: stepKey, done_at: new Date().toISOString() },
+            { onConflict: 'tenant_id,module_key,step_key' },
+          );
+          if (error) console.error('onboarding step write failed', stepKey, error.message);
+        },
       });
       return json(result.body, result.status);
     } catch (error) {

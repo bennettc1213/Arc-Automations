@@ -1229,6 +1229,35 @@ export async function createTenant({ tenant, modules, idempotencyKey }) {
   }
 }
 
+/* ── settings (ARC-310) ────────────────────────────────────────
+   one scope — the client's settings (`tenant`) or a module's — through ARC-110's engine. every
+   write carries the revision or version the screen was drawn from, and a stale one comes back
+   409 rather than overwriting somebody else's change. */
+const scopeArgs = (tenantId, scope, moduleKey) => ({
+  tenant_id: tenantId,
+  scope,
+  ...(scope === 'module' ? { module_key: moduleKey } : {}),
+});
+
+export const settingsApi = {
+  load: (t, s, m) => callOps({ action: 'config-scope', ...scopeArgs(t, s, m) }),
+  createDraft: (t, s, m) => callOps({ action: 'config-draft-create', ...scopeArgs(t, s, m) }),
+  updateDraft: (t, s, m, draftId, expectedRevision, patch) =>
+    callOps({ action: 'config-draft-update', ...scopeArgs(t, s, m), draft_id: draftId, expected_revision: expectedRevision, patch }),
+  validate: (t, s, m, draftId) => callOps({ action: 'config-draft-validate', ...scopeArgs(t, s, m), draft_id: draftId }),
+  preview: (t, s, m, draftId) => callOps({ action: 'config-draft-preview', ...scopeArgs(t, s, m), draft_id: draftId }),
+  publish: (t, s, m, draftId, expectedRevision, expectedVersion, note) =>
+    callOps({ action: 'config-publish', ...scopeArgs(t, s, m), draft_id: draftId, expected_revision: expectedRevision, expected_version: expectedVersion, note }),
+  discard: (t, s, m, draftId, expectedRevision) =>
+    callOps({ action: 'config-draft-discard', ...scopeArgs(t, s, m), draft_id: draftId, expected_revision: expectedRevision }),
+  history: (t, s, m) => callOps({ action: 'config-history', ...scopeArgs(t, s, m), limit: 50 }),
+  compare: (t, s, m, fromId, toId) =>
+    callOps({ action: 'config-compare', ...scopeArgs(t, s, m), from_version_id: fromId, to_version_id: toId }),
+  rollbackPreview: (t, s, m, versionId) => callOps({ action: 'config-rollback-preview', ...scopeArgs(t, s, m), version_id: versionId }),
+  rollback: (t, s, m, versionId, expectedVersion, note) =>
+    callOps({ action: 'config-rollback', ...scopeArgs(t, s, m), version_id: versionId, expected_version: expectedVersion, note }),
+};
+
 /* permanently deleting a test client (0022). the database refuses one with any real history
    and says what it has; `confirmSlug` must be the client's handle, typed. */
 export async function purgeTestClient(tenantId, confirmSlug) {

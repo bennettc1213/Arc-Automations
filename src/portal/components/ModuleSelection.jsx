@@ -128,7 +128,7 @@ function describeScope(scope) {
   return `${name}: ${published}${scope.draft ? ' · draft open' : ''}`;
 }
 
-function ModuleRow({ module, tenantId, timezone, readOnly, onChanged }) {
+function ModuleRow({ module, tenantId, timezone, base, readOnly, onChanged }) {
   const status = module.lifecycle;
   const state = status?.lifecycle?.state ?? 'unselected';
   const stateVersion = status?.lifecycle?.state_version ?? 0;
@@ -201,7 +201,10 @@ function ModuleRow({ module, tenantId, timezone, readOnly, onChanged }) {
             </Disclosure>
           )}
           {module.configuration.length > 0 && (
-            <p className="msel-row__config">{module.configuration.map(describeScope).join(' · ')}</p>
+            <p className="msel-row__config">
+              {module.configuration.map(describeScope).join(' · ')} ·{' '}
+              <Link to={`${base}/clients/${tenantId}/settings?tab=${module.key}`}>open settings</Link>
+            </p>
           )}
           <Requirements requirements={module.requirements} />
           {status?.history?.length > 0 && (
@@ -277,6 +280,7 @@ export default function TenantModulesPanel({ tenantId, timezone = 'UTC', base = 
                 module={module}
                 tenantId={tenantId}
                 timezone={timezone}
+                base={base}
                 readOnly={readOnly}
                 onChanged={reload}
               />

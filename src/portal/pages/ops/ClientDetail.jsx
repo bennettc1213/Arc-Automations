@@ -391,6 +391,13 @@ function ClientBody({ client, base, reload, reloadBuilds, probe, runProbe }) {
           panel below. read-only once they are deboarded. */}
       <TenantModulesPanel tenantId={tenant.id} timezone={tenant.timezone} base={base} readOnly={archived} />
 
+      <div className="ops-row">
+        <Link className="ws-btn" to={`${base}/clients/${tenant.id}/settings`}>
+          <Icon name="edit" size={13} />
+          settings — company, hours, templates and the rest, with history
+        </Link>
+      </div>
+
       {/* the execution layer. placed under the build checklist and above the stat row for
           the same reason the live pipeline check is at the top: this is the panel an
           operator opens the page to look at once a client is on lead recovery, and it is

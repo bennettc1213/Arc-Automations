@@ -21,6 +21,18 @@
  *   config-rollback        republish a historical version as the next; needs expected_version
  *   config-import-legacy   validate and publish the drafts 0014 copied from module_configs
  *
+ * ARC-310's settings screen reads through three more, none of which writes:
+ *
+ *   config-scope             one scope in one round trip: its fields from the registry (which
+ *                            the operator may edit), the current version, the open draft, and
+ *                            the lifecycle state of the modules it reaches
+ *   config-compare           two versions of one scope, field by field, redacted as a preview is
+ *   config-rollback-preview  what restoring a version would change against the current one,
+ *                            and what the lifecycle would make of it
+ *
+ * `config-draft-preview` also carries `lifecycle_effect`: for each module the change reaches,
+ * what ARC-120 is expected to do with it (stay live, hold new runs, pause).
+ *
  * Publication and rollback write their own audit row inside the same transaction as the
  * version (0014 §9), so they are not logged again here. Draft writes and the import are
  * logged through the `ops` audit helper, with field names and never values.
@@ -52,6 +64,9 @@ import {
   TENANT_SCOPE,
 } from '../_shared/config/model.ts';
 import type { ConfigStore } from '../_shared/config/store.ts';
+import { compareDocuments, lifecycleEffect, schemaProjection } from '../_shared/config/settings.ts';
+import { schemaForScope } from '../_shared/config/engine.ts';
+import { latestSelectableModuleVersion, MODULES } from '../_shared/registry/modules.ts';
 
 export const CONFIG_ACTIONS = [
   'config-get',
@@ -67,7 +82,17 @@ export const CONFIG_ACTIONS = [
   'config-publish',
   'config-rollback',
   'config-import-legacy',
+  'config-scope',
+  'config-compare',
+  'config-rollback-preview',
 ];
+
+/* the lifecycle rows of a tenant, when the store has them (the ops function's always does). */
+async function lifecycleStates(store: ConfigStore, tenantId: string): Promise<{ moduleKey: string; state: string }[]> {
+  const lister = (store as unknown as { listLifecycles?: (t: string) => Promise<{ moduleKey: string; state: string }[]> }).listLifecycles;
+  if (typeof lister !== 'function') return [];
+  return (await lister.call(store, tenantId)).map((l) => ({ moduleKey: l.moduleKey, state: l.state }));
+}
 
 export interface ConfigActionContext {
   store: ConfigStore;
@@ -75,6 +100,35 @@ export interface ConfigActionContext {
   /** from the verified JWT. null only if the caller somehow has no user. */
   actorId: string | null;
   audit(verb: string, targetType: string | null, targetId: string | null, metadata?: Record<string, unknown>): Promise<boolean>;
+  /**
+   * tick an onboarding step (0010's `module_onboarding`). optional: the ops function passes it,
+   * and a publish from the settings page then ticks "business rules" exactly as the Lead
+   * Recovery panel's save always has.
+   */
+  markStep?(tenantId: string, moduleKey: string, stepKey: string): Promise<void>;
+}
+
+/* the modules that onboard on "business rules" — the ones whose activation lists it. */
+const BUSINESS_RULES_MODULES = MODULES
+  .filter((m) => latestSelectableModuleVersion(m.key)?.safety.activationTestKeys.includes('business_rules'))
+  .map((m) => m.key);
+
+/**
+ * after a publish or a restore: for each module the scope feeds that onboards on business
+ * rules, tick the step if its effective configuration now resolves valid. a resolution that
+ * fails ticks nothing — the step means "saved and valid".
+ */
+async function tickBusinessRules(context: ConfigActionContext, tenantId: string, scope: ConfigScope): Promise<string[]> {
+  if (!context.markStep) return [];
+  const modules = scope.kind === 'module' ? [scope.moduleKey] : BUSINESS_RULES_MODULES;
+  const ticked: string[] = [];
+  for (const moduleKey of modules.filter((m) => BUSINESS_RULES_MODULES.includes(m))) {
+    const resolved = await resolveEffectiveConfig(context.store, tenantId, moduleKey);
+    if (!resolved.ok) continue;
+    await context.markStep(tenantId, moduleKey, 'business_rules');
+    ticked.push(moduleKey);
+  }
+  return ticked;
 }
 
 export interface ActionResponse {
@@ -352,6 +406,62 @@ export async function handleConfigAction(action: string, context: ConfigActionCo
         base_is_current: result.baseIsCurrent,
         denied_fields: result.deniedFields,
         impact: impactOut(result.impact),
+        lifecycle_effect: lifecycleEffect(result.impact, scope, await lifecycleStates(store, tenantId)),
+      });
+    }
+
+    case 'config-scope': {
+      const schema = schemaForScope(scope);
+      if (!schema.ok) return failed(schema);
+      const [current, draft, lifecycles] = await Promise.all([
+        store.getConfigHead(tenantId, scope),
+        store.getOpenDraft(tenantId, scope),
+        lifecycleStates(store, tenantId),
+      ]);
+      return ok({
+        schema: schemaProjection(schema.schema, actor),
+        current: current ? versionOut(current, { includeConfig: true }) : null,
+        open_draft: draft ? draftOut(draft) : null,
+        lifecycles: lifecycles.map((l) => ({ module_key: l.moduleKey, state: l.state })),
+      });
+    }
+
+    case 'config-compare': {
+      const schema = schemaForScope(scope);
+      if (!schema.ok) return failed(schema);
+      const fromId = text(body.from_version_id);
+      const toId = text(body.to_version_id);
+      if (!fromId || !toId) return bad('from_version_id and to_version_id are required');
+      const [from, to] = await Promise.all([
+        readHistoricalVersion(store, tenantId, scope, fromId),
+        readHistoricalVersion(store, tenantId, scope, toId),
+      ]);
+      if (!from.ok) return failed(from);
+      if (!to.ok) return failed(to);
+      return ok({
+        from: versionOut(from.version),
+        to: versionOut(to.version),
+        impact: impactOut(compareDocuments(schema.schema, from.version.config, to.version.config)),
+      });
+    }
+
+    case 'config-rollback-preview': {
+      const schema = schemaForScope(scope);
+      if (!schema.ok) return failed(schema);
+      const versionId = text(body.version_id);
+      if (!versionId) return bad('version_id is required');
+      const [target, current] = await Promise.all([
+        readHistoricalVersion(store, tenantId, scope, versionId),
+        store.getConfigHead(tenantId, scope),
+      ]);
+      if (!target.ok) return failed(target);
+      if (!current) return bad('this scope has no published version to restore over', 'version_not_found');
+      const impact = compareDocuments(schema.schema, current.config, target.version.config);
+      return ok({
+        current: versionOut(current),
+        target: versionOut(target.version),
+        impact: impactOut(impact),
+        lifecycle_effect: lifecycleEffect(impact, scope, await lifecycleStates(store, tenantId)),
       });
     }
 
@@ -390,6 +500,7 @@ export async function handleConfigAction(action: string, context: ConfigActionCo
         schema_version: result.version.schemaVersion,
         impact: impactOut(result.impact),
         warnings: result.warnings,
+        onboarding_ticked: await tickBusinessRules(context, tenantId, scope),
         /* written by publish_config_draft in the same transaction as the version. */
         logged: true,
       });
@@ -412,6 +523,7 @@ export async function handleConfigAction(action: string, context: ConfigActionCo
         schema_key: result.version.schemaKey,
         schema_version: result.version.schemaVersion,
         impact: impactOut(result.impact),
+        onboarding_ticked: await tickBusinessRules(context, tenantId, scope),
         logged: true,
       });
     }

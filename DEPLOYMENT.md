@@ -417,7 +417,9 @@ they are actually done:
 1. **tenant created** — the client exists and has a client ID. Ticked for you
    when the module was chosen at creation.
 2. **business rules completed** — hours, services, service area, forwarding
-   destination, templates. Ticks itself when a valid config saves. A save
+   destination, templates. Ticks itself when a valid config saves. These can also
+   be edited on the client's **settings** page (ARC-310; needs `ops` redeployed),
+   which shows each change's consequences before publishing and keeps the history. A save
    publishes the changed parts as new versions (tenant settings, then Lead
    Recovery); a form loaded before somebody else saved is refused — reload it.
 3. **staff destination verified** — somebody answered a test call on the

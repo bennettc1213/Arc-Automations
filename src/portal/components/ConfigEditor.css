@@ -1,0 +1,154 @@
+/* ── settings (ConfigEditor / ConfigHistory / ConfigReview, ARC-310) ──
+   one field per block, its consequences as pills beside the label, its errors
+   directly under the input they are about. */
+
+.cfg-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.cfg-fields {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.cfg-field {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--surface);
+  min-width: 0;
+}
+
+.cfg-field--error {
+  box-shadow: inset 2px 0 0 var(--fail);
+}
+
+.cfg-field__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cfg-field__label {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cfg-field__label i {
+  color: var(--accent);
+  font-style: normal;
+  margin-left: 2px;
+}
+
+.cfg-field__help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.cfg-parts {
+  display: grid;
+  gap: 10px 14px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.cfg-part {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cfg-part--wide {
+  grid-column: 1 / -1;
+}
+
+.cfg-part__label,
+.cfg-record__head {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.cfg-records {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.cfg-record {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px minmax(0, 1.4fr) auto;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+}
+
+.cfg-json {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.cfg-errors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  color: var(--fail);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
+.cfg-review,
+.cfg-compare {
+  display: grid;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.cfg-compare {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.cfg-compare__title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.cfg-diff td {
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.cfg-effects {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 0.9em;
+}
+
+.cfg-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 720px) {
+  .cfg-record {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

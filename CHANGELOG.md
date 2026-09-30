@@ -217,6 +217,30 @@ when it ships.
   - An `admin_actions` row (`tenant.purged`) records who deleted what.
   - Tests: `tenant-purge-db` (8, real Postgres).
 - DEPLOYMENT.md: how to try the ops console against staging from a local copy of the site.
+- **ARC-310: a settings page for each client**, at `/ops/console/clients/:id/settings`. There is
+  one tab for the client-wide settings and one for each module with a configuration schema.
+  Everything goes through ARC-110's engine, so no n8n node is edited to change behaviour.
+  - Fields are drawn from the registry. A new `registry/layouts.ts` says how to draw the
+    inside of a group or list. It is presentation only: its select options are the
+    validator's own constants, and a test checks every part against the schema's default
+    document.
+  - Drafts carry their revision. A stale save or publish is shown as "changed elsewhere", and
+    nothing is overwritten. The server's errors appear under the field and part they name.
+  - Review before publishing is the server's preview: before and after for each change
+    (staff numbers hidden), what the change requires, and, new in `config-draft-preview`,
+    `lifecycle_effect`, which says what ARC-120 is expected to do with each module the
+    change reaches (stay live, hold new leads until a retest, or pause).
+  - Version history lists every version, never edited. Two versions can be compared, and
+    restoring one publishes it as the next version, after a preview.
+  - Settings are read-only for a deboarded client, and restore is off while a draft is open.
+  - New read-only `ops` actions: `config-scope`, `config-compare` and
+    `config-rollback-preview` (`_shared/config/settings.ts`).
+  - A valid publish or restore from this page ticks Lead Recovery's "business rules"
+    onboarding step, as the Lead Recovery panel's own save always has (`markStep`, passed
+    by the `ops` function).
+  - Linked from the client page and from each module in its modules panel.
+  - Tests: `config-settings` (31, including real Postgres and the rendered editor and
+    history).
 
 ### Fixed
 

@@ -9,6 +9,7 @@ import RoadmapAssistant from './RoadmapAssistant';
 import Roster from '../pages/ops/Roster';
 import Clients from '../pages/ops/Clients';
 import ClientDetail from '../pages/ops/ClientDetail';
+import ClientSettings from '../pages/ops/ClientSettings';
 import NewClient from '../pages/ops/NewClient';
 import PastClients from '../pages/ops/PastClients';
 import Identity from '../pages/ops/Identity';
@@ -378,6 +379,7 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, onRel
             <Route path="clients" element={<Clients {...ctx} />} />
             <Route path="clients/new" element={<NewClient {...ctx} />} />
             <Route path="clients/:tenantId" element={<ClientDetail {...ctx} />} />
+            <Route path="clients/:tenantId/settings" element={<ClientSettings {...ctx} />} />
             <Route path="past-clients" element={<PastClients {...ctx} />} />
             <Route path="activity" element={<OpsActivity {...ctx} />} />
             <Route path="servers" element={<Servers {...ctx} />} />
