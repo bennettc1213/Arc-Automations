@@ -45,7 +45,10 @@ import '../ops.css';
  * ingest and n8n just now, not that somebody once typed "active".
  */
 
-const COLLAPSE_KEY = 'arc.ops.railCollapsed';
+/* `.v2`: the rail once collapsed to bare icons and remembered it, and that is how the console
+   kept opening. a new key means every browser starts expanded again; collapsing now keeps
+   the words, under each icon. */
+const COLLAPSE_KEY = 'arc.ops.railCollapsed.v2';
 const MOBILE_QUERY = '(max-width: 1000px)';
 
 /* often enough that a workflow switched off shows up while you are still in the

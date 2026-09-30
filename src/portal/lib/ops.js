@@ -1229,6 +1229,12 @@ export async function createTenant({ tenant, modules, idempotencyKey }) {
   }
 }
 
+/* permanently deleting a test client (0022). the database refuses one with any real history
+   and says what it has; `confirmSlug` must be the client's handle, typed. */
+export async function purgeTestClient(tenantId, confirmSlug) {
+  return callOps({ action: 'tenant-purge', tenant_id: tenantId, confirm_slug: confirmSlug });
+}
+
 export async function getTenantModules(tenantId) {
   return callOps({ action: 'tenant-modules', tenant_id: tenantId });
 }

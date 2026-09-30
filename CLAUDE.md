@@ -148,6 +148,9 @@ and the SQL agree on: a planned module, an alias, or one whose blocking requirem
 offers (`unsupportedRequirements`, also checked by `selectModule`) cannot be chosen. The client
 page's modules panel (`ModuleSelection.jsx`) reads ARC-120's status and uses its select/deselect —
 there is no second way to change a lifecycle. No client ever gets a workflow of its own.
+A client that never did anything real can be deleted (`0022`, `purge_test_tenant`, `ops`
+`tenant-purge`); the append-only guards make exactly one exception, inside that function for the
+client it recorded in `tenant_purges`. Any client with history is refused and deboarded instead.
 
 Requires `supabase/migrations/0003_client_ids_and_ops.sql` plus the
 `client-login` and `ops` edge functions; the console's Supabase page probes for

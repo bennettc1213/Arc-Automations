@@ -219,7 +219,39 @@ audited or selected) or is refused (0021 applied, old function). It creates no r
 and changes no existing tenant.
 
 Check afterwards: create a throwaway client with no module, confirm one `tenant.created` row
-in the audit log, then deboard it.
+in the audit log, then delete it (0022).
+
+### 0022 — deleting a test client: after 0021, with `ops` redeployed
+
+0022 adds `purge_test_tenant` and the `tenant_purges` record, and re-creates the seven
+append-only guards of 0014/0015 as an insert/update trigger plus a delete trigger that makes
+one exception: inside that function, for the client it has just recorded. A client with any
+real history — events, leads, conversations, runs (even a canary), queued actions, attempts,
+dispatches, connections, OAuth sessions, opt-outs, a used ingest token — is refused, and is
+deboarded instead. The console's **delete this test client** panel is at the bottom of every
+client page.
+
+### Trying the ops console against staging (no production involved)
+
+The live site talks to the live project, so staging is tried from a local copy of the site.
+Ops sign-in is a password, so nothing in staging's auth settings needs changing.
+
+1. Apply and deploy to staging (the repo's link must point at `czpwusgfxknnayurwmeb`):
+   `npx supabase migration list` (confirm), `npx supabase db push`,
+   `npx supabase functions deploy ops`.
+2. Make yourself a staging operator: Supabase dashboard → arc-staging → **Authentication →
+   Users → Add user** (email + password, auto-confirm). Then **SQL Editor**:
+   `insert into public.arc_admins (user_id) select id from auth.users where email = 'you@…';`
+3. Create `.env.staging.local` in the repo root (gitignored) with staging's
+   `VITE_SUPABASE_URL=https://czpwusgfxknnayurwmeb.supabase.co` and `VITE_SUPABASE_ANON_KEY=`
+   (dashboard → **Project Settings → API**, the anon/publishable key).
+4. `npx vite --mode staging`, open `http://localhost:5173/ops`, sign in with the user from 2.
+5. The checks: **add a client** with Lead Recovery ticked → its page shows the **modules**
+   panel with Lead Recovery *configuring* and "tenant created" ticked; **audit log** shows
+   `tenant.created`. Then **delete this test client**, type its handle → it disappears and the
+   audit log shows `tenant.purged`. A client given an event first
+   (`insert into events (tenant_id, event_type, occurred_at) values ('<id>', 'lead_received', now());`)
+   is refused with "has real activity".
 
 ---
 

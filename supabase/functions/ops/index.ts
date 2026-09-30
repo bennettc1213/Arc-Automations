@@ -104,6 +104,9 @@
  *   tenant-modules   every registered module for one client: selectable or why not, what
  *                    it needs, its lifecycle status and readiness, its configuration scopes
  *
+ *   tenant-purge     permanently delete a client that never did anything real (0022);
+ *                    one that did is refused with the list and must be deboarded
+ *
  *   A client can no longer be created by a browser insert; 0021 drops that policy.
  *
  * Roadmap assistant — read-only, so not audited. Documented in ./roadmap.ts and
@@ -425,6 +428,9 @@ Deno.serve(async (request) => {
       return json(result.body, result.status);
     } catch (error) {
       const message = (error as Error)?.message ?? 'the action failed';
+      if (/purge_test_tenant|tenant_purges/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'deleting a test client needs supabase/migrations/0022_purge_test_tenant.sql applied first', detail: message }, 501);
+      }
       if (/create_tenant|tenant_creations/i.test(message) && /does not exist|could not find/i.test(message)) {
         return json({ error: 'creating a client needs supabase/migrations/0021_ops_tenant_creation.sql applied first', detail: message }, 501);
       }

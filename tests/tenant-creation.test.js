@@ -245,6 +245,12 @@ async function loadPages() {
         'const inRouter = (el) => renderToStaticMarkup(createElement(MemoryRouter, null, el));',
         'export const renderNewClient = (props) => inRouter(createElement(NewClient, { base: "/ops/console", clients: [], reload: async () => {}, ...props }));',
         'export const renderPanel = (props) => inRouter(createElement(TenantModulesPanel, { tenantId: "t-1", base: "/ops/console", ...props }));',
+        "import PurgeClientPanel from './src/portal/components/PurgeClientPanel.jsx';",
+        "import Sidebar from './src/portal/components/Sidebar.jsx';",
+        "import { OPS_NAV_GROUPS } from './src/portal/lib/ops-nav.js';",
+        'export const renderPurge = (props) => inRouter(createElement(PurgeClientPanel, { base: "/ops/console", reload: async () => {}, ...props }));',
+        'export const renderRail = (collapsed) => inRouter(createElement(Sidebar, { base: "/ops/console", groups: OPS_NAV_GROUPS, mark: "ops", home: "/ops", collapsed, onToggleCollapse: () => {}, counts: {}, status: null }));',
+        'export { OPS_NAV_GROUPS };',
       ].join('\n'),
       resolveDir: ROOT,
       loader: 'jsx',
@@ -268,7 +274,7 @@ async function loadPages() {
   }
 }
 
-const { renderNewClient, renderPanel } = await loadPages();
+const { renderNewClient, renderPanel, renderPurge, renderRail, OPS_NAV_GROUPS } = await loadPages();
 /* the page composes its welcome text from the address it is served at. */
 globalThis.window ??= { location: { origin: 'https://arcautomation.site' } };
 
@@ -378,5 +384,28 @@ describe('the client page\'s module panel', () => {
   test('read-only for a deboarded client: no buttons at all', () => {
     const html = renderPanel({ initial: OVERVIEW, readOnly: true });
     assert.doesNotMatch(html, /<button type="button" class="ws-btn"/);
+  });
+});
+
+describe('deleting a test client, on the client page', () => {
+  test('closed, it says what it is for and that a client with history is deboarded instead', () => {
+    const html = renderPurge({ tenant: { id: 't-1', name: 'Cascade', slug: 'cascade' } });
+    assert.match(html, /delete this test client/);
+    assert.match(html, /cannot be deleted: deboard it instead/);
+    assert.match(html, /<button type="button" class="ws-btn">[\s\S]*?delete permanently<\/button>/);
+  });
+});
+
+describe('the ops sidebar', () => {
+  const labels = OPS_NAV_GROUPS.flatMap((group) => group.items.map((item) => item.label));
+
+  test('expanded, every section is named', () => {
+    const html = renderRail(false);
+    for (const label of labels) assert.match(html, new RegExp(`<span class="ws-nav__text">${label}</span>`));
+  });
+
+  test('collapsed, every section is still named, under its icon — never a column of bare icons', () => {
+    const html = renderRail(true);
+    for (const label of labels) assert.match(html, new RegExp(`<span class="ws-nav__caption">${label}</span>`));
   });
 });

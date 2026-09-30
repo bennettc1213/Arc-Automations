@@ -91,7 +91,9 @@ export default function Sidebar({
                     <span className="ws-nav__glyph" aria-hidden="true">
                       <Icon name={item.icon} size={18} />
                     </span>
-                    {!collapsed && <span className="ws-nav__text">{item.label}</span>}
+                    {/* collapsed, the word goes under the glyph rather than away: a column of
+                        bare icons read as a puzzle to the one person who uses this console. */}
+                    <span className={collapsed ? 'ws-nav__caption' : 'ws-nav__text'}>{item.label}</span>
                     {!collapsed && counts[item.to] !== undefined && counts[item.to] !== null && (
                       <span className="ws-nav__count">{counts[item.to]}</span>
                     )}

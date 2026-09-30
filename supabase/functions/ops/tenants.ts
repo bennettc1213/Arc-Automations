@@ -17,6 +17,12 @@
  *                    one selected or selectable, ARC-120's lifecycle status and readiness,
  *                    and whether its configuration scopes are published or drafted yet.
  *
+ *   tenant-purge     { tenant_id, confirm_slug }
+ *                    permanently delete a client that never did anything real (0022): no
+ *                    events, leads, runs, texts, connections or opt-outs. One that did is
+ *                    refused with the list, and is deboarded instead. The purge record and
+ *                    the audit row are written by purge_test_tenant in the same transaction.
+ *
  * Selecting or deselecting a module on an existing client is ARC-120's `module-select` /
  * `module-deselect`, unchanged; this file adds no second way to do either.
  */
@@ -27,6 +33,7 @@ import type { CatalogEntry } from '../_shared/tenants/model.ts';
 import {
   createTenant,
   type CreationRow,
+  purgeTestTenant,
   TENANT_ERROR_STATUS,
   type TenantErrorCode,
   tenantModuleOverview,
@@ -35,7 +42,7 @@ import {
 import { lifecycleOut, statusOut } from './lifecycle.ts';
 import { LIFECYCLE_ERROR_STATUS } from '../_shared/lifecycle/model.ts';
 
-export const TENANT_ACTIONS = ['tenant-create', 'tenant-modules'];
+export const TENANT_ACTIONS = ['tenant-create', 'tenant-modules', 'tenant-purge'];
 
 export interface TenantActionContext {
   store: EngineStore;
@@ -147,6 +154,30 @@ export async function handleTenantAction(action: string, context: TenantActionCo
             draft: s.draft,
           })),
         })),
+      },
+    };
+  }
+
+  if (action === 'tenant-purge') {
+    const outcome = await purgeTestTenant(context.tenants, {
+      actorId: context.actorId,
+      tenantId: body.tenant_id,
+      confirmSlug: body.confirm_slug,
+    });
+    if (!outcome.ok) return refused(outcome.code, outcome.message);
+    const { result } = outcome;
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        purged: {
+          tenant_id: result.tenantId,
+          name: result.name,
+          slug: result.slug,
+          client_id: result.clientId,
+          purged_at: result.purgedAt,
+        },
+        logged: true,
       },
     };
   }

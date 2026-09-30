@@ -53,14 +53,26 @@ export interface CreateTenantRequest {
   idempotencyKey: string;
 }
 
+/** what is left of a client once it has been purged (0022). */
+export interface PurgeRow {
+  tenantId: string;
+  actorUserId: string;
+  name: string;
+  slug: string;
+  clientId: string | null;
+  purgedAt: string;
+}
+
 export interface TenantStore {
   createTenant(request: CreateTenantRequest): Promise<CreatedTenant>;
   getTenantCreation(tenantId: string): Promise<CreationRow | null>;
+  purgeTestTenant(request: { actorId: string; tenantId: string; confirmSlug: string }): Promise<PurgeRow>;
 }
 
 export const TENANT_ERROR_CODES = [
   'unauthorized', 'forbidden', 'invalid', 'module_not_found', 'module_unavailable',
   'connector_unsupported', 'slug_taken', 'client_id_taken', 'idempotency_conflict', 'not_found',
+  'confirmation_mismatch', 'tenant_has_activity',
 ] as const;
 export type TenantErrorCode = typeof TENANT_ERROR_CODES[number];
 
@@ -75,6 +87,8 @@ export const TENANT_ERROR_STATUS: Readonly<Record<TenantErrorCode, number>> = Ob
   client_id_taken: 409,
   idempotency_conflict: 409,
   not_found: 404,
+  confirmation_mismatch: 422,
+  tenant_has_activity: 409,
 });
 
 /** A refusal the database made on purpose, as opposed to a failure. */
@@ -139,6 +153,30 @@ export async function createTenant(
        their own prefix and are passed on as they are. */
     const lifecycle = /arc_lifecycle:([a-z_]+): (.*)$/s.exec((error as Error)?.message ?? '');
     if (lifecycle) return { ok: false, code: lifecycle[1], message: lifecycle[2] };
+    throw error;
+  }
+}
+
+/* ── deleting a test client ─────────────────────────────── */
+
+/**
+ * Permanently delete a client that never did anything real (0022). Whether it did is the
+ * database's call, made inside the transaction that deletes it — a check here first would
+ * only be a second answer that could be stale by the time the delete ran.
+ */
+export async function purgeTestTenant(
+  store: TenantStore,
+  input: { actorId: string | null; tenantId: unknown; confirmSlug: unknown },
+): Promise<TenantOutcome<PurgeRow>> {
+  if (!input.actorId) return { ok: false, code: 'unauthorized', message: 'not signed in' };
+  const tenantId = text(input.tenantId);
+  const confirmSlug = text(input.confirmSlug);
+  if (!tenantId) return { ok: false, code: 'invalid', message: 'tenant_id is required' };
+  if (!confirmSlug) return { ok: false, code: 'confirmation_mismatch', message: "type the client's handle to confirm" };
+  try {
+    return { ok: true, result: await store.purgeTestTenant({ actorId: input.actorId, tenantId, confirmSlug }) };
+  } catch (error) {
+    if (error instanceof TenantStoreError) return { ok: false, code: error.code, message: error.message };
     throw error;
   }
 }

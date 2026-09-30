@@ -24,6 +24,7 @@ import ServicesPanel from '../../components/ServicesPanel';
 import BuildPanel from '../../components/BuildPanel';
 import LeadRecoveryPanel from '../../components/LeadRecoveryPanel';
 import TenantModulesPanel from '../../components/ModuleSelection';
+import PurgeClientPanel from '../../components/PurgeClientPanel';
 import ReportDialog from '../../components/ReportDialog';
 import {
   CONNECTION_KINDS,
@@ -976,6 +977,10 @@ function ClientBody({ client, base, reload, reloadBuilds, probe, runProbe }) {
           }}
         />
       )}
+
+      {/* last on the page, and for a deboarded client too: a test client that was deboarded
+          is still one that can go. the database refuses any client with real history. */}
+      <PurgeClientPanel tenant={tenant} base={base} reload={reload} />
     </>
   );
 }

@@ -204,6 +204,19 @@ when it ships.
     old browser insert and says that nothing was audited or selected.
   - Tests: `tenant-creation` (23, including the real pages rendered), and `tenant-creation-db`
     (18) on real Postgres.
+- **Deleting a test client.** Migration `0022_purge_test_tenant.sql`, `ops` action
+  `tenant-purge`, and a **delete this test client** panel at the bottom of every client page
+  (confirm by typing the handle).
+  - Only a client that never did anything real can be deleted: no events, leads,
+    conversations, runs (even canaries), queued actions, attempts, dispatches, connections,
+    OAuth sessions, opt-outs or used ingest tokens. Any other client is refused with the
+    list, and is deboarded instead.
+  - The seven append-only guards of 0014/0015 are re-created as insert/update triggers plus
+    a delete trigger with one exception, true only inside `purge_test_tenant` for the client
+    it has already recorded in the new immutable `tenant_purges` table.
+  - An `admin_actions` row (`tenant.purged`) records who deleted what.
+  - Tests: `tenant-purge-db` (8, real Postgres).
+- DEPLOYMENT.md: how to try the ops console against staging from a local copy of the site.
 
 ### Fixed
 
@@ -226,6 +239,12 @@ when it ships.
 
 ### Changed
 
+- **The ops sidebar names every section again.** Collapsing it had hidden the labels, and
+  the collapsed state was remembered, so the console kept opening as a column of bare icons.
+  - Collapsed, each icon now has its label underneath (the collapsed rail is 78px, up
+    from 66px). This applies to the client workspace's sidebar too.
+  - The remembered setting is reset (`arc.ops.railCollapsed.v2`), so the console opens
+    expanded.
 - **n8n → ARC requests are signed by n8n's own JWT node, not an HMAC** (ADR ARC-010 §18 and
   §24, amended by ARC-240). n8n cannot compute an HMAC with a secret held in a credential. The
   JWT binds one route, a hash of the exact body, a five-minute window and a single-use nonce,

@@ -24,7 +24,7 @@
 
 .portal.ws {
   --rail: 252px;
-  --rail-tight: 66px;
+  --rail-tight: 78px;
   --top-h: 56px;
   --pad: clamp(16px, 2vw, 28px);
   --gap: clamp(16px, 1.8vw, 26px);
@@ -226,8 +226,25 @@
 }
 
 .ws--tight .ws-nav__item {
+  flex-direction: column;
   justify-content: center;
-  padding: 5px 0;
+  gap: 3px;
+  padding: 6px 0;
+}
+
+/* the collapsed rail's label, under its glyph. two short lines at most. */
+.ws-nav__caption {
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  text-align: center;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .ws-rail__foot {

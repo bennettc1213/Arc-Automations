@@ -5,7 +5,7 @@
  * sent is exactly the payload 0021 receives — there is no in-memory twin to drift from.
  */
 
-import { type CreatedTenant, type CreationRow, parseTenantStoreError, type TenantStore } from './service.ts';
+import { type CreatedTenant, type CreationRow, parseTenantStoreError, TenantStoreError, type TenantStore } from './service.ts';
 
 // deno-lint-ignore no-explicit-any
 type Db = { from(table: string): any; rpc(name: string, args?: Record<string, unknown>): any };
@@ -42,6 +42,30 @@ export function supabaseTenantStore(db: Db): TenantStore {
         tenant: data.tenant,
         creation: toCreation(data.creation),
         lifecycles: Array.isArray(data.lifecycles) ? data.lifecycles : [],
+      };
+    },
+
+    async purgeTestTenant(request) {
+      const { data, error } = await db.rpc('purge_test_tenant', {
+        p_actor: request.actorId,
+        p_tenant: request.tenantId,
+        p_confirm_slug: request.confirmSlug,
+      });
+      if (error) {
+        const refusal = parseTenantStoreError(error.message);
+        if (refusal) throw refusal;
+        /* a malformed id is a client that does not exist, not a server failure. */
+        if (/invalid input syntax for type uuid/.test(error.message ?? '')) throw new TenantStoreError('not_found', 'this client does not exist');
+        throw new Error(`purge tenant: ${error.message ?? 'unknown database error'}`);
+      }
+      if (!data || typeof data !== 'object' || !data.tenant_id) throw new Error('purge tenant: the database returned no record');
+      return {
+        tenantId: data.tenant_id,
+        actorUserId: data.actor_user_id,
+        name: data.name,
+        slug: data.slug,
+        clientId: data.client_id ?? null,
+        purgedAt: data.purged_at,
       };
     },
 
