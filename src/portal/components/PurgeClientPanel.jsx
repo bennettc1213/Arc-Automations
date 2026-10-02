@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from './Icon';
-import { Panel } from './ui';
+import { Consequence, Panel } from './ui';
 import { Field, Notice, TextInput } from './ops-ui';
 import { purgeTestClient } from '../lib/ops';
 
@@ -60,10 +60,10 @@ export default function PurgeClientPanel({ tenant, base, reload }) {
         </p>
       ) : (
         <form onSubmit={submit}>
-          <p className="ops-muted">
+          <Consequence tone="danger">
             this cannot be undone. the audit log keeps one line saying you deleted{' '}
             <b>{tenant.name}</b>; nothing else about them remains.
-          </p>
+          </Consequence>
 
           {state.kind === 'error' && (
             <div style={{ marginTop: 14 }}>

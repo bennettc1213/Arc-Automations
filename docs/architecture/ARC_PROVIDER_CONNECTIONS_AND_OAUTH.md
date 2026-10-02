@@ -40,7 +40,7 @@ These are locations and patterns only. No values were read.
 | ARC's own platform secrets (Twilio account, Anthropic key, n8n API key, dispatch key, service role) | Supabase function secrets | Unchanged. These are ARC's secrets, not a tenant's; `arc_managed` connectors do not get tenant connections |
 | Tenant Twilio subaccount / messaging service / number | Published Lead Recovery configuration (`twilio`) | Unchanged. Non-secret identifiers |
 | Tenant intake keys | `intake_keys` stores a SHA-256 hash only (`0001` `token_hash`) | Unchanged |
-| `connections.credential_hint` / `credential_location` (0003/0006) | A ≤4-character hint, and a label saying where a key lives | Unchanged, never a secret. The console's `integrations.js` still labels providers `keyStore: 'n8n credentials'`. That is a label, not a stored credential, and it is reworded in ARC-320 (§16) |
+| `connections.credential_hint` / `credential_location` (0003/0006) | A ≤4-character hint, and a label saying where a key lives | Unchanged, never a secret. The console's `integrations.js` used to label providers `keyStore: 'n8n credentials'`. ARC-320 reworded it to "outside ARC — not stored here" |
 | Tenant OAuth tokens / API keys | **None exist.** Every tenant-connected provider in the registry is `planned`, with no adapter | ARC-130 provides the only place they may ever be stored |
 | Secrets in configuration, snapshots, runs, actions | Refused by check constraints since 0010/0011/0014 | Unchanged. Tests prove no ARC-130 secret reaches them |
 | Browser storage | Only the Supabase anon key and the user's session | Unchanged. No provider credential ever reaches a browser |
@@ -330,7 +330,7 @@ Controlled procedure for the first real provider (future phase):
 1. Add its registry version with `connection` and an adapter.
 2. Have the client connect through `oauth-begin`/`api-key-store`. Never copy a key from n8n or a spreadsheet into SQL.
 3. Once verified, delete the provider's credential from wherever it lived before, including n8n credentials.
-4. Reword the console's `keyStore: 'n8n credentials'` labels (ARC-320).
+4. ~~Reword the console's `keyStore: 'n8n credentials'` labels~~ — done in ARC-320.
 
 No configuration version is published and no module is activated by this procedure. If a credential is ever found in an immutable configuration version, it is **not** edited: rotate it at the provider, reconnect it through ARC, and record the finding.
 
@@ -385,7 +385,7 @@ The synthetic providers are in-process on `.invalid` hosts. No test can reach a 
 | ARC-200 | Proactive refresh scheduling (call `refreshAccessToken({force})`), durable operation queues and retry policy |
 | ARC-210 | `AutomationRunner` and the fake runner. The gateway is written to be called by one |
 | ARC-220 | The signed n8n dispatch/callback bridge in front of `performConnectorOperation` |
-| ARC-320 | The portal's connection pages: the OAuth callback route (strip `code`/`state` from history immediately, `no-referrer`), key entry, reauthorise/disconnect buttons, rewording `integrations.js` |
+| ARC-320 | **Done (ARC_ACTIVATION_CONSOLE.md).** The connections panel on the activation page; the OAuth callback route `/portal/dashboard/connections/callback` (strips `code`/`state` before the Supabase client exists, `no-referrer`); key entry; reauthorise and disconnect buttons; `integrations.js` reworded; a durable connection test |
 | ARC-LR-4xx | Real provider adapters and their registry versions |
 
 ## 22. Tests
@@ -437,4 +437,5 @@ service verifying before storing. A test now isolates each, and all three are ca
 - OIDC signature checking supports RS256 only. JWKS responses are fetched per verification, not cached.
 - The in-process rate limiter is per function instance; the SQL session cap is the durable limit.
 - Readiness reads the freshest connection per provider. Choosing between two connections of one provider is not modelled, because the schema allows only one live connection per provider.
-- The console has no connection pages yet (ARC-320), so the function is backend-only until then.
+- The console's connection pages exist (ARC-320). With no real provider adapter registered, only the
+  synthetic providers in tests can actually be connected.

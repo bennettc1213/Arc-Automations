@@ -79,7 +79,7 @@ const STATUS_OPTIONS = [
   { value: 'paused', label: 'paused' },
 ];
 
-export default function NewClient({ base, clients, reload, initial = {} }) {
+export default function NewClient({ base, clients, allClients, reload, initial = {} }) {
   const [clientId, setClientId] = useState(generateClientId);
   const [created, setCreated] = useState(null);
   const [freshToken, setFreshToken] = useState(null);
@@ -113,7 +113,10 @@ export default function NewClient({ base, clients, reload, initial = {} }) {
      stops following. a field that silently overwrites what you typed into it is a
      field you learn not to trust. */
   const slug = form.slug.trim() || slugify(form.name);
-  const slugTaken = clients.some((client) => client.tenant.slug === slug);
+  /* the handle is unique across every tenant row, archived ones included — a
+     deboarded client still holds its slug in the database — so this checks the
+     full roster, not just the ones the sidebar shows as current. */
+  const slugTaken = (allClients ?? clients).some((client) => client.tenant.slug === slug);
 
   /* the server's own check, run here as the operator types. a field shows its problem
      once there is something in it — an empty form is not a page of red. */

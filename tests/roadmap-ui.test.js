@@ -36,8 +36,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER_SIDE = [
   'docs/architecture/ARC_IMPLEMENTATION_ROADMAP.md',
   'supabase/functions/_shared/roadmap/markdown-index.ts',
+  'supabase/functions/_shared/roadmap/corpus.ts',
   'supabase/functions/_shared/roadmap/answer.ts',
   'supabase/functions/_shared/roadmap/model.ts',
+  'supabase/functions/_shared/roadmap/search.ts',
   'supabase/functions/_shared/roadmap/source.ts',
   'supabase/functions/_shared/operator-gate.ts',
   'supabase/functions/ops/roadmap.ts',
@@ -98,7 +100,21 @@ describe('what reaches the browser bundle', () => {
       .slice(0, 12);
     assert.ok(distinctive.length > 0);
 
-    const forbidden = [/ANTHROPIC_API_KEY/, /x-api-key/i, /api\.anthropic\.com/, new RegExp(['sk', 'ant'].join('-'))];
+    const forbidden = [
+      /ANTHROPIC_API_KEY/,
+      /x-api-key/i,
+      /api\.anthropic\.com/,
+      new RegExp(['sk', 'ant'].join('-')),
+      /OPENAI_API_KEY/,
+      /api\.openai\.com/,
+      new RegExp(['sk', 'proj'].join('-')),
+      /GEMINI_API_KEY/,
+      /x-goog-api-key/i,
+      /generativelanguage\.googleapis\.com/,
+      /GROQ_API_KEY/,
+      new RegExp(['gsk', '[A-Za-z0-9_-]{6,}'].join('_')),
+      /api\.groq\.com/,
+    ];
     for (const file of shipped) {
       const text = readFileSync(path.join(ROOT, file), 'utf8');
       for (const re of forbidden) assert.doesNotMatch(text, re, `${file} matches ${re}`);
@@ -185,6 +201,15 @@ describe('the request the console makes', () => {
     assert.equal(unconfigured.retry, false);
     assert.equal(describeFailure(429, { code: 'rate_limited', error: 'Too many.' }).retry, true);
     assert.equal(describeFailure(502, { code: 'model_failed', error: 'The model request failed.' }).retry, true);
+    const withReason = describeFailure(502, {
+      code: 'model_failed',
+      error: 'The model request failed. Try again.',
+      detail: 'the model answered 400: invalid_request_error — Your credit balance is too low',
+    });
+    assert.equal(
+      withReason.message,
+      'The model request failed. Try again. Reason: the model answered 400: invalid_request_error — Your credit balance is too low',
+    );
   });
 });
 
@@ -226,6 +251,15 @@ describe('the conversation', () => {
       { role: 'assistant', content: 'one' },
       { role: 'user', content: 'second' },
     ]);
+  });
+
+  test('a page of the roadmap\'s own passages is not sent back as conversation history', () => {
+    const messages = [
+      { id: 1, role: 'user', text: 'first' },
+      { id: 2, role: 'assistant', status: 'excerpts', answer: '**Search mode:** …a page of the roadmap…' },
+      { id: 3, role: 'user', text: 'second' },
+    ];
+    assert.deepEqual(historyFor(messages), [{ role: 'user', content: 'first' }]);
   });
 
   test('enter sends, shift+enter does not, an IME keeps its enter, escape closes', () => {
@@ -358,6 +392,37 @@ describe('the panel', () => {
     assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
   });
 
+  test('with no model connected the panel says so up top, and only then', () => {
+    const search = render({ client: idle, open: true, initialSource: SOURCE, initialAssistant: { configured: false, provider: 'search', model: null } });
+    assert.match(search, /Search only: no AI model is connected, so answers are the roadmap’s own passages\./);
+    const modelled = render({ client: idle, open: true, initialSource: SOURCE, initialAssistant: { configured: true, provider: 'openai', model: 'x' } });
+    assert.doesNotMatch(modelled, /Search only/);
+    assert.doesNotMatch(render({ client: idle, open: true, initialSource: SOURCE }), /Search only/, 'unknown says nothing');
+  });
+
+  test('the roadmap\'s own passages render with their sources, as text and never as markup', () => {
+    const state = [
+      { type: 'send', question: 'When do we deploy?' },
+      {
+        type: 'answer',
+        response: {
+          status: 'excerpts',
+          answer:
+            "**The AI model couldn't answer (the model answered 429: insufficient_quota),** so these are the roadmap's own passages for your question instead.\n\n" +
+            '**§14 Deployment and repository boundary**\n\nThey do not update the live site. <img src=x onerror=alert(1)>\n\n…\n\n1. Code checkpoint',
+          citations: [{ ref: 'S5', label: '§14 Deployment and repository boundary', section_id: 's14' }],
+        },
+      },
+    ].reduce(chatReducer, initialChat);
+    const html = render({ client: idle, open: true, initialSource: SOURCE, initialState: state });
+    assert.match(html, /rma-msg--excerpts/);
+    assert.match(html, /<strong><span>The AI model couldn&#x27;t answer \(the model answered 429: insufficient_quota\),<\/span><\/strong>/);
+    assert.match(html, /<li>Source: §14 Deployment and repository boundary<\/li>/);
+    assert.doesNotMatch(html, /<img/);
+    assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.doesNotMatch(html, /Not in the roadmap\.|Withheld|Partly answered/, 'it does not claim to be any kind of answer');
+  });
+
   test('a partial, missing or withheld answer says so in words', () => {
     for (const [status, words] of [
       ['partial', 'Partly answered'],
@@ -396,5 +461,22 @@ describe('the panel', () => {
     }
     assert.match(css, /@media \(max-width: 600px\)/);
     assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  });
+
+  test('an answer\'s bullets and numbers survive base.css turning every list marker off site-wide', () => {
+    const base = readFileSync(path.join(ROOT, 'src/styles/base.css'), 'utf8');
+    assert.match(base, /ul,\s*\nol\s*\{\s*\n\s*list-style:\s*none;/, 'this test assumes the reset it guards against still exists');
+
+    const css = readFileSync(path.join(ROOT, 'src/portal/components/RoadmapAssistant.css'), 'utf8');
+    /* a rule anywhere in the file that sets .rma-msg__body's ul (or ol) to a real marker,
+       not `none` and not left unset (which is `none`, inherited from the reset above). */
+    const ruleFor = (tag) => {
+      const rule = new RegExp(`\\.rma-msg__body[^{]*\\b${tag}\\b[^{]*\\{[^}]*list-style:\\s*([a-z-]+)`, 'i').exec(css);
+      return rule?.[1] ?? null;
+    };
+    assert.notEqual(ruleFor('ul'), null, 'no list-style rule restores an unordered list\'s bullet');
+    assert.notEqual(ruleFor('ul'), 'none', 'an unordered list in an answer must show its bullet');
+    assert.notEqual(ruleFor('ol'), null, 'no list-style rule restores an ordered list\'s numbers');
+    assert.notEqual(ruleFor('ol'), 'none', 'an ordered list in an answer must show its numbers — a numbered deploy sequence read as one run-on paragraph without this');
   });
 });

@@ -97,11 +97,24 @@ export function SafeMarkdown({ text }) {
   });
 }
 
+/* what kind of thing each reply is, said on the reply. a sentence a model wrote and a passage
+   quoted from the file look alike in a chat column and are not the same claim: one was
+   composed and then checked against its sources, the other is the document's own words.
+   copy only — which of the two a reply is was decided by the function, not here. */
+const ANSWER_KIND = {
+  answered: 'written answer · checked against the sources below',
+  partial: 'written answer · checked against the sources below',
+  excerpts: 'quoted passages · the documents’ own words, nothing written by a model',
+};
+
 function Answer({ message }) {
   const note = STATUS_NOTE[message.status];
+  const kind = ANSWER_KIND[message.status];
   return (
     <div className={`rma-msg rma-msg--roadmap rma-msg--${message.status}`}>
-      <span className="rma-msg__who">roadmap</span>
+      <span className="rma-msg__who">
+        roadmap{kind ? ` · ${kind}` : ''}
+      </span>
       {note && <p className="rma-msg__note">{note}</p>}
       <div className="rma-msg__body">
         <SafeMarkdown text={message.answer} />
@@ -128,6 +141,7 @@ export default function RoadmapAssistant({
   client: clientProp,
   initialState = initialChat,
   initialSource = null,
+  initialAssistant = null,
 }) {
   const [openState, setOpenState] = useState(false);
   const open = openProp ?? openState;
@@ -146,7 +160,9 @@ export default function RoadmapAssistant({
 
   const [chat, dispatch] = useReducer(chatReducer, initialState);
   const [draft, setDraft] = useState('');
-  const [source, setSource] = useState(initialSource ? { kind: 'ready', meta: initialSource } : { kind: 'idle' });
+  const [source, setSource] = useState(
+    initialSource ? { kind: 'ready', meta: initialSource, assistant: initialAssistant } : { kind: 'idle' },
+  );
 
   const ids = useId();
   const titleId = `${ids}-title`;
@@ -257,6 +273,11 @@ export default function RoadmapAssistant({
 
   const empty = chat.messages.length === 0 && !chat.pending;
 
+  /* no model on this deployment: the panel shows the roadmap's own passages, and says so up
+     top rather than leaving each answer to explain. a model that is set up but failing is
+     told per answer, with its reason. */
+  const searchOnly = source.kind === 'ready' && source.assistant?.configured === false;
+
   return (
     <div className="rma">
       {!open && (
@@ -289,6 +310,11 @@ export default function RoadmapAssistant({
                 ARC Roadmap Assistant
               </h2>
               <p className="rma-head__knowledge">Knowledge: Current roadmap</p>
+              {searchOnly && (
+                <p className="rma-head__knowledge rma-head__mode">
+                  Search only: no AI model is connected, so answers are the roadmap&rsquo;s own passages.
+                </p>
+              )}
               <p id={sourceId} className={`rma-head__source rma-head__source--${source.kind}`}>
                 {sourceText}
               </p>

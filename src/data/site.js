@@ -256,6 +256,34 @@ export const site = {
     },
   ],
 
+  /* your route — the section's own words. what each route *is* (names, who it
+     is for, the comparison, the five questions) is not here: that is product
+     vocabulary shared with onboarding, in supabase/functions/_shared/routes/model.ts.
+     `status` is here because it is a claim about today and will change: only
+     say "in production" for what is. */
+  routes: {
+    eyebrow: '04 — your route',
+    title: 'start from where you are.',
+    lead: 'no software? we bring it. already have some you like? you keep it. which one sounds like you?',
+    pick: 'pick the one that sounds like you',
+    status: {
+      native: 'arc crm in build · pilots open',
+      hybrid: 'built around your tools',
+      connected: 'in production',
+    },
+    provides: 'we bring',
+    keeps: 'you keep',
+    cta: 'talk through',
+    suggestedFlag: 'suggested for you',
+    compareToggle: 'compare all three',
+    compareLabel: 'the three routes side by side',
+    quizToggle: 'not sure? five quick questions',
+    quizBack: 'back',
+    quizSuggested: 'sounds like',
+    quizCta: 'book a call about',
+    quizReset: 'start over',
+  },
+
   // start-a-pilot overlay — intake questions + booking config
   pilot: {
     questions: [
@@ -332,7 +360,7 @@ export const site = {
     },
     {
       q: 'one pilot, one week',
-      a: 'a single flow, live in production — usually speed-to-lead. wired to your gohighlevel, tested against real leads, measured against your old response time. small enough to trust, real enough to matter.',
+      a: 'a single flow, live in production — usually speed-to-lead. wired to your crm, or to ours if you don’t have one, tested against real leads, measured against your old response time. small enough to trust, real enough to matter.',
       price: 'flat $1,500 to build it — then $500/mo if it earns its keep. no retainer until the pilot is live and you have seen the numbers.',
     },
     {

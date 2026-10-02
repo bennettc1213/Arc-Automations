@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import Icon from '../../components/Icon';
-import { Panel } from '../../components/ui';
+import { Panel, Term } from '../../components/ui';
 import { site } from '../../../data/site';
 import { formatRelative } from '../../lib/format';
 
@@ -87,7 +87,7 @@ export default function Support({ data, base }) {
               <dd>
                 same day
                 <span className="ws-facts__note">
-                  usually before you write — the canary pages us first
+                  usually before you write — the <Term k="canary" /> pages us first
                 </span>
               </dd>
             </div>
@@ -108,7 +108,7 @@ export default function Support({ data, base }) {
             you do not have to notice first. the hourly end-to-end check fails, we get paged, and
             the incident appears on your reliability page with the time it was detected — before
             anyone has emailed anybody. if it is a source that stopped sending rather than a
-            send that failed, the schema assert catches that too: leads quietly stopping is the
+            send that failed, the <Term k="schema_assert" /> catches that too: leads quietly stopping is the
             failure mode with no error message, and it is the one worth building for.
           </p>
 

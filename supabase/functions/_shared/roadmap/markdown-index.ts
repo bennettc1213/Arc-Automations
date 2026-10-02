@@ -32,6 +32,9 @@ export type RoadmapSection = {
   endLine: number;
   /** a current-position section, sent with every question */
   anchor: boolean;
+  /** set only by corpus.ts, combining several documents: which one this section is from.
+      undefined for a single-document index, which is every index this file itself builds. */
+  doc?: { key: string; title: string | null };
   /** heading only, nothing under it before the next heading */
   empty: boolean;
   /** every prompt identifier the section mentions, normalised */
@@ -68,7 +71,8 @@ export type Retrieval = {
   unknownIds: string[];
   /** identifiers the roadmap does not name but that fall inside a range it mentions */
   rangedIds: { id: string; range: IdRange }[];
-  /** nothing in the question touches the roadmap at all */
+  /** no keyword of the question appears in the roadmap, so only the current-state sections
+   *  are sent. informational: the question is still asked. */
   nothingMatched: boolean;
   /** the question names identifiers, the roadmap has none of them, and asks nothing else */
   onlyUnknownIds: boolean;
@@ -408,10 +412,12 @@ function revisedDate(headerText: string): string | null {
 /* ── retrieval ────────────────────────────────────────────────────────── */
 
 export const RETRIEVAL_LIMITS = {
-  /** retrieved sections, on top of the anchors */
-  maxSections: 5,
+  /** retrieved sections, on top of the anchors. raised alongside corpus.ts's document list: more
+      documents means more sections competing for the same slots, and the model's context window
+      has room to spare. */
+  maxSections: 8,
   /** characters of retrieved excerpt text, on top of the anchors */
-  maxChars: 12_000,
+  maxChars: 20_000,
   /** characters of anchor text before the lowest-scoring anchors are dropped */
   maxAnchorChars: 9_000,
   /** a section scoring under this share of the best one is noise */

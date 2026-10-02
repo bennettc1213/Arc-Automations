@@ -222,9 +222,21 @@
 
 .rma-msg__body ul,
 .rma-msg__body ol {
-  padding-left: 18px;
+  /* base.css turns off every list's marker site-wide, for the app chrome's own checklists
+     and menus, which supply their own icon or column instead. an answer's list is prose,
+     quoted or written, and a reader needs its markers to tell the items apart — a roadmap
+     answer numbering four deploy steps read as one run-on paragraph without this. */
+  padding-left: 20px;
   display: grid;
   gap: 4px;
+}
+
+.rma-msg__body ul {
+  list-style: disc;
+}
+
+.rma-msg__body ol {
+  list-style: decimal;
 }
 
 .rma-msg__body code {

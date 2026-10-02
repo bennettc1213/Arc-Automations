@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import Icon from './Icon';
 import { Pill } from './ui';
+import { consequenceOf } from '../lib/glossary';
 
 /**
  * the pieces the ops console is built out of, on top of the ones in ui.jsx.
@@ -97,9 +98,16 @@ export function ActionButton({
   confirm,
   disabled,
   title,
+  /* what pressing it will do, printed under the button. a button with a `confirm` gets the
+     sentence after its question by default, so what will happen is on the page before the
+     press and not only inside the dialog after it. `consequence={false}` is for a button
+     whose panel already says it. the dialog itself is untouched either way. */
+  consequence,
 }) {
   const [state, setState] = useState({ kind: 'idle' });
   const live = useRef(true);
+  const whyId = useId();
+  const why = consequence === false ? null : consequence ?? consequenceOf(confirm);
 
   useEffect(() => {
     live.current = true;
@@ -127,10 +135,17 @@ export function ActionButton({
         onClick={run}
         disabled={disabled || state.kind === 'busy'}
         title={title}
+        aria-describedby={why ? whyId : undefined}
       >
         {icon && <Icon name={state.kind === 'done' ? 'check' : icon} size={13} />}
         {state.kind === 'busy' ? 'working…' : children}
       </button>
+
+      {why && (
+        <span className="ops-action__why" id={whyId}>
+          {why}
+        </span>
+      )}
 
       {state.kind === 'error' && <span className="ops-action__msg ops-action__msg--fail">{state.message}</span>}
       {state.kind === 'done' && state.message && (

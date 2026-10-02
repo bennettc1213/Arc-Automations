@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { site } from '../data/site';
-import { onOpenPilot } from '../lib/pilot';
+import { onOpenPilot, pilotContext, routeNote } from '../lib/pilot';
 import { lenisRef } from '../lib/SmoothScroll';
 import TickOnChange from './TickOnChange';
 import PixelGuy from './PixelGuy';
@@ -25,9 +25,10 @@ function validateContact(contact) {
   return errors;
 }
 
-function buildMailto(answers, contact, pilotLabel, questions, fields) {
+function buildMailto(answers, contact, pilotLabel, questions, fields, routeLine) {
   const body = [
     `pilot: ${pilotLabel}`,
+    ...(routeLine ? [routeLine] : []),
     ...questions.map((q) => `${q.key}: ${answers[q.key] || '—'}`),
     '',
     ...fields.map((f) => `${f.label}: ${contact[f.key] || ''}`),
@@ -56,8 +57,8 @@ function sendCapture(payload) {
     .catch(() => false);
 }
 
-function buildEmbedSrc(booking, answers, contact, questions) {
-  const notes = questions.map((q) => `${q.key}: ${answers[q.key]}`).join(' | ');
+function buildEmbedSrc(booking, answers, contact, questions, routeLine) {
+  const notes = [...(routeLine ? [routeLine] : []), ...questions.map((q) => `${q.key}: ${answers[q.key]}`)].join(' | ');
   if (booking.provider === 'calcom') {
     const u = new URL(booking.embedUrl);
     u.searchParams.set('theme', 'dark');
@@ -96,6 +97,8 @@ function PixelX() {
 export default function PilotOverlay() {
   const [open, setOpen] = useState(false);
   const [pilotKey, setPilotKey] = useState(null);
+  // which arc route the visitor arrived on, if a route button opened this
+  const [routeContext, setRouteContext] = useState(() => pilotContext());
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [contact, setContact] = useState({});
@@ -125,9 +128,10 @@ export default function PilotOverlay() {
   // open via the bus, from any "start a pilot" button
   useEffect(
     () =>
-      onOpenPilot(({ key } = {}) => {
+      onOpenPilot(({ key, ...context } = {}) => {
         restoreFocus.current = document.activeElement;
         setPilotKey(key ?? null);
+        setRouteContext(pilotContext(context));
         setStep(0);
         setAnswers({});
         setContact({});
@@ -173,10 +177,11 @@ export default function PilotOverlay() {
 
   const pilotLabel =
     preset?.label ?? site.pilot.pilotFor[answers.pain] ?? 'pilot build';
+  const routeLine = routeNote(routeContext);
   const booking = site.pilot.booking;
   const embedSrc =
     booking.provider && booking.embedUrl
-      ? buildEmbedSrc(booking, answers, contact, questions)
+      ? buildEmbedSrc(booking, answers, contact, questions, routeLine)
       : null;
 
   const pick = (key, value) => {
@@ -193,6 +198,9 @@ export default function PilotOverlay() {
 
     sendCapture({
       pilot: pilotLabel,
+      // a hint for the call, not a decision — null when no route button was used
+      route: routeContext.route,
+      routeSource: routeContext.routeSource,
       answers,
       contact,
       page: window.location.href,
@@ -298,7 +306,7 @@ export default function PilotOverlay() {
                 </p>
                 <a
                   className="pilot__fallback mono"
-                  href={buildMailto(answers, contact, pilotLabel, questions, fields)}
+                  href={buildMailto(answers, contact, pilotLabel, questions, fields, routeLine)}
                 >
                   calendar not loading? email us instead →
                 </a>
@@ -323,7 +331,7 @@ export default function PilotOverlay() {
                 </p>
                 <a
                   className="pilot__next"
-                  href={buildMailto(answers, contact, pilotLabel, questions, fields)}
+                  href={buildMailto(answers, contact, pilotLabel, questions, fields, routeLine)}
                 >
                   email us the details <span aria-hidden="true">→</span>
                 </a>

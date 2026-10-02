@@ -396,6 +396,10 @@ function ClientBody({ client, base, reload, reloadBuilds, probe, runProbe }) {
           <Icon name="edit" size={13} />
           settings — company, hours, templates and the rest, with history
         </Link>
+        <Link className="ws-btn" to={`${base}/clients/${tenant.id}/activation`}>
+          <Icon name="pulse" size={13} />
+          activation — connections, readiness, tests, go live
+        </Link>
       </div>
 
       {/* the execution layer. placed under the build checklist and above the stat row for

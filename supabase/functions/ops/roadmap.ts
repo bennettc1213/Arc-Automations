@@ -11,6 +11,9 @@
  *                    configured. never calls the model.
  *   roadmap-ask      { question, history? } → an answer, its status and the cited sections.
  *
+ * With no model to ask, or a model that fails, the answer is the roadmap's own passages for the
+ * question (`_shared/roadmap/search.ts`), labelled as that, with the reason above them.
+ *
  * Read-only, so not audited, like the pipeline probe. What is logged is operational metadata
  * only — the actor, the roadmap digest, the sections used, the outcome and the timing. Never
  * the question or the answer.
@@ -25,6 +28,7 @@ import {
   RoadmapAnswerError,
 } from '../_shared/roadmap/answer.ts';
 import type { RoadmapModel } from '../_shared/roadmap/model.ts';
+import { searchRoadmap } from '../_shared/roadmap/search.ts';
 import {
   type LoadedRoadmap,
   RoadmapSourceError,
@@ -80,18 +84,6 @@ export type RoadmapActionDeps = {
 };
 
 export type RoadmapActionResult = { status: number; body: unknown; headers?: Record<string, string> };
-
-const MODEL_FAILURE: Record<RoadmapAnswerError['kind'], { status: number; code: string; message: string }> = {
-  unconfigured: {
-    status: 503,
-    code: 'provider_unconfigured',
-    message: 'The roadmap assistant has no model configured: ANTHROPIC_API_KEY is not set on the ops function.',
-  },
-  refused: { status: 502, code: 'model_refused', message: 'The model declined to answer that question.' },
-  truncated: { status: 502, code: 'model_failed', message: 'The answer ran past its length limit. Try a narrower question.' },
-  timeout: { status: 504, code: 'model_timeout', message: 'The model did not answer in time. Try again.' },
-  failed: { status: 502, code: 'model_failed', message: 'The model request failed. Try again.' },
-};
 
 function sourceFailure(error: unknown): RoadmapActionResult {
   if (error instanceof RoadmapSourceError) {
@@ -181,9 +173,55 @@ export async function handleRoadmapAction(action: string, deps: RoadmapActionDep
     };
   } catch (error) {
     if (error instanceof RoadmapAnswerError) {
-      const failure = MODEL_FAILURE[error.kind];
-      log({ event: 'roadmap.ask', actor: actorId, roadmap: meta.short, outcome: failure.code });
-      return { status: failure.status, body: { error: failure.message, code: failure.code, source: meta } };
+      /* the reason was written by model.ts, which strips the key from it, and it holds nothing
+         from the question or the answer. the log keeps only its status and type, not the
+         message. */
+      const reason = error.message.split(' — ')[0].slice(0, 120);
+
+      /* a model that would not answer that question is not a broken model: say so, and don't
+         hand back the roadmap's text in place of an answer it declined to give. */
+      if (error.kind === 'refused') {
+        log({ event: 'roadmap.ask', actor: actorId, roadmap: meta.short, outcome: 'model_refused', reason });
+        return {
+          status: 502,
+          body: {
+            error: 'The model declined to answer that question.',
+            code: 'model_refused',
+            detail: error.message,
+            source: meta,
+          },
+        };
+      }
+
+      /* no model (no key, or search chosen on purpose) or a model that failed (no credit, an
+         outage, a timeout): the operator still gets the roadmap's own passages for the
+         question, with the reason printed above them in the provider's words — "the model
+         answered 429: insufficient_quota" is a fix, "the model request failed" is a guess. it
+         is shown as what it is, never as an answer. */
+      const mode = model.provider === 'search' ? 'chosen' : error.kind === 'unconfigured' ? 'unconfigured' : 'failed';
+      const found = searchRoadmap({ index: loaded.index, question, history, mode, why: error.message });
+      log({
+        event: 'roadmap.ask',
+        actor: actorId,
+        roadmap: meta.short,
+        sections: found.sections,
+        outcome: 'search',
+        mode,
+        reason: mode === 'chosen' ? null : reason,
+      });
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          status: found.status,
+          answer: found.answer,
+          citations: found.citations,
+          missing: null,
+          withheld: null,
+          source: meta,
+          model: null,
+        },
+      };
     }
     log({ event: 'roadmap.ask', actor: actorId, roadmap: meta.short, outcome: 'error' });
     return { status: 500, body: { error: 'The roadmap assistant failed. Try again.', code: 'internal' } };

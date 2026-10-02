@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Icon from './Icon';
-import { Empty, Panel, Pill } from './ui';
+import { Empty, Panel, Pill, Term } from './ui';
 import {
   ActionButton,
   CheckList,
@@ -285,7 +285,7 @@ export default function LeadRecoveryPanel({ client }) {
           {data.live ? 'answering calls and texting back' : 'recording leads, sending nothing'}
         </Fact>
         {data.lifecycle?.effective && (
-          <Fact label="lifecycle" note="the operator's decision and the system's health, kept apart">
+          <Fact label={<Term k="lifecycle" />} note="the operator's decision and the system's health, kept apart">
             {data.lifecycle.effective.headline}
           </Fact>
         )}
@@ -548,7 +548,7 @@ export default function LeadRecoveryPanel({ client }) {
         </div>
         <p className="ops-muted">
           Routing is a computation — it returns the TwiML the voice webhook would produce and places
-          no call. The canary creates a synthetic lead flagged <code>is_canary</code>, runs it through
+          no call. The <Term k="canary" /> creates a synthetic lead flagged <code>is_canary</code>, runs it through
           the whole engine with a sender that records instead of sending, and addresses it to
           Twilio&rsquo;s reserved test number. It is excluded from every client-facing count, exactly
           as the hourly canary always has been.

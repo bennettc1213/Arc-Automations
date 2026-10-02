@@ -1,0 +1,446 @@
+/* the route model is written in sentence case because onboarding reads it too.
+   the site speaks lowercase, so this section lowers it on the way out. */
+.route {
+  padding-block: clamp(60px, 9vh, 110px) clamp(90px, 14vh, 170px);
+  text-transform: lowercase;
+}
+
+.route button {
+  text-transform: lowercase;
+}
+
+.route__title {
+  margin-block: 18px 22px;
+}
+
+.route__lead {
+  max-width: 52ch;
+  margin-bottom: clamp(30px, 5vh, 52px);
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+  color: var(--muted);
+}
+
+/* ── three situations — the same pixel blocks as the workflow tabs ── */
+
+.route__tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.route__tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px 22px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  text-align: left;
+  /* switching is mechanical — no transition */
+}
+
+.route__tab:hover {
+  border-color: var(--accent);
+  translate: 1px 1px;
+}
+
+.route__tab.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0a0a0b;
+}
+
+.route__tab-index,
+.route__tab-tag {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.route__tab.is-active .route__tab-index,
+.route__tab.is-active .route__tab-tag {
+  color: rgba(10, 10, 11, 0.65);
+}
+
+.route__tab-label {
+  font-size: clamp(1.1rem, 1.9vw, 1.6rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+/* ── the one answer ──────────────────────────── */
+
+.route__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: clamp(22px, 3vw, 40px);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+}
+
+.route__panelhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 20px;
+}
+
+.route__name {
+  font-size: clamp(1.3rem, 2.2vw, 1.9rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.route__status {
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.route__summary {
+  max-width: 44ch;
+  font-size: clamp(1.15rem, 2vw, 1.7rem);
+  line-height: 1.4;
+  letter-spacing: -0.015em;
+}
+
+.route__cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px clamp(24px, 4vw, 64px);
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.route__label {
+  margin-bottom: 12px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+}
+
+.route__points {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--muted);
+}
+
+.route__points li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.route__points li span {
+  color: var(--accent);
+  flex: none;
+}
+
+.route__keep {
+  max-width: 36ch;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.route__cta {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--accent);
+  color: #0a0a0b;
+  font-weight: 500;
+  font-size: 1.05rem;
+  padding: 15px 28px;
+  text-align: left;
+}
+
+.route__cta:hover {
+  background: var(--accent-hot);
+  translate: 1px 1px;
+}
+
+/* ── true on every route — one line, not four paragraphs ── */
+
+.route__principles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 32px;
+  margin-top: 22px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.route__principles li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.route__principles li::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: none;
+  background: var(--accent);
+}
+
+/* ── the folded-away parts ───────────────────── */
+
+.route__more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 32px;
+  margin-top: clamp(28px, 5vh, 48px);
+}
+
+.route__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border-bottom: 1px solid transparent;
+  transition: color 0.25s, border-color 0.25s;
+}
+
+.route__toggle:hover,
+.route__toggle.is-open {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.route__chev {
+  display: inline-block;
+  transition: rotate 0.25s;
+}
+
+.route__toggle.is-open .route__chev {
+  rotate: 180deg;
+}
+
+/* ── five questions, one at a time ───────────── */
+
+.route__quiz {
+  max-width: 760px;
+  margin-top: 22px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+}
+
+.route__question {
+  padding: clamp(22px, 3vw, 36px);
+}
+
+.route__progress {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 16px;
+  color: var(--faint);
+}
+
+.route__back {
+  color: var(--muted);
+  border-bottom: 1px solid transparent;
+}
+
+.route__back:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.route__q {
+  margin-bottom: 22px;
+  font-size: clamp(1.25rem, 2.2vw, 1.8rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.route__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.route__opt {
+  padding: 14px 22px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  font-size: 1.05rem;
+  text-align: left;
+}
+
+.route__opt:hover {
+  border-color: var(--accent);
+  translate: 1px 1px;
+}
+
+.route__opt.is-picked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0a0a0b;
+}
+
+/* always in the page so a screen reader hears the suggestion arrive; it takes
+   no room until there is one. */
+.route__result:not(:empty) {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: clamp(22px, 3vw, 36px);
+}
+
+.route__result .route__label {
+  margin-bottom: 0;
+}
+
+.route__resultname {
+  font-size: clamp(1.8rem, 3.4vw, 2.8rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.route__reason {
+  max-width: 48ch;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.route__notice {
+  color: var(--faint);
+  font-size: 0.88rem;
+}
+
+.route__resultactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 22px;
+  margin-top: 8px;
+}
+
+/* ── side by side ────────────────────────────── */
+
+.route__table {
+  width: 100%;
+  margin-top: 22px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  border-top: 1px solid var(--line);
+  text-align: left;
+}
+
+.route__table th,
+.route__table td {
+  padding: 16px 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  line-height: 1.45;
+}
+
+.route__table thead th {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.route__table tbody th {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.route__table .is-active {
+  background: var(--accent-dim);
+}
+
+/* ── responsive ──────────────────────────────── */
+
+@media (max-width: 900px) {
+  .route__tabs,
+  .route__cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .route__tab {
+    padding: 16px 18px;
+  }
+
+  /* three columns of prose do not fit a phone. each row becomes its own block:
+     the question, then one line per route, labelled by data-label. */
+  .route__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .route__table,
+  .route__table tbody,
+  .route__table tr,
+  .route__table th,
+  .route__table td {
+    display: block;
+  }
+
+  .route__table tr {
+    padding-block: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .route__table tbody th,
+  .route__table td {
+    padding: 4px 0;
+    border-bottom: none;
+  }
+
+  .route__table tbody th {
+    margin-bottom: 6px;
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .route__table td {
+    display: grid;
+    grid-template-columns: 9.5em minmax(0, 1fr);
+    gap: 12px;
+    color: var(--muted);
+  }
+
+  .route__table td::before {
+    content: attr(data-label);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    padding-top: 3px;
+  }
+
+  .route__table td.is-active {
+    background: none;
+    color: var(--text);
+  }
+}
+
+@media (max-width: 600px) {
+  .route__principles {
+    flex-direction: column;
+  }
+
+  .route__opt {
+    flex: 1 1 100%;
+  }
+}

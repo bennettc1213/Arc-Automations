@@ -46,7 +46,12 @@ export function describeFailure(status, payload) {
     };
   }
   if (code === 'bad_question') return { message: payload.error, retry: false };
-  if (payload?.error) return { message: payload.error, retry: status === 429 || status >= 500 };
+  /* `detail` is the provider's own reason, already stripped of any key by the function:
+     "the model answered 400: invalid_request_error — credit balance is too low". */
+  if (payload?.error) {
+    const message = payload.detail ? `${payload.error} Reason: ${payload.detail}` : payload.error;
+    return { message, retry: status === 429 || status >= 500 };
+  }
   return { message: `The roadmap assistant failed (${status}).`, retry: status >= 500 || status === 0 };
 }
 
@@ -113,21 +118,26 @@ async function callRoadmap(body, { endpoint, anonKey, getToken, fetchImpl }) {
 
 /* the recent turns a question carries: what was asked and what was answered before it. the
    question being asked is not its own history — `messages` already ends with it once sent,
-   and a retry sends it again — and an answer that was withheld is not context worth sending. */
+   and a retry sends it again — and neither an answer that was withheld nor a page of the
+   roadmap's own passages (status `excerpts`, shown when no model answered) is context worth
+   sending. */
 export function historyFor(messages) {
   const before = messages.length && messages[messages.length - 1].role === 'user' ? messages.slice(0, -1) : messages;
   return before
-    .filter((m) => m.role === 'user' || (m.role === 'assistant' && m.status !== 'unverified'))
+    .filter((m) => m.role === 'user' || (m.role === 'assistant' && m.status !== 'unverified' && m.status !== 'excerpts'))
     .map((m) => ({ role: m.role, content: m.role === 'user' ? m.text : m.answer }))
     .filter((m) => typeof m.content === 'string' && m.content.trim())
     .slice(-HISTORY_TURNS);
 }
 
-/* "Roadmap source updated: September 23, 2026 · 18baed92e367". */
+/* "Roadmap source updated: September 23, 2026 · 18baed92e367 · +6 docs". `supporting`, when
+   the server sends it, is the other architecture docs folded into this answer's context —
+   omitted rather than shown as 0 when none loaded, so it never reads as a claim of failure. */
 export function sourceLine(source) {
   if (!source) return null;
   const when = source.revised ?? 'no revision date in the file';
-  return `Roadmap source updated: ${when} · ${source.short}${source.stale ? ' (cached — the source is unreachable)' : ''}`;
+  const docs = source.supporting?.length ? ` · +${source.supporting.length} doc${source.supporting.length === 1 ? '' : 's'}` : '';
+  return `Roadmap source updated: ${when} · ${source.short}${docs}${source.stale ? ' (cached — the source is unreachable)' : ''}`;
 }
 
 export const STATUS_NOTE = {

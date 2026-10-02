@@ -7,6 +7,7 @@ import Hero from './components/Hero';
 import Marquee from './components/Marquee';
 import Projects from './components/Projects';
 import Workflows from './components/Workflows';
+import YourRoute from './components/YourRoute';
 import PilotOverlay from './components/PilotOverlay';
 import WorkGrid from './components/WorkGrid';
 import Toolkit from './components/Toolkit';
@@ -52,6 +53,7 @@ export default function Site() {
         <Hero />
         <Marquee items={site.marqueeA} />
         <Workflows />
+        <YourRoute />
         <Marquee items={site.marqueeB} separator="·" reverse className="marquee--big" />
         <Projects />
         <WorkGrid />

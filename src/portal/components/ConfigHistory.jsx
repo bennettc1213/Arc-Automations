@@ -149,6 +149,7 @@ export default function ConfigHistory({ tenantId, scope, moduleKey = null, curre
               variant="primary"
               icon="refresh"
               confirm={`restore v${restore.version.version} as the new live version?`}
+              consequence={`a copy of v${restore.version.version} is published as v${(current?.version ?? 0) + 1} and becomes what new work runs on, with the effects listed above. v${restore.version.version} and every version since stay in the history — nothing is rewritten.`}
               onRun={async () => {
                 const result = await api.rollback(tenantId, scope, moduleKey, restore.version.id, current.version, `restored v${restore.version.version}`);
                 setRestore(null);

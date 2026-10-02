@@ -373,8 +373,10 @@ The existing Lead Recovery panel keeps working on the same contract:
   version-bound evidence.
 
 The panel gained one "select" button, the lifecycle headline and the state version it
-sends back. Deboarding a client deselects its modules through the lifecycle. Shadow,
-deselection, health and history have no controls yet: that is ARC-320's console.
+sends back. Deboarding a client deselects its modules through the lifecycle. Every other
+transition, the shadow review, health reports and the history are on ARC-320's activation
+page (`ActivationPanel.jsx`, ARC_ACTIVATION_CONSOLE.md). It calls these same actions and adds
+no second way to change a lifecycle.
 
 ## 15. Failure and recovery
 

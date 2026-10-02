@@ -85,7 +85,9 @@ export default function Topbar({
 
   return (
     <header className="ws-top">
-      <button type="button" className="ws-top__menu" onClick={onOpenMenu} title="open navigation">
+      {/* the three icon-only buttons in this bar each carry their name as well as a tooltip:
+          a title is not announced reliably, and a glyph is not a name. */}
+      <button type="button" className="ws-top__menu" onClick={onOpenMenu} aria-label="open navigation" title="open navigation">
         <Icon name="menu" />
       </button>
 
@@ -94,10 +96,10 @@ export default function Topbar({
         {blurb && <p>{blurb}</p>}
       </div>
 
-      <button type="button" className="ws-top__search" onClick={onOpenPalette}>
+      <button type="button" className="ws-top__search" onClick={onOpenPalette} aria-keyshortcuts="Control+K Meta+K">
         <Icon name="search" />
         <span>{searchLabel}</span>
-        <kbd>⌘K</kbd>
+        <kbd title="Ctrl+K on Windows, ⌘K on a Mac">⌘K</kbd>
       </button>
 
       <span className="ws-top__window" title="every figure on this page is scoped to this window">
@@ -112,6 +114,8 @@ export default function Topbar({
           className={`ws-top__icon${badge > 0 ? ' has-badge' : ''}`}
           onClick={() => setAlertsOpen((v) => !v)}
           aria-expanded={alertsOpen}
+          aria-haspopup="true"
+          aria-label={badge > 0 ? `alerts — ${badge} open` : 'alerts — none open'}
           title="alerts"
         >
           <Icon name="bell" />
@@ -163,6 +167,8 @@ export default function Topbar({
           className="ws-top__avatar"
           onClick={() => setAccountOpen((v) => !v)}
           aria-expanded={accountOpen}
+          aria-haspopup="true"
+          aria-label={`account — signed in as ${email ?? tenantName ?? 'demo viewer'}`}
           title={email ?? tenantName ?? 'account'}
         >
           {initialsFor(email ?? tenantName)}

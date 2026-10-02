@@ -17,6 +17,7 @@ import Memberships from '../pages/dash/Memberships';
 import Installs from '../pages/dash/Installs';
 import { activeItem, navGroupsFor, navItemsFor } from '../lib/nav';
 import { downloadCsv, threadsToCsv } from '../lib/csv';
+import { PAGE_ID, skipToPage } from '../lib/a11y';
 import '../workspace.css';
 
 /**
@@ -150,6 +151,11 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
 
   return (
     <div className={`portal ws${railCollapsed ? ' ws--tight' : ''}${drawerOpen ? ' ws--open' : ''}`}>
+      {/* first in the tab order: past the rail and the top bar, straight to the page. */}
+      <a className="ws-skip" href={`#${PAGE_ID}`} onClick={skipToPage}>
+        skip to the page
+      </a>
+
       <button
         type="button"
         className="ws__scrim"
@@ -184,7 +190,7 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
 
         {banner}
 
-        <main className="ws__page">
+        <main className="ws__page" id={PAGE_ID} tabIndex={-1}>
           {page.blurb && <p className="ws-intro">{page.blurb}</p>}
           <Routes>
             <Route index element={<Overview {...pageProps} />} />

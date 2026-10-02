@@ -1325,6 +1325,83 @@ export async function issueIntakeKey(tenantId, { allowedOrigins = [], label = 'w
   });
 }
 
+/* ── the activation console (ARC-320) ──────────────────────────
+   every button is an existing server action with its own gate: the lifecycle transitions
+   are ARC-120's (each carries the state version the page was drawn from), a module's test is
+   the module's own synthetic run, and connecting, reauthorising and disconnecting a provider
+   are the `connections` function's (ARC-130). the page decides none of it. a key typed into
+   the connect form goes to that function once and is never sent back. */
+
+async function callConnections(body) {
+  const supabase = getSupabase();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return callFunction('connections', body, session?.access_token);
+}
+
+/* transition key (lifecycle/model.ts) → the ops action that requests it. */
+export const LIFECYCLE_ACTION_FOR = Object.freeze({
+  select: 'module-select',
+  begin_testing: 'module-begin-testing',
+  stop_testing: 'module-stop-testing',
+  enter_shadow: 'module-enter-shadow',
+  exit_shadow: 'module-exit-shadow',
+  activate: 'module-activate',
+  pause: 'module-pause',
+  resume: 'module-resume',
+  deselect: 'module-deselect',
+  record_shadow_review: 'module-shadow-review',
+  report_health: 'module-health-report',
+});
+
+export const activationApi = {
+  overview: (tenantId, moduleKey) => callOps({ action: 'activation-overview', tenant_id: tenantId, module_key: moduleKey }),
+  transition: (transition, tenantId, moduleKey, expectedStateVersion, extra = {}) =>
+    callOps({
+      action: LIFECYCLE_ACTION_FOR[transition],
+      tenant_id: tenantId,
+      module_key: moduleKey,
+      expected_state_version: expectedStateVersion,
+      idempotency_key: extra.idempotencyKey ?? null,
+      reason: extra.reason ?? null,
+      ...(extra.outcome ? { outcome: extra.outcome } : {}),
+    }),
+  reportHealth: (tenantId, moduleKey, expectedStateVersion, status, reason) =>
+    callOps({
+      action: 'module-health-report',
+      tenant_id: tenantId,
+      module_key: moduleKey,
+      expected_state_version: expectedStateVersion,
+      status,
+      reason: reason || null,
+      evidence: { source: 'operator' },
+    }),
+  /* the module's own synthetic test — lead recovery's is the canary. */
+  runModuleTest: (testAction, tenantId) => callOps({ action: testAction, tenant_id: tenantId }),
+  testConnection: (tenantId, moduleKey, connectionId, idempotencyKey) =>
+    callOps({ action: 'connection-test', tenant_id: tenantId, module_key: moduleKey, connection_id: connectionId, idempotency_key: idempotencyKey }),
+  connectOAuth: (tenantId, connectorKey, returnPath, { connectionId = null, expectedStatusVersion = null } = {}) =>
+    callConnections({
+      action: 'oauth-begin',
+      tenant_id: tenantId,
+      connector_key: connectorKey,
+      return_path: returnPath,
+      ...(connectionId ? { purpose: 'reauthorize', connection_id: connectionId, expected_status_version: expectedStatusVersion } : { purpose: 'connect' }),
+    }),
+  storeApiKey: (tenantId, connectorKey, credential, idempotencyKey) =>
+    callConnections({ action: 'api-key-store', tenant_id: tenantId, connector_key: connectorKey, credential, idempotency_key: idempotencyKey }),
+  disconnect: (tenantId, connectionId, expectedStatusVersion) =>
+    callConnections({ action: 'connection-disconnect', tenant_id: tenantId, connection_id: connectionId, expected_status_version: expectedStatusVersion }),
+  completeOAuth: ({ state, code, error, errorDescription }) =>
+    callConnections({
+      action: 'oauth-callback',
+      state,
+      ...(code ? { code } : {}),
+      ...(error ? { error, ...(errorDescription ? { error_description: errorDescription } : {}) } : {}),
+    }),
+};
+
 /* ── the audit log ─────────────────────────────────────────────
    read-only from here. the insert side lives in the edge functions and there is
    no update or delete policy on the table at all, so this is the whole client

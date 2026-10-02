@@ -231,6 +231,14 @@ dispatches, connections, OAuth sessions, opt-outs, a used ingest token — is re
 deboarded instead. The console's **delete this test client** panel is at the bottom of every
 client page.
 
+### 0023 — the CRM core and business profile (ARC-340): after 0022, with `ops` redeployed
+
+0023 adds the `crm_*` and `business_*` tables, their guards and history triggers, and
+re-creates `purge_test_tenant` with three more reasons to refuse (customers, CRM leads, source
+records). It alters no existing table. Redeploy `ops` afterwards so the `crm-*` actions exist;
+before 0023 is applied they answer 501 and say so. Nothing in the console calls them yet.
+See docs/architecture/ARC_CRM_CORE.md.
+
 ### Trying the ops console against staging (no production involved)
 
 The live site talks to the live project, so staging is tried from a local copy of the site.

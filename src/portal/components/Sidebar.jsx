@@ -41,11 +41,14 @@ export default function Sidebar({
   mark = 'portal',
   home = '/portal',
   tenantSub = 'client portal',
+  /* what a screen reader calls this landmark. each workspace names its own rail. */
+  navLabel = 'portal sections',
 }) {
   const state = status?.status ?? 'operational';
+  const statusWord = status?.word ?? STATUS_WORD[state];
 
   return (
-    <nav className="ws-rail" aria-label="portal sections">
+    <nav className="ws-rail" aria-label={navLabel}>
       <div className="ws-rail__brand">
         <Link to={home} className="ws-rail__mark" title="arc automations">
           <ArcMark size={18} title="arc automations" />
@@ -113,7 +116,9 @@ export default function Sidebar({
           title={status?.detail ?? undefined}
         >
           <span aria-hidden="true">{STATUS_GLYPH[state] ?? '□'}</span>
-          {!collapsed && <span>{status?.word ?? STATUS_WORD[state]}</span>}
+          {/* collapsed, the lamp is a glyph and a colour. the word is still there for
+              anybody who cannot see either. */}
+          {collapsed ? <span className="ws-sr">status: {statusWord}</span> : <span>{statusWord}</span>}
         </div>
 
         <button
@@ -121,6 +126,7 @@ export default function Sidebar({
           className="ws-rail__collapse"
           onClick={onToggleCollapse}
           aria-pressed={collapsed}
+          aria-label={collapsed ? 'expand sidebar' : 'collapse sidebar'}
           title={collapsed ? 'expand sidebar' : 'collapse sidebar'}
         >
           <Icon name={collapsed ? 'expand' : 'collapse'} />

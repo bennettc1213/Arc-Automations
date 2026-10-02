@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from './Icon';
-import { Empty, Panel, Pill } from './ui';
+import { Empty, Panel, Pill, Term } from './ui';
 import { ActionButton, Disclosure, Notice } from './ops-ui';
 import { deselectModule, getTenantModules, selectModule } from '../lib/ops';
 import { formatStamp } from '../lib/format';
@@ -18,8 +18,8 @@ import './ModuleSelection.css';
  * and configuration, and its two buttons are ARC-120's select and deselect, carrying the
  * state version the panel was drawn from.
  *
- * Choosing a module selects it. It never switches it on: that is the Lead Recovery panel's
- * activation gate, and nothing here reaches it.
+ * Choosing a module selects it. It never switches it on: that is the activation page's
+ * (ARC-320, ActivationPanel.jsx) and ARC-120's gate behind it, and nothing here reaches it.
  */
 
 const KIND_WORDS = {
@@ -141,7 +141,9 @@ function ModuleRow({ module, tenantId, timezone, base, readOnly, onChanged }) {
       <div className="msel-row__head">
         <span className="msel-row__name">{module.name}</span>
         {module.selectable || selected ? (
-          <Pill tone={STATE_TONE[state] ?? 'neutral'}>{state}</Pill>
+          <Pill tone={STATE_TONE[state] ?? 'neutral'}>
+            <Term k={state}>{state}</Term>
+          </Pill>
         ) : (
           <Pill tone="neutral">{module.status}</Pill>
         )}
@@ -204,6 +206,12 @@ function ModuleRow({ module, tenantId, timezone, base, readOnly, onChanged }) {
             <p className="msel-row__config">
               {module.configuration.map(describeScope).join(' · ')} ·{' '}
               <Link to={`${base}/clients/${tenantId}/settings?tab=${module.key}`}>open settings</Link>
+            </p>
+          )}
+          {selected && (
+            <p className="msel-row__config">
+              connections, readiness, tests, activation and pause ·{' '}
+              <Link to={`${base}/clients/${tenantId}/activation/${module.key}`}>open activation</Link>
             </p>
           )}
           <Requirements requirements={module.requirements} />

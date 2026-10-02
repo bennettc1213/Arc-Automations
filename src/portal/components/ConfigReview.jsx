@@ -1,4 +1,4 @@
-import { Pill } from './ui';
+import { Pill, Term } from './ui';
 import { Notice } from './ops-ui';
 import { describeValue } from '../lib/config-form';
 
@@ -74,7 +74,10 @@ export function PublishReview({ preview }) {
         )}
         {!impact.requires_reactivation && impact.requires_shadow && (
           <li>
-            <Pill tone="warn">shadow review</Pill> it must be watched in shadow mode first
+            <Pill tone="warn">
+              <Term k="shadow">shadow</Term> review
+            </Pill>{' '}
+            it must be watched in shadow mode first — a dry run on real leads that sends nothing
           </li>
         )}
         {!impact.requires_reactivation && !impact.requires_shadow && impact.requires_retest && (

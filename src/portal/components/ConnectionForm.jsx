@@ -167,11 +167,11 @@ export default function ConnectionForm({ connection, onCancel, onSaved, intro })
           />
         </Field>
 
-        <Field label="key is stored in" hint="where the real key lives">
+        <Field label="key is stored in" hint="where the real key lives — a client credential ARC holds is connected on the activation page, in Vault">
           <TextInput
             value={form.credentialLocation}
             onChange={set('credentialLocation')}
-            placeholder="n8n credentials"
+            placeholder="the provider's own console"
           />
         </Field>
 

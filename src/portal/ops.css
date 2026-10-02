@@ -95,6 +95,35 @@
   max-width: 46ch;
 }
 
+/* what the button will do, said before it is pressed (the confirmation still
+   follows). on its own line under the button, so a row of buttons stays a row. */
+.ops-action__why {
+  flex-basis: 100%;
+  max-width: 62ch;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--faint);
+}
+
+/* in a table every row has the same button, and the same sentence under each
+   one would bury the table. there it appears for the row whose button is
+   hovered or focused — still before the press, and still the button's
+   description for a screen reader on every row. */
+.ws-table .ops-action__why,
+.ops-table .ops-action__why,
+td .ops-action__why {
+  display: none;
+}
+
+.ws-table .ops-action:hover .ops-action__why,
+.ws-table .ops-action:focus-within .ops-action__why,
+.ops-table .ops-action:hover .ops-action__why,
+.ops-table .ops-action:focus-within .ops-action__why,
+td .ops-action:hover .ops-action__why,
+td .ops-action:focus-within .ops-action__why {
+  display: block;
+}
+
 .ops-action__msg--ok {
   color: var(--ok);
 }

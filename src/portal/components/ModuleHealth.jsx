@@ -1,4 +1,4 @@
-import { Panel, Pill } from './ui';
+import { Panel, Pill, Term } from './ui';
 import { formatRelative } from '../lib/format';
 
 /**
@@ -39,7 +39,12 @@ export default function ModuleHealth({ health, timezone, title = 'automation hea
           <li key={module.key} className={`ws-health__row is-${module.state}`}>
             <div className="ws-health__head">
               <span className="ws-health__name">{module.label}</span>
-              <Pill tone={TONE[module.state] ?? 'neutral'}>{module.word}</Pill>
+              {/* the word is lib/health.js's, unchanged. the gloss says what that state means
+                  for the person reading it — above all that "not verified" is neither a
+                  failure nor a pass. */}
+              <Pill tone={TONE[module.state] ?? 'neutral'}>
+                <Term k={module.state}>{module.word}</Term>
+              </Pill>
             </div>
 
             <p className="ws-health__summary">{module.summary}</p>

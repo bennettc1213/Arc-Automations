@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import EventFeed from '../../components/EventFeed';
 import EarlyData from '../../components/EarlyData';
 import ModuleHealth from '../../components/ModuleHealth';
-import { Empty, Panel, Pill } from '../../components/ui';
+import { Empty, Panel, Pill, Term } from '../../components/ui';
 import { Freshness } from '../../components/ModuleUI';
 import { ACTIVITY_GROUPS, matchesGroup } from '../../lib/activity';
 import { formatCount, formatDuration, formatStamp } from '../../lib/format';
@@ -205,7 +205,9 @@ export default function Activity({ data, live }) {
               {group !== 'verification' && counts.verification > 0 && (
                 <>
                   {' '}
-                  internal verification rows — the canary, schema asserts, watermark checks —
+                  internal verification rows — the <Term k="canary" />,{' '}
+                  <Term k="schema_assert">schema asserts</Term>,{' '}
+                  <Term k="watermark">watermark checks</Term> —
                   are kept out of this view on purpose: they travel the same live pipeline and
                   would sit in here looking like customers who never existed.{' '}
                   <button type="button" className="ws-linkbtn" onClick={() => choose('verification')}>

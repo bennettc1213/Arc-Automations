@@ -161,6 +161,53 @@ drift-tested against the schema defaults), the engine validates, and `config-dra
 `lifecycle_effect` is ARC-120's own classification (`config/settings.ts`). `lib/config-form.js`
 only converts inputs to the document and back.
 
+**A module goes live from one page that decides nothing** (`ActivationPanel.jsx`,
+`_shared/activation/`, `ops` `activation-overview` / `connection-test`, ARC-320;
+docs/architecture/ARC_ACTIVATION_CONSOLE.md). Readiness, transitions and history are ARC-120's
+answers, and its buttons are ARC-120's `module-*` actions; connections are ARC-130's safe
+summaries, worded by `activation/model.ts` (portal-safe, shared with the server), and connecting
+or disconnecting is the `connections` function. A connection test is durable: a `connector_test`
+run and a `test_connection` action, written first, then run through the ARC-210 orchestrator by
+`ConnectionTestRunner`, which verifies through ARC-130 and holds no credential. The console's
+pass runs only when everything the scheduler could claim for that client is a connection test;
+otherwise the test stays queued. The page shows a credential's four-character hint and nothing
+else of it, and the OAuth return page strips `code`/`state` before the Supabase client exists.
+
+**A company takes one of three routes into ARC, and the words for them live in one file**
+(`_shared/routes/model.ts`, `YourRoute.jsx`, ARC-330): `native` (no CRM — ARC provides it),
+`hybrid` (keep some tools, ARC fills the gaps), `connected` (keep the stack, ARC is the layer on
+top). The model is portal-safe, imports nothing and stores nothing; the homepage's `Your Route`
+section, the pilot intake's route note and later onboarding read the same keys. `suggestRoute`
+only suggests, and only when all five questions are answered — a route is confirmed in
+authenticated onboarding; the route an operator records is `business_profiles.route` (0023). Customer-facing route copy never names n8n
+or makes a CRM a requirement (`routeCopyProblem`). The section is read by a business owner, so
+it shows one answer at a time: three choices in the owner's words (`situation`), one short panel
+(three points at most), and the comparison and the questions folded away. Section chrome and each route's "today"
+status are `site.routes`; `lib/track.js` is the site's analytics hook, a window event with no
+listener and no vendor.
+
+**There is one customer and lead model, for every route** (`0023`, `_shared/crm/`, `ops`
+`crm-*`, ARC-340; docs/architecture/ARC_CRM_CORE.md). `crm_contacts`, `crm_leads`, pipelines,
+notes, tasks, source records and external mappings, plus the business profile, locations,
+service areas and services. On Native it is the CRM; on Hybrid and Connected it is ARC's working
+copy, and `crm_source_policies` says which side owns each kind of record or field —
+`writeDecision` refuses a write from the other side, and nothing is ever merged or "latest wins".
+These are operational tables: no figure reads them, a contact holds no consent or opt-out
+(`suppressions` is still the truth, read by reference), and no field accepts a secret-shaped
+value. Every write names its actor and 0023 checks it again; the timeline (`crm_activities`) is
+written by triggers and records field names, never values. Lead Recovery's `leads` stays the
+engine's row — a CRM lead points at it; never build a second contact model. The business's name
+and timezone stay the tenant's. There is no screen yet.
+
+**The words on screen are the system's words, each with its meaning attached** (ARC-340 clarity
+pass, `lib/glossary.js`, `Term` / `Consequence` in `ui.jsx`). A state name is never renamed or
+hidden to make a page simpler: wrap it in `<Term k="…">` and add the gloss to the glossary.
+`ActionButton` prints what a confirmed action will do before it is pressed (`consequenceOf` takes
+it from the `confirm` text; pass `consequence` when the confirmation is only a question) and the
+confirmation itself never changes. An icon-only shell button needs an `aria-label`, and a figure
+that is not available is a dash, a spoken "not available" and the reason. `tests/ux-clarity.test.js`
+holds all of it, including that no page was removed from either nav.
+
 Requires `supabase/migrations/0003_client_ids_and_ops.sql` plus the
 `client-login` and `ops` edge functions; the console's Supabase page probes for
 all of it and says what is missing. Deboarding and restore need `0007`; service
@@ -222,13 +269,20 @@ never from a status somebody typed. Past (archived) clients are split off in
 
 ## The roadmap (`docs/architecture/ARC_IMPLEMENTATION_ROADMAP.md`)
 
-The canonical ARC implementation roadmap, and the only knowledge of the console's
+The canonical ARC implementation roadmap, and the primary document of the console's
 **Roadmap Assistant** (`ops` actions `roadmap-status` / `roadmap-ask`,
 `_shared/roadmap/`, `RoadmapAssistant.jsx`). A new revision replaces this file in place.
 The function reads it from `main` at request time, so pushing is the update and there is
-nothing to regenerate. Never write a roadmap fact into the assistant's code: a test fails
-on any `ARC-nnn` identifier there. Answers that cite nothing, or name an ID or date the
-excerpts lack, are withheld. See [docs/architecture/ARC_ROADMAP_ASSISTANT.md](docs/architecture/ARC_ROADMAP_ASSISTANT.md).
+nothing to regenerate. Alongside it, every question is also searched against the other
+architecture docs (`_shared/roadmap/corpus.ts`, `CORPUS_DOCS`) — best-effort, so one missing
+or not yet pushed simply contributes nothing, never an error. Never write a roadmap fact into
+the assistant's code: a test fails on any `ARC-nnn` identifier there. Answers that cite
+nothing, or name an ID or date the excerpts lack, are withheld. The model is Anthropic,
+OpenAI, Google's Gemini or Groq (`ARC_ROADMAP_PROVIDER`; Groq's free tier is the one that has
+actually asked no account for billing). With no model (no
+key, `ARC_ROADMAP_PROVIDER=search`, or a model that fails) it shows the matching documents'
+own passages (`search.ts`, status `excerpts`) and never writes a sentence. See
+[docs/architecture/ARC_ROADMAP_ASSISTANT.md](docs/architecture/ARC_ROADMAP_ASSISTANT.md).
 
 ## Shipping
 

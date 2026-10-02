@@ -8,7 +8,7 @@ export default function Process() {
 
   return (
     <section className="process wrap" id="process" aria-label="how we work">
-      <p className="eyebrow">06 — how we work with contractors</p>
+      <p className="eyebrow">07 — how we work with contractors</p>
       <h2 className="section-title process__title">no mystery, no retainer theater.</h2>
 
       <div className="process__list">

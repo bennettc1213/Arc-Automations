@@ -12,7 +12,16 @@ import { DateTime } from 'luxon';
  * each entry's links go to the provider's own pages. `keysUrl` may be a function of
  * the connection's endpoint, because for a self-hosted n8n the API keys live on
  * that instance rather than on n8n.io.
+ *
+ * `keyStore` is only the default for the "where the key is kept" note on a declared
+ * service. it used to read "n8n credentials", which described a habit, not a rule — and
+ * n8n is exactly where a client's credential must never live (ADR ARC-010). a provider a
+ * client connects through ARC is held in Supabase Vault and managed on the client's
+ * activation page (ARC-130/320); what is declared here is held outside ARC, and ARC
+ * records nothing but the note and a four-character hint.
  */
+
+const KEY_STORE = 'outside ARC — not stored here';
 
 export const INTEGRATIONS = [
   {
@@ -28,7 +37,7 @@ export const INTEGRATIONS = [
         ? `${endpoint.replace(/\/+$/, '')}/settings/api`
         : 'https://app.n8n.cloud/',
     endpointHint: 'https://client.app.n8n.cloud',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'twilio',
@@ -40,7 +49,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://console.twilio.com/us1/billing/manage-billing/billing-overview',
     keysUrl: 'https://console.twilio.com/us1/account/keys-credentials/api-keys',
     endpointHint: '+1 801 555 0134',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'gohighlevel',
@@ -52,7 +61,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://app.gohighlevel.com/',
     keysUrl: 'https://app.gohighlevel.com/',
     endpointHint: 'sub-account id',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'openai',
@@ -64,7 +73,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://platform.openai.com/settings/organization/billing/overview',
     keysUrl: 'https://platform.openai.com/api-keys',
     endpointHint: 'organization id',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'anthropic',
@@ -76,7 +85,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://console.anthropic.com/settings/billing',
     keysUrl: 'https://console.anthropic.com/settings/keys',
     endpointHint: 'workspace',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'vapi',
@@ -88,7 +97,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://dashboard.vapi.ai/',
     keysUrl: 'https://dashboard.vapi.ai/',
     endpointHint: 'assistant id',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'google',
@@ -100,7 +109,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://admin.google.com/ac/billing/subscriptions',
     keysUrl: 'https://console.cloud.google.com/apis/credentials',
     endpointHint: 'owner@company.com',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'calendly',
@@ -112,7 +121,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://calendly.com/app/admin/billing',
     keysUrl: 'https://calendly.com/integrations/api_webhooks',
     endpointHint: 'calendly.com/company',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'jobber',
@@ -124,7 +133,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://secure.getjobber.com/',
     keysUrl: 'https://developer.getjobber.com/',
     endpointHint: 'account name',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'housecallpro',
@@ -136,7 +145,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://pro.housecallpro.com/',
     keysUrl: 'https://pro.housecallpro.com/',
     endpointHint: 'company name',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'hubspot',
@@ -148,7 +157,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://app.hubspot.com/',
     keysUrl: 'https://app.hubspot.com/',
     endpointHint: 'portal id',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'stripe',
@@ -160,7 +169,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://dashboard.stripe.com/settings/billing',
     keysUrl: 'https://dashboard.stripe.com/apikeys',
     endpointHint: 'acct_…',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'sendgrid',
@@ -172,7 +181,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://app.sendgrid.com/settings/billing',
     keysUrl: 'https://app.sendgrid.com/settings/api_keys',
     endpointHint: 'sender address',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'slack',
@@ -184,7 +193,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://slack.com/help/articles/218915077',
     keysUrl: 'https://api.slack.com/apps',
     endpointHint: '#leads in workspace',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
   {
     key: 'airtable',
@@ -196,7 +205,7 @@ export const INTEGRATIONS = [
     billingUrl: 'https://airtable.com/account',
     keysUrl: 'https://airtable.com/create/tokens',
     endpointHint: 'base id',
-    keyStore: 'n8n credentials',
+    keyStore: KEY_STORE,
   },
 ];
 

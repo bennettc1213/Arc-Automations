@@ -7,11 +7,50 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
-Not yet released: verified locally, and waiting on the hosted Vault checklist
-(ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md §15) before it may be deployed. The version bumps
-when it ships.
+## [1.27.0] - 2026-10-02
+
+Pushed to `main` together. The site changes are live; the migrations and edge functions
+reach Supabase only when they are deployed, and ARC-130 still waits on the hosted Vault
+checklist (ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md §15) before production use.
 
 ### Added
+
+- **ARC-340: universal CRM core and business profile.** Migration `0023_crm_core.sql`
+  (after 0022) adds one customer and lead model for all three routes:
+  - `crm_contacts`, `crm_leads`, `crm_pipelines` and stages, `crm_notes`, `crm_tasks`, an
+    append-only `crm_activities` timeline written by triggers, `crm_source_events`,
+    `crm_external_mappings` and `crm_source_policies`;
+  - `business_profiles`, locations, service areas, service categories and services;
+  - RLS on every table (clients read their own rows, nobody writes from a browser), an
+    actor check on every write, and a refusal of secret-shaped text in every free-text field;
+  - `crm_merge_contacts` and `crm_create_pipeline`, each one transaction;
+  - `purge_test_tenant` now refuses a client that has customers, CRM leads or source records.
+- `_shared/crm/` (model, service, store) and 32 `crm-*` actions on the `ops` function. A
+  write from the side that does not own a field is refused, never merged.
+- `docs/architecture/ARC_CRM_CORE.md`, and tests `crm` (18) and `crm-db` (29, on real
+  Postgres through PGlite).
+- **ARC-340: portal and console UX clarity pass.**
+  - A glossary (`src/portal/lib/glossary.js`) and a `Term` component: state names such as
+    `shadow`, `configuring` and `not verified` keep their exact wording and gain a
+    plain-language explanation on hover or keyboard focus.
+  - Every button with a confirmation now shows what it will do on the page before it is
+    pressed. The confirmation itself is unchanged.
+  - Both workspaces gain a skip link, and every icon-only button in the shared shell has an
+    accessible name.
+  - A figure that is not available is read out as "not available", with its reason, and
+    still never renders as 0.
+  - The Roadmap Assistant labels each reply as a written answer or as quoted passages.
+  - Tests `ux-clarity` (23).
+
+### Changed
+
+- Explanatory text inside both workspaces is now at least 4.5:1 contrast on every surface
+  (`--faint` is raised within `.portal.ws` only; the public site is unchanged).
+- `ARC-340` is marked complete in both roadmaps. The identifier named two different prompts
+  (the CRM core in the root master roadmap, the UX clarity pass in the canonical roadmap);
+  both were built.
+
+### Added (built earlier, first released here)
 
 - **ARC-130: secure provider connections and OAuth**, with tenant credentials in
   **Supabase Vault** and nowhere else (ADR ARC-010 §20a, accepted 2026-09-25). Migration
@@ -241,6 +280,87 @@ when it ships.
   - Linked from the client page and from each module in its modules panel.
   - Tests: `config-settings` (31, including real Postgres and the rendered editor and
     history).
+- **Roadmap Assistant: wider corpus.** `_shared/roadmap/corpus.ts`'s `CORPUS_DOCS` now also
+  reads `CLAUDE.md` (key `overview`) and the two root-level master-roadmap handoffs,
+  `ARC_MASTER_ROADMAP_FROM_ARC_200.md` and `ARC_MASTER_ROADMAP_EXPANDED_NATIVE_CRM_FROM_ARC_200.md`
+  — a corpus doc's path already worked from the repository root, so no other change was needed.
+  `RETRIEVAL_LIMITS.maxSections` (5 → 8) and `.maxChars` (12,000 → 20,000) went up alongside it,
+  since a wider corpus means more sections compete for the same slots. Locally, "Are we connected
+  to n8n yet?" now retrieves the actual ADR §26 production-gate and OAuth-credential sections
+  instead of only the roadmap's own sequence list. Same best-effort rule as every other corpus
+  doc: one not yet pushed to `main` 404s and contributes nothing until it is.
+- **ARC-320: an activation page for each of a client's modules**
+  (`/ops/console/clients/:id/activation/:module`, `ActivationPanel.jsx`). It covers
+  connections, readiness, testing and going live, and it decides nothing itself: every
+  button is an existing server action with its own gate.
+  - **Status:** the state, the health overlay and a shadow badge ("nothing is sent"), and
+    whether a new live run would be authorised right now, with what is holding it.
+  - **Controls:** the lifecycle buttons (begin and stop testing, enter and leave shadow,
+    activate, pause, resume). Activate and resume are disabled while readiness says no,
+    with the first reason. Before either is pressed, it says which versions it would
+    authorise and which requirements it clears. The server re-checks everything when
+    either is pressed.
+  - **Readiness:** a checklist with every blocker grouped under one line. A reason code
+    this build does not know is shown under "other", never dropped.
+  - **Connections, by requirement group and capability:**
+    - each provider that could serve the capability, and the client's connection to it,
+      in one vocabulary (`activation/model.ts`): missing, unverified, connected, degraded,
+      needs reauth, expired, revoked, unsupported and so on;
+    - only the four-character credential hint;
+    - test, connect (OAuth or a key form that clears itself), reauthorise and disconnect,
+      through the `connections` function.
+  - **Evidence:** the module's synthetic test (Lead Recovery's canary), shadow
+    observations and review, each connection's latest test with its code and ARC's own
+    sentence, a health report form, and the transition history with change impact.
+- **A durable connection test.** New `ops` action `connection-test`
+  (`_shared/activation/connection-test.ts`):
+  - it records a `connector_test` run and a `test_connection` action before anything
+    happens, pinned to the current configuration;
+  - it runs them through the ARC-210 orchestrator;
+  - `ConnectionTestRunner`, ARC's own in-process runner, verifies through ARC-130 and
+    passes the runner contract;
+  - the console's pass runs only when everything the scheduler could claim for that
+    client is a connection test, and otherwise defers to the scheduler worker.
+- `activation-overview`, a new read-only `ops` action: everything the page draws in one
+  call. Connections leave the server only as ARC-130's safe summary.
+- An OAuth return page, `/portal/dashboard/connections/callback`. It strips the code and
+  state from the address bar before the Supabase client exists, asks for no referrer, and
+  sends them to the `connections` function with the user's own token.
+- The page is linked from the client page and from each selected module in the modules
+  panel.
+- Tests:
+  - `activation-console` (32): the vocabulary, what blocks activation (a missing
+    connection, a revoked one), operator-only activation, no credential in any response or
+    render, the runner contract, and the rendered panel;
+  - `activation-db` (7, real Postgres): the durable run and action, a passing and a failing
+    test (a credential-shaped message replaced), refusal before any write, deferral, and
+    pause and resume at the claim.
+- **ARC-330: the three routes, and a `Your Route` section on the homepage.** A company fits
+  ARC one of three ways — **ARC Native** (no CRM: ARC provides it), **ARC Hybrid** (keep some
+  tools, ARC fills the gaps) or **ARC Connected** (keep an established stack, ARC is the
+  automation layer on top).
+  - `_shared/routes/model.ts` is the one definition: the keys `native` / `hybrid` /
+    `connected`, each route's copy, what is true on every route, the comparison rows and the
+    five discovery questions. Portal-safe, imports nothing, stores nothing — no table holds a
+    route yet.
+  - The homepage section (`YourRoute.jsx`, after "what we build", linked from the nav) is
+    written for an owner, one answer at a time: three choices in their own words ("we have no
+    system yet", "we have a few tools we like", "we already run a full system"), and one short
+    panel for the one picked — two sentences, at most three things we bring, what they keep,
+    one button. The four principles are a single line underneath.
+  - The side-by-side table and the five questions are folded behind two quiet toggles. The
+    questions come one at a time and suggest a route only once all five are answered; the
+    table stacks on a phone.
+  - The suggestion is only words on the page. Each route's button opens the existing pilot
+    intake carrying the route as a note for the call ("to confirm"); the intake sends
+    `route` and `routeSource` with the lead to the same capture address as before.
+  - `routeModelProblems` refuses route copy that names n8n or makes a CRM a requirement.
+  - `lib/track.js`: an analytics hook as a window event (names and keys only). Nothing
+    listens yet and no vendor script is loaded.
+  - The pilot step in "how we work" no longer assumes the contractor owns GoHighLevel.
+  - Tests: `routes` (37) — the model, that the copy stays short and free of jargon, every
+    combination of answers, incomplete and junk answers, the route-aware call to action, and
+    the rendered section.
 
 ### Fixed
 
@@ -260,9 +380,22 @@ when it ships.
     role, `service_role` included, reaches `arc_private`.
   - The migration also fails if the database shows the Data API exposing either schema.
   - The check is now `public.credential_isolation_problems()`, re-runnable as a query.
+- The Roadmap Assistant was telling operators the current implementation state was
+  `ARC-110`/`ARC-120` because `docs/architecture/ARC_IMPLEMENTATION_ROADMAP.md` had not
+  been revised since ARC-120 shipped. Revised the doc against verified repository evidence
+  (`git log origin/main..HEAD`, the migration sequence, the shared modules): `ARC-120` is
+  live on `main`; `ARC-110`, `ARC-130`, `ARC-200`, `ARC-210`, `ARC-220` and `ARC-230` are
+  complete in the repository (commit `d7d32d8`) but not yet pushed; `ARC-240` is the actual
+  next task, in progress and uncommitted. The assistant still answers only from this file —
+  no roadmap fact was added to its code — so it now reports this correctly and will need
+  this file kept current as work continues.
 
 ### Changed
 
+- The "where the key is kept" default on a declared service no longer says "n8n
+  credentials" (`integrations.js`, `ConnectionForm.jsx`). n8n is exactly where a client
+  credential must never live. A provider connected through ARC is held in Vault and managed
+  on the activation page; a declared service is held outside ARC.
 - **The ops sidebar names every section again.** Collapsing it had hidden the labels, and
   the collapsed state was remembered, so the console kept opening as a column of bare icons.
   - Collapsed, each icon now has its label underneath (the collapsed rail is 78px, up
@@ -299,6 +432,198 @@ when it ships.
   capability only from a verified, fresh connection, replacing the "unknown until ARC-130"
   seam.
 
+## [1.26.0] - 2026-09-28
+
+### Added
+
+- **Groq: the answer engine that actually asks no card.** `GROQ_API_KEY` with
+  `ARC_ROADMAP_PROVIDER=groq` and an `ARC_ROADMAP_MODEL` selects it. Google AI Studio's
+  advertised free tier turned out to demand billing setup for at least one real account here
+  despite the claim (corrected in the docs below); Groq's signup did not. It shares its
+  request shape with OpenAI's Chat Completions almost exactly (Groq is built to be
+  OpenAI-compatible), so the adapter reuses the same `chatCompletionsComplete` call the OpenAI
+  adapter now also delegates to — one function, two thin classes differing only in base URL —
+  rather than a parallel implementation. Same reply schema, same grounding check, same
+  redaction. 4 tests.
+- Provider selection (`roadmapModelFor`) generalized from two special-cased "needs a model
+  name" providers to a small table, so a fifth provider is a table row, not a re-plumbed
+  `if`. `npm run roadmap:ask` reads `GROQ_API_KEY` too.
+- **Verified working end to end (2026-09-28):** a free Groq key with no payment method,
+  `openai/gpt-oss-20b`, answered a real question with a correct, cited, grounded answer
+  through the full pipeline — corpus retrieval across the roadmap and ARC-130's doc, the
+  model call, the grounding check.
+
+### Fixed
+
+- **The Gemini setup doc claimed "no payment method needed at all."** That was wrong for at
+  least one real account: Google asked for billing before issuing a key. Corrected to say
+  plainly that the free tier isn't reliable across accounts and regions, and to recommend
+  trying Groq first for anyone avoiding a card.
+- **The Groq setup doc's example model was Enterprise-tier only.** `llama-3.3-70b-versatile`
+  is real and current, but returns `404: model_not_found` on a free account — indistinguishable
+  from a typo without knowing that. Replaced the example with `openai/gpt-oss-20b`, confirmed
+  working on the free tier, and the doc now names which Groq models actually support structured
+  output and warns that the well-known Llama ones are Enterprise-only.
+
+## [1.25.0] - 2026-09-27
+
+### Added
+
+- **A free answer engine: Google Gemini.** `GEMINI_API_KEY` with `ARC_ROADMAP_PROVIDER=google`
+  and an `ARC_ROADMAP_MODEL` selects it. Google AI Studio issues a key with a free tier for
+  current models — no card, no bill — so a deployment with no budget can still get a written
+  answer, at the cost of the free tier's own rate limit rather than money. The adapter calls
+  `generateContent` with a translated `responseSchema` (Gemini's own schema dialect, converted
+  once from the shared reply schema) and goes through the exact same grounding check as
+  Anthropic and OpenAI: an invented ID or date is withheld whichever of the three wrote it. The
+  key travels in the `x-goog-api-key` header, never the URL. 12 tests.
+- **The assistant's context widened past the one roadmap file.** Every question is now also
+  searched against the other architecture docs (`_shared/roadmap/corpus.ts`, `CORPUS_DOCS`):
+  `ARC_ROADMAP_ASSISTANT.md`, `ARC_LEAD_RECOVERY_SAFETY_AND_PINNING.md`,
+  `ARC_MODULE_AND_CONNECTOR_REGISTRIES.md`, `ARC_TENANT_MODULE_LIFECYCLE.md`,
+  `ARC_VERSIONED_TENANT_CONFIGURATION_ENGINE.md`, `ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md`,
+  `ARC_N8N_EXECUTION_BOUNDARY_ADR.md` and `ARC_N8N_REPOSITORY_AUDIT.md` — so "how are provider
+  credentials kept secret" gets a real, cited answer instead of "not in the roadmap". Each is
+  fetched from `main` the same way as the roadmap and is best-effort: one that 404s (renamed,
+  not pushed yet), fails to parse or times out contributes nothing to that question, silently —
+  only the roadmap's own failure is shown as an error. A supporting document's sections are
+  namespaced (so their ids can never collide with the roadmap's), labelled with the document's
+  own title ("ARC-130 — Secure Provider Connections and OAuth › §7 Refresh, rotation,
+  revocation"), and never a current-position anchor — that question stays the roadmap's alone.
+  Relevance (BM25) is recomputed over the combined set. `createRoadmapCorpus` composes one
+  `createRoadmapSource` per document, so the caching, ETag revalidation and stale-serving
+  already tested for the roadmap apply unchanged to each one, and only recombines when a
+  digest actually changes, not on every question. The panel's source line says how many
+  supporting documents loaded ("· +6 docs"). 15 tests.
+- `npm run roadmap:ask` reads the supplementary documents from disk too (skipped if a file
+  doesn't exist locally), and reads `GEMINI_API_KEY` for `--live`.
+
+### Fixed
+
+- **The bundle-leak test only ever checked for an Anthropic key or address.** Extended to also
+  refuse `OPENAI_API_KEY`, `GEMINI_API_KEY`, `api.openai.com` and Google's endpoint from ever
+  reaching the site bundle — a gap that predates this session's Gemini work, closed while
+  touching the same test for it.
+
+## [1.24.1] - 2026-09-27
+
+### Fixed
+
+- **A bulleted or numbered list in a roadmap answer showed no bullets or numbers**, so a
+  numbered sequence (four deploy steps, fifteen safety principles) read as one run-on
+  paragraph with no way to tell where one item ended and the next began — reported as an
+  "odd response" after search-only mode shipped, though the bug is older and affects any
+  assistant answer with a list, not only a search-only one. `base.css` turns off every
+  list's marker site-wide, for the app chrome's own checklists and menus, which supply
+  their own icon or column instead; the roadmap answer body never restored one for a
+  quoted or written list, which has no substitute. Fixed in `RoadmapAssistant.css`, with a
+  test that would have caught it: it reads `base.css`'s reset and checks the panel's own
+  rule sets a real marker, not `none`.
+
+## [1.24.0] - 2026-09-26
+
+### Added
+
+- **The roadmap assistant works with no AI model and no key: search-only mode.** With no
+  model to ask, or a model that fails, the panel now shows the roadmap's own passages for the
+  question instead of an error and nothing else. Each is under its section's title, with the
+  sections cited, and the first line says plainly that no AI model answered and nothing is
+  summarized. Nothing is written: a test checks that every word shown is a word of the
+  roadmap. The parts of a section that mention the question are shown, not its opening, and a
+  long list or table is cut around the line asked about (the eleventh item is not reached by
+  showing the first ten) and keeps the roadmap's own numbers. A question that names no prompt
+  also gets where the roadmap says things stand, and one that matches nothing says "No section
+  of the roadmap matches those words."
+- It applies in three cases, each labelled with its reason: no key is set, `ARC_ROADMAP_PROVIDER=search`
+  is set on purpose (no model is called, whatever keys exist, so it costs nothing), and a
+  configured model fails with no credit, an outage or a timeout. The provider's own reason is
+  printed above the passages, with the key removed. A model that declines a question is still
+  reported as that, not answered with the roadmap's text. A question that only names an
+  identifier the roadmap lacks is still answered "not in the roadmap".
+- The panel's header says "Search only" when no model is connected.
+- `npm run roadmap:ask -- "question"` now also prints the search-only answer with no key at
+  all, and after a failed `--live` run prints what the panel shows instead.
+- 19 tests: the words shown are the roadmap's, the sections cited are the ones shown, an edited
+  sentence is what appears, injected text is not repeated, every identifier in the canonical
+  roadmap finds a page that shows it, and the handler's fallback, labelling and log (which
+  never holds the question or the roadmap's text).
+
+### Changed
+
+- With no model configured, `roadmap-ask` returns 200 with status `excerpts` rather than 503
+  `provider_unconfigured`, and a model failure returns the same rather than 502. The panel
+  already renders the shape, so it works with the panel already on the site. Needs
+  `supabase functions deploy ops` to take effect.
+
+## [1.23.1] - 2026-09-25
+
+### Fixed
+
+- **A model name copied with its placeholder brackets no longer fails.** The setup steps
+  wrote `ARC_ROADMAP_MODEL` as `<the model name>`, and typing it literally sent OpenAI a model
+  called `<gpt-4o-mini>`, which it refused with "invalid model ID". Surrounding `< >`, quotes
+  and whitespace are now stripped from the model name, as they already were from keys. A name
+  with spaces or other junk in it is refused with a message naming `ARC_ROADMAP_MODEL`, and a
+  key pasted into that variable by mistake is not echoed back. The docs example now shows a real
+  value.
+
+## [1.23.0] - 2026-09-25
+
+### Added
+
+- **The roadmap assistant can use OpenAI (the ChatGPT API) instead of Anthropic.** Set
+  `OPENAI_API_KEY`, `ARC_ROADMAP_PROVIDER=openai` and an `ARC_ROADMAP_MODEL`; a lone OpenAI
+  key selects it without the provider setting. OpenAI has no default model on purpose, since a
+  name written here would be a guess, and a wrong one comes back as OpenAI's own "model not
+  found". It uses Chat Completions with a strict `json_schema` and the same prompt, reply
+  schema and answer check as the Anthropic path, so an invented ID or date is withheld
+  whichever provider wrote it. Its errors name the type and code (`429: insufficient_quota`
+  is OpenAI's "no credit"), with the key removed. `npm run roadmap:ask -- --live` reads the
+  same variables. Lead Recovery's classifier is unchanged.
+- 12 tests for the OpenAI adapter and provider choice. Needs `supabase functions deploy ops`
+  to take effect.
+
+## [1.22.2] - 2026-09-25
+
+The assistant answered a working key with "The model request failed. Try again." and gave
+no way to find out why: the function knew the provider's exact reason and threw it away.
+
+### Changed
+
+- **A failed model call now says why**, in the provider's words: `the model answered 400:
+  invalid_request_error — Your credit balance is too low`, `…401: authentication_error`,
+  `…404: not_found_error`, or the error a thrown request carried. The panel shows it under
+  the message. The API key, and anything shaped like one, is removed first, and the log keeps
+  only the status and type, never the message or the question.
+- A key set with surrounding quotes, spaces or a trailing newline is cleaned before use. One
+  with stray characters inside is reported as "does not look like a key" instead of failing
+  inside the request.
+- The troubleshooting table in `ARC_ROADMAP_ASSISTANT.md`, and a note that a function deploy
+  bundles the working tree, not `main`. `npm run roadmap:ask -- --live` reproduces a failure
+  locally with the same code.
+
+### Fixed
+
+- `npm run roadmap:ask` no longer ends with Node's `Assertion failed: !(handle->flags &
+  UV_HANDLE_CLOSING)` on Windows. It called `process.exit()` while the connection to
+  Anthropic was still closing; it now sets the exit code and ends normally. The docs also say
+  that a Claude.ai subscription doesn't fund API keys, which is what a "credit balance is too
+  low" error on a paid account usually means.
+
+Needs `supabase functions deploy ops` to take effect.
+
+## [1.22.1] - 2026-09-25
+
+### Fixed
+
+- **The roadmap assistant no longer answers "I can't find that in the current roadmap"
+  to questions it can answer.** Retrieval refused, without asking a model, any question
+  whose keywords appeared nowhere in the roadmap. That rejected "give me an overview",
+  "what should I do today?" and "what do you know?", which the always-sent current-state
+  sections do answer. Those questions now reach the model. Only a question that asks solely
+  about a prompt ID the roadmap never mentions still skips it. Needs
+  `supabase functions deploy ops` to take effect.
+
 ## [1.22.0] - 2026-09-24
 
 The roadmap lived in a Markdown file that had to be pasted into a chat every time someone
@@ -321,8 +646,8 @@ change anything.
   sections plus the best-matching ones, never the whole file, and checks the reply before
   it is shown. An answer that cites nothing it was given, names a prompt ID the excerpts
   don't contain, or states a date they don't contain is withheld, whatever the question
-  asked for. A question the roadmap can't touch is answered without calling a model.
-  Rate-limited per operator, and it logs metadata only, never the question or the answer.
+  asked for. A question that names only a prompt ID the roadmap never mentions is answered
+  without calling a model. Rate-limited per operator, and it logs metadata only, never the question or the answer.
 - **The panel** (`RoadmapAssistant`), in `/ops/console` only: starter questions, the
   roadmap's revision date and digest, "Source: §n …" under every answer, retry, new chat,
   Escape to close, and a bottom sheet on phones. Replies are rendered from parsed data,

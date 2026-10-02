@@ -5,11 +5,13 @@ import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import CommandPalette from './CommandPalette';
 import Icon from './Icon';
+import { PAGE_ID, skipToPage } from '../lib/a11y';
 import RoadmapAssistant from './RoadmapAssistant';
 import Roster from '../pages/ops/Roster';
 import Clients from '../pages/ops/Clients';
 import ClientDetail from '../pages/ops/ClientDetail';
 import ClientSettings from '../pages/ops/ClientSettings';
+import ClientActivation from '../pages/ops/ClientActivation';
 import NewClient from '../pages/ops/NewClient';
 import PastClients from '../pages/ops/PastClients';
 import Identity from '../pages/ops/Identity';
@@ -299,6 +301,11 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, onRel
 
   return (
     <div className={`portal ws${railCollapsed ? ' ws--tight' : ''}${drawerOpen ? ' ws--open' : ''}`}>
+      {/* first in the tab order: past the rail and the top bar, straight to the page. */}
+      <a className="ws-skip" href={`#${PAGE_ID}`} onClick={skipToPage}>
+        skip to the page
+      </a>
+
       <button
         type="button"
         className="ws__scrim"
@@ -313,6 +320,7 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, onRel
         mark="ops"
         home="/ops"
         tenantName="arc automations"
+        navLabel="ops console sections"
         tenantSub={`${totals.clients} client${totals.clients === 1 ? '' : 's'} · ${
           probe.result || probe.kind === 'error' ? `${totals.connected} connected` : 'checking…'
         }`}
@@ -358,7 +366,7 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, onRel
                 <Icon name="pulse" />
                 <span>{checkLabel}</span>
               </button>
-              <button type="button" className="ws-top__icon" onClick={onReload} title="reload the roster">
+              <button type="button" className="ws-top__icon" onClick={onReload} aria-label="reload the roster" title="reload the roster">
                 <Icon name="refresh" />
               </button>
             </>
@@ -367,7 +375,7 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, onRel
 
         {banner}
 
-        <main className="ws__page">
+        <main className="ws__page" id={PAGE_ID} tabIndex={-1}>
           {/* only on the page itself: a client's own page sits under "clients" in the
               nav, and "the full list" above one client would describe the wrong page. */}
           {page.blurb &&
@@ -380,6 +388,7 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, onRel
             <Route path="clients/new" element={<NewClient {...ctx} />} />
             <Route path="clients/:tenantId" element={<ClientDetail {...ctx} />} />
             <Route path="clients/:tenantId/settings" element={<ClientSettings {...ctx} />} />
+            <Route path="clients/:tenantId/activation/:moduleKey?" element={<ClientActivation {...ctx} />} />
             <Route path="past-clients" element={<PastClients {...ctx} />} />
             <Route path="activity" element={<OpsActivity {...ctx} />} />
             <Route path="servers" element={<Servers {...ctx} />} />

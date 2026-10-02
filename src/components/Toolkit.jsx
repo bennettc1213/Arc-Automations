@@ -27,7 +27,7 @@ export default function Toolkit() {
   return (
     <section className="toolkit" id="toolkit" aria-label="toolkit">
       <div className="wrap">
-        <p className="eyebrow">05 — the toolkit</p>
+        <p className="eyebrow">06 — the toolkit</p>
         <div className="toolkit__headrow">
           <h2 className="section-title">what we build with.</h2>
           {physics && <p className="toolkit__hint mono">drag them. throw them. they’re insured.</p>}

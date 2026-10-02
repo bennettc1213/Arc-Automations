@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import Icon from './Icon';
-import { Empty, Panel, Pill, StatCard } from './ui';
+import { Empty, Panel, Pill, StatCard, Term } from './ui';
 import { formatRelative, formatStamp } from '../lib/format';
 
 /**
@@ -38,7 +38,11 @@ export function ModuleGate({ module, children }) {
   return (
     <Panel
       title={module.label}
-      note={<Pill tone="idle">awaiting connection</Pill>}
+      note={
+        <Pill tone="idle">
+          <Term k="awaiting">awaiting connection</Term>
+        </Pill>
+      }
     >
       <Empty title="not connected yet">
         {module.awaiting}
@@ -71,7 +75,15 @@ export function ModuleStat({
     return (
       <StatCard
         label={label}
-        value="—"
+        /* the dash is read out as what it means. "em dash" tells a screen reader nothing,
+           and silence would let the card be heard as empty — which is how it gets taken
+           for a zero. */
+        value={
+          <>
+            <span aria-hidden="true">—</span>
+            <span className="ws-sr">not available</span>
+          </>
+        }
         compact
         sub={<span className="ws-stat__unavail">{unavailable}</span>}
       />

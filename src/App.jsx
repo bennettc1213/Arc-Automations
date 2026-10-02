@@ -29,6 +29,10 @@ const Portal = lazyRoute(() => import('./portal/pages/Portal'));
 const Demo = lazyRoute(() => import('./portal/pages/Demo'));
 const Login = lazyRoute(() => import('./portal/pages/Login'));
 const AuthCallback = lazyRoute(() => import('./portal/pages/AuthCallback'));
+/* where an OAuth provider returns (ARC-130's registered redirect). more specific than the
+   dashboard splat, so it wins; it strips the code from the URL before the supabase client —
+   which would try to spend a `code` as its own sign-in — is ever created. */
+const ConnectionCallback = lazyRoute(() => import('./portal/pages/ConnectionCallback'));
 
 /* the operator console. split out for the same reason as the dashboard and then
    some: it is a second workspace with its own eight-page shell, and exactly one
@@ -75,6 +79,7 @@ export default function App() {
               render the identical route tree over different data. defining those
               pages twice out here is how a demo starts drifting from the product. */}
           <Route path="/portal" element={<PortalHome />} />
+          <Route path="/portal/dashboard/connections/callback" element={<ConnectionCallback />} />
           <Route path="/portal/dashboard/*" element={<Portal />} />
           <Route path="/login" element={<Login />} />
           <Route path="/demo/*" element={<Demo />} />

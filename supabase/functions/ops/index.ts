@@ -109,6 +109,18 @@
  *
  *   A client can no longer be created by a browser insert; 0021 drops that policy.
  *
+ * The activation console — ARC-320. Documented in ./activation.ts:
+ *
+ *   activation-overview   one module: lifecycle, readiness, history, each requirement with
+ *                         the providers that could serve it and the client's connection to
+ *                         each (ARC-130's safe summary only), tests and evidence
+ *   connection-test       a durable connector_test run + test_connection action (0017),
+ *                         executed through the runner orchestrator (ARC-210) by ARC's own
+ *                         connection-test runner, which verifies through ARC-130
+ *
+ *   Activation, pause, resume, shadow and health stay the module-lifecycle actions above;
+ *   connecting and disconnecting a provider stay the `connections` function's.
+ *
  * Roadmap assistant — read-only, so not audited. Documented in ./roadmap.ts and
  * docs/architecture/ARC_ROADMAP_ASSISTANT.md:
  *
@@ -140,7 +152,11 @@
  *          (optional: without them the probe still checks ingest, tokens, events
  *          and /healthz, and says the workflows could not be asked.)
  *          The roadmap assistant uses ANTHROPIC_API_KEY, the secret Lead Recovery
- *          already reads; ARC_ROADMAP_MODEL, ARC_ROADMAP_SOURCE_URL and
+ *          already reads, or OPENAI_API_KEY / GEMINI_API_KEY / GROQ_API_KEY with
+ *          ARC_ROADMAP_PROVIDER set to openai / google / groq and an ARC_ROADMAP_MODEL
+ *          (Groq and, in accounts it allows without billing, Gemini are free). It also
+ *          reads the other docs/architecture/*.md files (corpus.ts) for context beyond
+ *          the roadmap; a missing one is silently skipped. ARC_ROADMAP_SOURCE_URL and
  *          ARC_ROADMAP_CACHE_SECONDS are optional overrides.
  */
 
@@ -150,18 +166,33 @@ import { CONFIG_ACTIONS, handleConfigAction } from './config.ts';
 import { handleLifecycleAction, LIFECYCLE_ACTIONS as MODULE_LIFECYCLE_ACTIONS } from './lifecycle.ts';
 import { handleTenantAction, TENANT_ACTIONS } from './tenants.ts';
 import { supabaseTenantStore } from '../_shared/tenants/supabase-tenant-store.ts';
+import { CRM_ACTIONS, handleCrmAction } from './crm.ts';
+import { supabaseCrmStore } from '../_shared/crm/supabase-crm-store.ts';
 import { createRoadmapLimiter, handleRoadmapAction, ROADMAP_ACTIONS } from './roadmap.ts';
 import { operatorGate } from '../_shared/operator-gate.ts';
 import { roadmapModelFor } from '../_shared/roadmap/model.ts';
-import { createRoadmapSource } from '../_shared/roadmap/source.ts';
+import { createRoadmapCorpus } from '../_shared/roadmap/source.ts';
 import { supabaseStore } from '../_shared/supabase-store.ts';
 import { deselectModule } from '../_shared/lifecycle/engine.ts';
 import { parseLifecycleState } from '../_shared/lifecycle/model.ts';
+import { ACTIVATION_ACTIONS, handleActivationAction } from './activation.ts';
+import { ConnectionTestRunner, supabaseConnectionTestLog } from '../_shared/activation/connection-test.ts';
+import { supabaseSchedulerStore } from '../_shared/scheduler/supabase-scheduler-store.ts';
+import { createRunnerRegistry } from '../_shared/runner/registry.ts';
+import { fetchTransport } from '../_shared/connections/adapter.ts';
+import { requireAvailable, selectCredentialStore } from '../_shared/connections/credential-store.ts';
+import { resolveRuntimeEnvironment } from '../_shared/connections/runtime-env.ts';
+import { SupabaseVaultCredentialStore } from '../_shared/connections/supabase-connection-store.ts';
+import { SecretValue } from '../_shared/connections/redact.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SITE_URL = (Deno.env.get('ARC_SITE_URL') ?? '').replace(/\/+$/, '');
+/* ARC-320's connection test verifies through ARC-130, exactly as the `connections` function
+   does: the same environment rule (unset = production), the same redirect setting. */
+const ENVIRONMENT = resolveRuntimeEnvironment(Deno.env.get('ARC_ENVIRONMENT'));
+const OAUTH_REDIRECT_URL = Deno.env.get('ARC_OAUTH_REDIRECT_URL') ?? null;
 
 /* arc's own n8n. the key never leaves this function: the browser holds an anon
    key and a session, and an n8n api key in a bundle is every workflow and every
@@ -182,12 +213,16 @@ const PUBLIC_FUNCTIONS_BASE = (
    one instance; the model gets the same Anthropic key Lead Recovery uses, and none of it is
    ever returned. */
 const roadmapCacheSeconds = Number(Deno.env.get('ARC_ROADMAP_CACHE_SECONDS') ?? '60');
-const roadmapSource = createRoadmapSource({
+const roadmapSource = createRoadmapCorpus({
   url: Deno.env.get('ARC_ROADMAP_SOURCE_URL') || null,
   ttlMs: Number.isFinite(roadmapCacheSeconds) && roadmapCacheSeconds >= 0 ? roadmapCacheSeconds * 1000 : 60_000,
 });
 const roadmapModel = roadmapModelFor({
   anthropicKey: ANTHROPIC_API_KEY || null,
+  openaiKey: Deno.env.get('OPENAI_API_KEY') || null,
+  googleKey: Deno.env.get('GEMINI_API_KEY') || null,
+  groqKey: Deno.env.get('GROQ_API_KEY') || null,
+  provider: Deno.env.get('ARC_ROADMAP_PROVIDER') || null,
   model: Deno.env.get('ARC_ROADMAP_MODEL') || null,
 });
 const roadmapLimiter = createRoadmapLimiter();
@@ -216,7 +251,9 @@ const ACTIONS = [
   ...LEAD_RECOVERY_ACTIONS,
   ...CONFIG_ACTIONS,
   ...MODULE_LIFECYCLE_ACTIONS,
+  ...ACTIVATION_ACTIONS,
   ...TENANT_ACTIONS,
+  ...CRM_ACTIONS,
   ...ROADMAP_ACTIONS,
 ];
 
@@ -422,6 +459,67 @@ Deno.serve(async (request) => {
     }
   }
 
+  // ── the activation console (ARC-320) ──────────────────────────────────
+
+  /* reads and the one durable test. the runners are built only when a test is requested, and
+     only with a credential store that answers — production and staging get Vault or nothing,
+     exactly as the `connections` function does, and a test that cannot be run stays queued. */
+  if (ACTIVATION_ACTIONS.includes(action)) {
+    try {
+      const store = supabaseStore(db);
+      const scheduler = supabaseSchedulerStore(db);
+      const result = await handleActivationAction(action, {
+        store,
+        scheduler,
+        tests: supabaseConnectionTestLog(db),
+        body: body as unknown as Record<string, unknown>,
+        actorId,
+        audit,
+        runners: async () => {
+          const credentials = selectCredentialStore({
+            environment: ENVIRONMENT,
+            vault: () => new SupabaseVaultCredentialStore(db, { environment: ENVIRONMENT }),
+          });
+          try {
+            await requireAvailable(credentials);
+          } catch {
+            return { registry: null, reason: 'the credential store is unavailable — the test is queued, and nothing was verified' };
+          }
+          const runner = new ConnectionTestRunner({
+            store: { ...store, credentials },
+            transport: fetchTransport(),
+            environment: ENVIRONMENT,
+            lifecycle: store,
+            oauth: {
+              siteUrl: SITE_URL || null,
+              redirectUrl: OAUTH_REDIRECT_URL,
+              clientCredentials: (oauth) => {
+                const clientId = Deno.env.get(oauth.clientIdEnv) ?? '';
+                const clientSecret = Deno.env.get(oauth.clientSecretEnv) ?? '';
+                return clientId && clientSecret ? { clientId, clientSecret: new SecretValue(clientSecret) } : null;
+              },
+            },
+          });
+          return { registry: createRunnerRegistry([runner], { defaultKind: runner.kind }) };
+        },
+      });
+      return json(result.body, result.status);
+    } catch (error) {
+      const message = (error as Error)?.message ?? 'the action failed';
+      if (/automation_action_types|automation_action_attempts|schedule_automation_action/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'connection tests need supabase/migrations/0017_durable_scheduler.sql applied first', detail: message }, 501);
+      }
+      if (/provider_connections/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'the connections panel needs supabase/migrations/0016_provider_connections.sql applied first', detail: message }, 501);
+      }
+      if (/tenant_modules|tenant_module_evidence/i.test(message) && /does not exist/i.test(message)) {
+        return json({ error: 'the activation console needs supabase/migrations/0015_tenant_module_lifecycle.sql applied first', detail: message }, 501);
+      }
+      console.error(`activation action ${action} failed`, error);
+      return json({ error: message }, 500);
+    }
+  }
+
   // ── tenant creation and module selection (0021) ───────────────────────
 
   /* delegated whole. create_tenant checks the actor against arc_admins again and writes
@@ -444,6 +542,28 @@ Deno.serve(async (request) => {
         return json({ error: 'creating a client needs supabase/migrations/0021_ops_tenant_creation.sql applied first', detail: message }, 501);
       }
       console.error(`tenant action ${action} failed`, error);
+      return json({ error: message }, 500);
+    }
+  }
+
+  // ── CRM core and business profile (0023) ──────────────────────────────
+
+  /* delegated whole. 0023 checks the actor against arc_admins again on every write, and its
+     triggers write the timeline and the audit rows in the same statement. */
+  if (CRM_ACTIONS.includes(action)) {
+    try {
+      const result = await handleCrmAction(action, {
+        crm: supabaseCrmStore(db),
+        body: body as unknown as Record<string, unknown>,
+        actorId,
+      });
+      return json(result.body, result.status);
+    } catch (error) {
+      const message = (error as Error)?.message ?? 'the action failed';
+      if (/crm_|business_/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'the CRM needs supabase/migrations/0023_crm_core.sql applied first', detail: message }, 501);
+      }
+      console.error(`crm action ${action} failed`, error);
       return json({ error: message }, 500);
     }
   }

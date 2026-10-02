@@ -1,5 +1,7 @@
+import { useId } from 'react';
 import TickValue from './TickValue';
 import { formatSignedPct } from '../lib/format';
+import { glossFor } from '../lib/glossary';
 
 /**
  * the small pieces every dashboard page is built out of.
@@ -35,6 +37,45 @@ export function Pill({ tone = 'neutral', children, title }) {
       <i aria-hidden="true">{PILL_GLYPH[tone] ?? PILL_GLYPH.neutral}</i>
       {children}
     </span>
+  );
+}
+
+/**
+ * one of the product's own words, with what it means hung from it.
+ *
+ * the word printed is the word the system uses — `shadow`, `canary`, `not verified` — so the
+ * screen, the audit log and a support conversation all say the same thing. the gloss
+ * (lib/glossary.js) opens on hover and on keyboard focus, and is the element's accessible
+ * description, so reading it costs nothing and needs no pointer.
+ *
+ * a term the glossary does not know renders as plain text: no underline that promises an
+ * explanation and then has none.
+ */
+export function Term({ k, children }) {
+  const id = useId();
+  const entry = glossFor(k);
+  if (!entry) return <>{children ?? k}</>;
+  return (
+    <span className="ws-term" tabIndex={0} aria-describedby={id}>
+      {children ?? entry.label}
+      <span className="ws-term__tip" role="tooltip" id={id}>
+        {entry.gloss}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * what a button will do, said on the page before it is pressed.
+ *
+ * it sits in front of the confirmation, never in place of it: the dialog or the typed handle
+ * that follows is unchanged. `tone="danger"` is for the ones that cannot be taken back.
+ */
+export function Consequence({ children, tone = 'warn', label = 'what this does' }) {
+  return (
+    <p className={`ws-consequence ws-consequence--${tone}`}>
+      <b>{label}:</b> {children}
+    </p>
   );
 }
 

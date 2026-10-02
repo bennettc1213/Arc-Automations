@@ -237,7 +237,9 @@ export default function CommandPalette({
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onKeyDown}
             placeholder={placeholder}
-            aria-label="search the portal"
+            /* each workspace says what it searches, so the field's name is that sentence
+               rather than "the portal" — which the ops console is not. */
+            aria-label={placeholder}
             spellCheck="false"
             autoComplete="off"
           />
@@ -246,7 +248,7 @@ export default function CommandPalette({
 
         <div className="ws-cmd__list" ref={listRef}>
           {flat.length === 0 ? (
-            <p className="ws-cmd__empty">
+            <p className="ws-cmd__empty" role="status">
               nothing matches “{query}”. {emptyHint}
             </p>
           ) : (
