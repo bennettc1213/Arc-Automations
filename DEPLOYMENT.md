@@ -239,6 +239,21 @@ records). It alters no existing table. Redeploy `ops` afterwards so the `crm-*` 
 before 0023 is applied they answer 501 and say so. Nothing in the console calls them yet.
 See docs/architecture/ARC_CRM_CORE.md.
 
+### 0024 — native lead capture (ARC-350): after 0023, with `ops` redeployed and `native-intake` deployed
+
+0024 adds forms, API intake endpoints, imports and consent records, three columns on
+`crm_source_events` (which door an arrival came through), and `crm_intake_arrival`. It alters
+no other existing table. Then:
+
+1. Redeploy `ops` so the `intake-*` actions exist; before 0024 they answer 501 and say so.
+2. `supabase functions deploy native-intake --no-verify-jwt`.
+3. `supabase secrets set ARC_SITE_URL=https://arcautomation.site` if it is not already set. A
+   form submission is accepted only from that origin, and with no origin configured every
+   submission is refused. `ARC_FORM_ORIGINS` (comma-separated) adds more, for a preview site.
+
+Until all three are done, a hosted form link (`/form/<key>`) says "This form is not
+available". See docs/architecture/ARC_NATIVE_INTAKE.md.
+
 ### Trying the ops console against staging (no production involved)
 
 The live site talks to the live project, so staging is tried from a local copy of the site.
@@ -280,6 +295,9 @@ supabase functions deploy twilio      --no-verify-jwt   # the HMAC is the gate
 supabase functions deploy lead-intake --no-verify-jwt   # the intake key is the gate
 supabase functions deploy dispatch    --no-verify-jwt   # a shared secret, or an admin JWT
 
+# native lead capture (0024) — hosted forms and API intake into the CRM. sends nothing.
+supabase functions deploy native-intake --no-verify-jwt # the form key, the origin and the endpoint token are the gates
+
 # provider connections (0016) — JWT verification ON; only after the hosted Vault checklist
 supabase functions deploy connections
 
@@ -300,7 +318,7 @@ Set on the Supabase project, never in this repository.
 | secret | needed by | what happens without it |
 |---|---|---|
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY` | every function | provided by the platform |
-| `ARC_SITE_URL` | `client-login`, `ops`, `twilio`, `lead-intake`, `dispatch` | magic-link redirects fall back to the platform default; console links are omitted from staff alerts |
+| `ARC_SITE_URL` | `client-login`, `ops`, `twilio`, `lead-intake`, `dispatch`, `native-intake` | magic-link redirects fall back to the platform default; console links are omitted from staff alerts; **`native-intake` refuses every form submission** |
 | `ARC_AUTH_REDIRECT` | `client-login` | optional override of the callback path |
 | `N8N_API_URL`, `N8N_API_KEY` | `ops` | the live pipeline check still tests ingest, tokens, events and `/healthz`, and reports the workflow rows as "could not be asked" |
 | **`TWILIO_ACCOUNT_SID`** | `twilio`, `lead-intake`, `dispatch`, `ops` | nothing can send |

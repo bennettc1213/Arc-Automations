@@ -47,6 +47,9 @@ const PAGES = [
      the same pass. */
   ['portal-door', '/portal'],
   ['ops-door', '/ops'],
+  /* a client's hosted lead form, at a link that is not a form key: the page a mistyped or
+     stale link lands on. it is not a key, so the page asks no server and this stays offline. */
+  ['hosted-form', '/form/not-a-form'],
 ];
 
 const VIEWPORTS = [

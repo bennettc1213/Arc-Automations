@@ -36,6 +36,7 @@ export const CORPUS_DOCS: CorpusDoc[] = [
   { key: 'config', path: 'docs/architecture/ARC_VERSIONED_TENANT_CONFIGURATION_ENGINE.md' },
   { key: 'connections', path: 'docs/architecture/ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md' },
   { key: 'crm-core', path: 'docs/architecture/ARC_CRM_CORE.md' },
+  { key: 'native-intake', path: 'docs/architecture/ARC_NATIVE_INTAKE.md' },
   { key: 'n8n-boundary', path: 'docs/architecture/ARC_N8N_EXECUTION_BOUNDARY_ADR.md' },
   { key: 'n8n-audit', path: 'docs/architecture/ARC_N8N_REPOSITORY_AUDIT.md' },
   { key: 'master-roadmap', path: 'ARC_MASTER_ROADMAP_FROM_ARC_200.md' },

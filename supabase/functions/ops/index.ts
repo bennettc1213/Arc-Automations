@@ -168,6 +168,8 @@ import { handleTenantAction, TENANT_ACTIONS } from './tenants.ts';
 import { supabaseTenantStore } from '../_shared/tenants/supabase-tenant-store.ts';
 import { CRM_ACTIONS, handleCrmAction } from './crm.ts';
 import { supabaseCrmStore } from '../_shared/crm/supabase-crm-store.ts';
+import { handleIntakeAction, INTAKE_ACTIONS } from './intake.ts';
+import { supabaseIntakeStore } from '../_shared/intake/supabase-intake-store.ts';
 import { createRoadmapLimiter, handleRoadmapAction, ROADMAP_ACTIONS } from './roadmap.ts';
 import { operatorGate } from '../_shared/operator-gate.ts';
 import { roadmapModelFor } from '../_shared/roadmap/model.ts';
@@ -254,6 +256,7 @@ const ACTIONS = [
   ...ACTIVATION_ACTIONS,
   ...TENANT_ACTIONS,
   ...CRM_ACTIONS,
+  ...INTAKE_ACTIONS,
   ...ROADMAP_ACTIONS,
 ];
 
@@ -564,6 +567,28 @@ Deno.serve(async (request) => {
         return json({ error: 'the CRM needs supabase/migrations/0023_crm_core.sql applied first', detail: message }, 501);
       }
       console.error(`crm action ${action} failed`, error);
+      return json({ error: message }, 500);
+    }
+  }
+
+  // ── native lead capture: forms, endpoints, imports (0024) ──────────────
+
+  /* delegated whole, like the CRM above it. an endpoint's token is returned by the action
+     that makes it and is in no row afterwards. */
+  if (INTAKE_ACTIONS.includes(action)) {
+    try {
+      const result = await handleIntakeAction(action, {
+        deps: { crm: supabaseCrmStore(db), intake: supabaseIntakeStore(db) },
+        body: body as unknown as Record<string, unknown>,
+        actorId,
+      });
+      return json(result.body, result.status);
+    } catch (error) {
+      const message = (error as Error)?.message ?? 'the action failed';
+      if (/crm_intake|crm_import|form_id/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'lead capture needs supabase/migrations/0024_native_intake.sql applied first', detail: message }, 501);
+      }
+      console.error(`intake action ${action} failed`, error);
       return json({ error: message }, 500);
     }
   }

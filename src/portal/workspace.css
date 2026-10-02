@@ -2798,17 +2798,17 @@ a.ws-life__in:hover .ws-life__value {
   text-align: left;
   white-space: normal;
   color: var(--text);
-  opacity: 0;
-  visibility: hidden;
+  /* out of the layout until it is asked for. a hidden-but-laid-out tip near the right edge
+     still widened the page, and every screen with a term on it scrolled sideways. it stays
+     the term's accessible description either way. */
+  display: none;
   pointer-events: none;
-  transition: opacity 0.14s var(--ease-out), visibility 0.14s;
 }
 
 .ws-term:hover .ws-term__tip,
 .ws-term:focus .ws-term__tip,
 .ws-term:focus-visible .ws-term__tip {
-  opacity: 1;
-  visibility: visible;
+  display: block;
 }
 
 /* inside a coloured pill or a quiet note the rule is drawn lighter, so the

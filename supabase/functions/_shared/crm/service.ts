@@ -104,6 +104,8 @@ export const CRM_ERROR_STATUS = Object.freeze({
   route_conflict: 409,
   external_authority: 409,
   arc_authority: 409,
+  /* ARC-350: a public form's hourly ceiling (0024). */
+  rate_limited: 429,
 } as const);
 export type CrmErrorCode = keyof typeof CRM_ERROR_STATUS;
 

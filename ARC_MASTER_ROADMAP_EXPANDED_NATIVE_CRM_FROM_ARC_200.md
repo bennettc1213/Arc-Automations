@@ -302,7 +302,7 @@ This boundary keeps ARC focused on acquiring, recovering, converting, and unders
 | 8 | `ARC-320` | Connections, Readiness, Testing, and Activation UI | Full stack / UI / ops | Future |
 | 9 | `ARC-330` | Three-Route Product Model and Homepage `Your Route` Experience | Marketing site / product / UI | Future |
 | 10 | `ARC-340` | Universal CRM Core and Business Profile Foundation | Backend / database / CRM | Complete locally (2026-10-02) — `0023_crm_core.sql`, `_shared/crm/`; see `docs/architecture/ARC_CRM_CORE.md` |
-| 11 | `ARC-350` | ARC-Native Lead Capture, Forms, Imports, and Source Attribution | Full stack / intake / CRM | Future |
+| 11 | `ARC-350` | ARC-Native Lead Capture, Forms, Imports, and Source Attribution | Full stack / intake / CRM | Complete locally (2026-10-02) — `0024_native_intake.sql`, `_shared/intake/`, `native-intake`; see `docs/architecture/ARC_NATIVE_INTAKE.md` |
 | 12 | `ARC-360` | ARC-Native Lead Inbox, Pipeline, Tasks, and CRM Workspace | Full stack / CRM UI | Future |
 | 13 | `ARC-370` | ARC-Native Communications Hub and Conversation Timeline | Full stack / messaging / CRM | Future |
 | 14 | `ARC-380` | ARC-Native Scheduling, Availability, and Booking | Full stack / calendar / booking | Future |

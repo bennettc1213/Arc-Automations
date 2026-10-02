@@ -199,6 +199,21 @@ written by triggers and records field names, never values. Lead Recovery's `lead
 engine's row — a CRM lead points at it; never build a second contact model. The business's name
 and timezone stay the tenant's. There is no screen yet.
 
+**A lead enters the CRM through one function, whichever door it came by** (`0024`,
+`_shared/intake/`, `native-intake`, `ops` `intake-*`, ARC-350; docs/architecture/ARC_NATIVE_INTAKE.md).
+A hosted form (`/form/<key>`, `PublicForm.jsx`; the embed is an iframe of it, never a script), an
+API post with a hashed bearer token, a typed-in lead and a CSV all end in `crm_intake_arrival`:
+source record, contact, lead and consent rows in one transaction behind one lock per client. It
+returns `created`, `duplicate` (this person's open lead, inside the window) or `replayed`; it
+never edits an existing contact and never guesses between two who share a number. Capturing is
+not following up — nothing here writes `events`, `leads` or a run, and `lead-intake` stays Lead
+Recovery's own door. A form is validated data with a closed field list and no logic
+(`parseFormDefinition`, portal-safe, shared by the page, the console and the function). What ARC
+knows about an arrival is on `crm_source_events`' own columns; what a browser claimed is under
+`detail.claimed` and decides nothing. A consent record is evidence of what was shown and ticked,
+not permission to send. A stranger is told only that it arrived; the form's key is not the
+tenant's id. The console page is `IntakePanel.jsx` (`/ops/console/clients/:id/intake`).
+
 **The words on screen are the system's words, each with its meaning attached** (ARC-340 clarity
 pass, `lib/glossary.js`, `Term` / `Consequence` in `ui.jsx`). A state name is never renamed or
 hidden to make a page simpler: wrap it in `<Term k="…">` and add the gloss to the glossary.

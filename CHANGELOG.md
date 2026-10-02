@@ -7,6 +7,46 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.28.0] - 2026-10-02
+
+The site changes are live once pushed. Migration `0024` and the edge functions reach Supabase
+only when they are deployed; until then a hosted form link says "This form is not available"
+and the console's lead capture page says what is missing.
+
+### Added
+
+- **ARC-350: native lead capture.** Four ways a lead enters the CRM core for a business with
+  no lead platform of its own, all ending in one database function (`crm_intake_arrival`):
+  - **Hosted forms.** A form per client at `/form/<key>`, and the same page as an `<iframe>`
+    embed with no script on the client's site. A form is a closed list of field types with no
+    logic. Console: create, edit, publish, unpublish, archive.
+  - **A lead typed in**, by an operator.
+  - **CSV import**: inspect the headings, map the columns, preview every row (ready, invalid
+    with the reason, repeated in the file, already a customer), then import in batches.
+  - **API intake**: a bearer token per endpoint, shown once and stored only as a hash, with a
+    required `event_id` so a redelivery is the same lead.
+- Migration `0024_native_intake.sql` (after 0023): `crm_intake_forms`, `crm_intake_endpoints`,
+  `crm_imports`, `crm_import_rows`, `crm_consent_records`; `form_id` / `endpoint_id` /
+  `import_id` on `crm_source_events`; RLS on every table with no browser write.
+- Duplicate handling in the database: a retried request writes nothing; the same person with
+  an open lead inside the window joins that lead; an existing contact is never edited.
+- Consent records: the address, whether the box was ticked, and the exact wording and form
+  version shown. Append-only.
+- Source attribution in two kinds: what ARC knows (which form, endpoint or import) and what
+  the browser claimed (page, referrer, campaign), stored apart.
+- Public intake protections: ARC-site-only origin, per-address and per-form rate limits, an
+  hourly ceiling per form in the database, a honeypot and a dwell check.
+- `native-intake` edge function, `_shared/intake/`, eleven `intake-*` actions on `ops`, a
+  **lead capture** page per client in the console, and `docs/architecture/ARC_NATIVE_INTAKE.md`.
+- Tests `intake` (35) and `intake-db` (26, on real Postgres through PGlite). The smoke pass
+  now covers the hosted form page.
+
+### Fixed
+
+- A glossary tooltip that was hidden but still laid out widened the page, so the demo's
+  overview, activity and support pages scrolled sideways. It is now out of the layout until
+  hovered or focused.
+
 ## [1.27.0] - 2026-10-02
 
 Pushed to `main` together. The site changes are live; the migrations and edge functions

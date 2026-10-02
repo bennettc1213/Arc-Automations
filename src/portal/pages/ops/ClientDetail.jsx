@@ -400,6 +400,10 @@ function ClientBody({ client, base, reload, reloadBuilds, probe, runProbe }) {
           <Icon name="pulse" size={13} />
           activation — connections, readiness, tests, go live
         </Link>
+        <Link className="ws-btn" to={`${base}/clients/${tenant.id}/intake`}>
+          <Icon name="leads" size={13} />
+          lead capture — forms, a file, the desk, their own systems
+        </Link>
       </div>
 
       {/* the execution layer. placed under the build checklist and above the stat row for

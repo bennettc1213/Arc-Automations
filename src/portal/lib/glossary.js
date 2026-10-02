@@ -129,6 +129,52 @@ export const GLOSSARY = Object.freeze({
     label: 'delete permanently',
     gloss: 'Remove a test client completely. Only possible for a client that never did anything real.',
   },
+
+  /* ── lead capture: a form, an arrival, an import row (ARC-350) ── */
+  published: {
+    label: 'published',
+    gloss: 'Open to the public. Anyone with the link can send a request, and each one becomes a lead.',
+  },
+  archived: {
+    label: 'archived',
+    gloss: 'Closed. The link no longer takes requests. Everything it collected is kept.',
+  },
+  created: {
+    label: 'created',
+    gloss: 'A new lead was made, on a new customer record or on the one this person already had.',
+  },
+  duplicate: {
+    label: 'duplicate',
+    gloss: 'This person already had an open lead, so the new request was recorded against it instead of making a second lead.',
+  },
+  ready: {
+    label: 'ready',
+    gloss: 'This row is valid and will become a lead when the file is imported.',
+  },
+  invalid: {
+    label: 'invalid',
+    gloss: 'This row cannot be imported as it is. The reason is listed next to it, by column.',
+  },
+  duplicate_in_file: {
+    label: 'duplicate_in_file',
+    gloss: 'The same phone number or email appears on an earlier row of this file, so this row is left out.',
+  },
+  imported: {
+    label: 'imported',
+    gloss: 'This row became a lead.',
+  },
+  skipped: {
+    label: 'skipped',
+    gloss: 'Not imported as a new lead: this person already had an open lead, and the row was recorded against it.',
+  },
+  existing_contact: {
+    label: 'existing_contact',
+    gloss: 'This person is already a customer on file. They get a new lead, and their record is left exactly as it is.',
+  },
+  ambiguous_contact: {
+    label: 'ambiguous_contact',
+    gloss: 'More than one customer on file shares this phone number or email. A person has to choose, or merge them, first.',
+  },
 });
 
 /** the entry for a term, or null — an unknown word is printed as it is, never guessed at. */

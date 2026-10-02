@@ -1549,3 +1549,63 @@ export function dashboardUrl(path = '') {
   const ref = projectRef();
   return ref ? `https://supabase.com/dashboard/project/${ref}${path}` : 'https://supabase.com/dashboard';
 }
+
+/* ── native lead capture (0024) ────────────────────────────────
+   thin wrappers over the `ops` function's `intake-*` actions, like everything above. the
+   console checks a form with the same `parseFormDefinition` the server runs, so a problem
+   shows as it is typed; the server checks again regardless. */
+
+export async function getIntake(tenantId) {
+  return (await callOps({ action: 'intake-overview', tenant_id: tenantId })).intake;
+}
+
+export async function saveIntakeForm(tenantId, form, id) {
+  return (await callOps({ action: 'intake-form-save', tenant_id: tenantId, form, ...(id ? { id } : {}) })).form;
+}
+
+export async function setIntakeFormStatus(tenantId, id, status) {
+  return (await callOps({ action: 'intake-form-status', tenant_id: tenantId, id, status })).form;
+}
+
+/* the one response that carries the token. it is shown once and kept nowhere. */
+export async function createIntakeEndpoint(tenantId, name) {
+  return (await callOps({ action: 'intake-endpoint-create', tenant_id: tenantId, endpoint: { name } })).created;
+}
+
+export async function revokeIntakeEndpoint(tenantId, id) {
+  return (await callOps({ action: 'intake-endpoint-revoke', tenant_id: tenantId, id })).endpoint;
+}
+
+export async function createIntakeLead(tenantId, lead) {
+  return (await callOps({ action: 'intake-lead-create', tenant_id: tenantId, lead })).arrival;
+}
+
+export async function inspectIntakeCsv(tenantId, csv) {
+  return (await callOps({ action: 'intake-import-inspect', tenant_id: tenantId, csv })).inspection;
+}
+
+export async function previewIntakeImport(tenantId, { fileName, csv, mapping, dedupeMinutes }) {
+  return (
+    await callOps({
+      action: 'intake-import-preview',
+      tenant_id: tenantId,
+      file_name: fileName,
+      csv,
+      mapping,
+      dedupe_minutes: dedupeMinutes,
+    })
+  ).preview;
+}
+
+export async function commitIntakeImport(tenantId, importId) {
+  return (await callOps({ action: 'intake-import-commit', tenant_id: tenantId, import_id: importId })).progress;
+}
+
+export async function cancelIntakeImport(tenantId, importId) {
+  return (await callOps({ action: 'intake-import-cancel', tenant_id: tenantId, import_id: importId })).import;
+}
+
+/* where the client's own system posts leads. the console prints it; it holds no key. */
+export function intakeHookUrl() {
+  return `${functionUrl('native-intake')}/hook`;
+}

@@ -42,6 +42,26 @@ const ConnectionCallback = lazyRoute(() => import('./portal/pages/ConnectionCall
 const OpsHome = lazyRoute(() => import('./portal/pages/OpsHome'));
 const Ops = lazyRoute(() => import('./portal/pages/Ops'));
 
+/* a client's hosted lead form (ARC-350). read by that business's own customer, so it is
+   split out like everything else here and carries none of the site's chrome. */
+const PublicForm = lazyRoute(() => import('./portal/pages/PublicForm'));
+
+/**
+ * the cursor square and the focus ring are ARC's, on ARC's pages. a hosted form belongs to
+ * the business that published it — often framed inside their own site — so it gets the
+ * browser's own cursor and focus outline instead.
+ */
+function Overlays() {
+  const { pathname } = useLocation();
+  if (pathname.startsWith('/form/')) return null;
+  return (
+    <>
+      <CursorSquare />
+      <FocusRing />
+    </>
+  );
+}
+
 /**
  * remembers which side of the product you were last on, so the marketing site
  * can tell an arrival from the portal apart from an arrival from anywhere else
@@ -93,12 +113,12 @@ export default function App() {
               these routes existing publicly gives away nothing but their names. */}
           <Route path="/ops" element={<OpsHome />} />
           <Route path="/ops/console/*" element={<Ops />} />
+          <Route path="/form/:key" element={<PublicForm />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
       <RouteWatch />
-      <CursorSquare />
-      <FocusRing />
+      <Overlays />
     </BrowserRouter>
   );
 }

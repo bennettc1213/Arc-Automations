@@ -1,0 +1,192 @@
+/* the hosted form (ARC-350). read by a business's customer, not by anybody who knows ARC:
+   a plain light page, the system font, large targets. nothing here uses the site's tokens,
+   so a change to the marketing site cannot restyle a client's contact form. */
+
+/* the site replaces the native cursor with its own square. not on somebody's contact form. */
+html.arc-form-page * {
+  cursor: auto !important;
+}
+
+html.arc-form-page button,
+html.arc-form-page select,
+html.arc-form-page label.pform__tick,
+html.arc-form-page input[type='checkbox'] {
+  cursor: pointer !important;
+}
+
+html.arc-form-page,
+html.arc-form-page body {
+  background: #f4f4f2;
+}
+
+.pform {
+  min-height: 100vh;
+  padding: clamp(16px, 5vw, 56px) 16px 32px;
+  background: #f4f4f2;
+  color: #1c1c1a;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.pform--embed {
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+
+html.arc-form-page:has(.pform--embed),
+html.arc-form-page:has(.pform--embed) body {
+  background: transparent;
+}
+
+.pform__card {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: clamp(20px, 4vw, 36px);
+  background: #fff;
+  border: 1px solid #dcdcd8;
+  border-radius: 10px;
+}
+
+.pform--embed .pform__card {
+  max-width: none;
+  border: 0;
+  border-radius: 0;
+  padding: 4px;
+}
+
+.pform__business {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: #5a5a55;
+}
+
+.pform__title {
+  margin: 0 0 8px;
+  font-size: clamp(22px, 3.4vw, 28px);
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.pform__intro {
+  margin: 0 0 20px;
+  color: #45453f;
+}
+
+.pform__field {
+  margin-top: 18px;
+}
+
+.pform__field > label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.pform__optional {
+  font-weight: 400;
+  color: #6b6b65;
+}
+
+.pform input:not([type='checkbox']),
+.pform select,
+.pform textarea {
+  width: 100%;
+  padding: 12px;
+  font: inherit;
+  color: inherit;
+  background: #fff;
+  border: 1px solid #9a9a94;
+  border-radius: 6px;
+}
+
+.pform textarea {
+  resize: vertical;
+  min-height: 110px;
+}
+
+.pform input:focus-visible,
+.pform select:focus-visible,
+.pform textarea:focus-visible,
+.pform button:focus-visible {
+  outline: 3px solid #1a5fd1;
+  outline-offset: 2px;
+}
+
+.pform input[aria-invalid='true'],
+.pform select[aria-invalid='true'],
+.pform textarea[aria-invalid='true'] {
+  border-color: #b3261e;
+}
+
+.pform__field > label.pform__tick {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14.5px;
+  font-weight: 400;
+}
+
+.pform__tick input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+}
+
+.pform__help,
+.pform__quiet {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: #5a5a55;
+}
+
+.pform__error {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: #b3261e;
+}
+
+.pform__hp {
+  position: absolute !important;
+  left: -9999px !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.pform__send {
+  margin-top: 24px;
+  width: 100%;
+  padding: 14px 18px;
+  font: inherit;
+  font-weight: 650;
+  color: #fff;
+  background: #1c1c1a;
+  border: 0;
+  border-radius: 6px;
+}
+
+.pform__send:hover:not(:disabled) {
+  background: #000;
+}
+
+.pform__send:disabled {
+  opacity: 0.6;
+}
+
+.pform__by {
+  max-width: 560px;
+  margin: 14px auto 0;
+  text-align: center;
+  font-size: 12px;
+  color: #77776f;
+}
+
+.pform--embed .pform__by {
+  text-align: left;
+  padding: 0 4px;
+}
