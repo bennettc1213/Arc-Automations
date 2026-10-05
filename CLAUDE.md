@@ -214,6 +214,18 @@ knows about an arrival is on `crm_source_events`' own columns; what a browser cl
 not permission to send. A stranger is told only that it arrived; the form's key is not the
 tenant's id. The console page is `IntakePanel.jsx` (`/ops/console/clients/:id/intake`).
 
+**A business works its leads in one workspace, drawn for both sides** (`0025`, `_shared/crm/{inbox,workspace,actions}.ts`,
+`crm`, `CrmWorkspace.jsx`, ARC-360; docs/architecture/ARC_CRM_WORKSPACE.md). The client's `lead inbox`
+(`/portal/dashboard/inbox`, through the `crm` function as a `client_user` whose role is read from
+`tenant_members`), the console's per-client page (`/ops/console/clients/:id/crm`, through `ops`) and
+`/demo/inbox` (generated rows, read-only) are one component over one action table, so they cannot
+disagree. Which leads need attention is `inbox.ts` — portal-safe, never stored: "not contacted" is the
+pipeline's entry stage, "waiting on the customer" is the stage's `waits_on` (never its name), and blocked
+is the suppression list and Lead Recovery's own row, by reference. Every write is still ARC-340's service
+or ARC-350's `createManualLead`; a bulk change is each lead's own update. A stage keeps its key and kind,
+and `crm_save_stages` is the only way to change a pipeline. A won stage is what a person set — it writes
+no `events` row and no figure reads it.
+
 **The words on screen are the system's words, each with its meaning attached** (ARC-340 clarity
 pass, `lib/glossary.js`, `Term` / `Consequence` in `ui.jsx`). A state name is never renamed or
 hidden to make a page simpler: wrap it in `<Term k="…">` and add the gloss to the glossary.

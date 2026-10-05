@@ -13,6 +13,7 @@ import ClientDetail from '../pages/ops/ClientDetail';
 import ClientSettings from '../pages/ops/ClientSettings';
 import ClientActivation from '../pages/ops/ClientActivation';
 import ClientIntake from '../pages/ops/ClientIntake';
+import ClientCrm from '../pages/ops/ClientCrm';
 import NewClient from '../pages/ops/NewClient';
 import PastClients from '../pages/ops/PastClients';
 import Identity from '../pages/ops/Identity';
@@ -391,6 +392,7 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, onRel
             <Route path="clients/:tenantId/settings" element={<ClientSettings {...ctx} />} />
             <Route path="clients/:tenantId/activation/:moduleKey?" element={<ClientActivation {...ctx} />} />
             <Route path="clients/:tenantId/intake" element={<ClientIntake {...ctx} />} />
+            <Route path="clients/:tenantId/crm" element={<ClientCrm {...ctx} />} />
             <Route path="past-clients" element={<PastClients {...ctx} />} />
             <Route path="activity" element={<OpsActivity {...ctx} />} />
             <Route path="servers" element={<Servers {...ctx} />} />

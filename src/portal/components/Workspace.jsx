@@ -5,6 +5,7 @@ import Topbar from './Topbar';
 import CommandPalette from './CommandPalette';
 import Overview from '../pages/dash/Overview';
 import Leads from '../pages/dash/Leads';
+import Inbox from '../pages/dash/Inbox';
 import Activity from '../pages/dash/Activity';
 import Automations from '../pages/dash/Automations';
 import Reliability from '../pages/dash/Reliability';
@@ -194,6 +195,7 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
           {page.blurb && <p className="ws-intro">{page.blurb}</p>}
           <Routes>
             <Route index element={<Overview {...pageProps} />} />
+            <Route path="inbox" element={<Inbox {...pageProps} />} />
             <Route path="leads" element={<Leads {...pageProps} />} />
             <Route path="estimates" element={<Estimates {...pageProps} />} />
             <Route path="reviews" element={<Reviews {...pageProps} />} />

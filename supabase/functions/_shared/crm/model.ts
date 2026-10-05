@@ -52,6 +52,8 @@ export const AUTHORITIES = ['arc', 'external', 'hybrid'] as const;
 export type Authority = typeof AUTHORITIES[number];
 
 export const STAGE_KINDS = ['open', 'won', 'lost'] as const;
+/** ARC-360 (0025): who a lead in an open stage is waiting on. a closed stage waits on nobody. */
+export const STAGE_WAITS = ['us', 'customer'] as const;
 export const PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
 export const VALUE_SOURCES = ['customer_provided', 'operator_entered', 'external_system', 'price_book'] as const;
 export const TASK_KINDS = ['follow_up', 'call', 'visit', 'other'] as const;
@@ -622,7 +624,7 @@ export interface PipelineInput {
   key: string;
   name: string;
   is_default: boolean;
-  stages: { key: string; name: string; kind: string; marks_qualified: boolean }[];
+  stages: { key: string; name: string; kind: string; waits_on: string; marks_qualified: boolean }[];
 }
 
 /** a pipeline arrives whole: at least one open stage, no two stages with one key. */
@@ -640,10 +642,11 @@ export function parsePipelineInput(raw: unknown): Parsed<PipelineInput> {
     const seen = new Set<string>();
     list.forEach((item, i) => {
       const s = new Reader(asObject(item), false);
-      s.unknown(['key', 'name', 'kind', 'marks_qualified']);
+      s.unknown(['key', 'name', 'kind', 'waits_on', 'marks_qualified']);
       s.key('key', { required: true });
       s.text('name', 120, { required: true });
       s.oneOf('kind', STAGE_KINDS);
+      s.oneOf('waits_on', STAGE_WAITS);
       s.bool('marks_qualified');
       for (const e of s.errors) r.fail(`stages[${i}].${e.field}`, e.message);
       const key = s.out.key as string | undefined;
@@ -653,6 +656,7 @@ export function parsePipelineInput(raw: unknown): Parsed<PipelineInput> {
         key: key ?? '',
         name: (s.out.name as string) ?? '',
         kind: (s.out.kind as string) ?? 'open',
+        waits_on: (s.out.kind ?? 'open') === 'open' ? (s.out.waits_on as string) ?? 'us' : 'us',
         marks_qualified: s.out.marks_qualified === true,
       });
     });
@@ -660,6 +664,72 @@ export function parsePipelineInput(raw: unknown): Parsed<PipelineInput> {
   }
   if (r.errors.length > 0) return { ok: false, errors: r.errors };
   return { ok: true, value: { key: r.out.key as string, name: r.out.name as string, is_default: r.out.is_default === true, stages } };
+}
+
+export interface StageEdit {
+  id?: string;
+  key?: string;
+  name: string;
+  kind?: string;
+  waits_on: string;
+  marks_qualified: boolean;
+  retired: boolean;
+}
+
+/**
+ * ARC-360: a pipeline's whole ordered stage list, as the screen edits it. A stage with an id
+ * is that stage — renamed, moved, retired or brought back; its key and its kind never change
+ * (0025 refuses it too). A stage without an id is new and needs a key. Leaving a stage out
+ * is not how one is removed: it is retired, and 0025 says so if one is missing.
+ */
+export function parseStagesInput(raw: unknown): Parsed<{ pipeline_id: string; stages: StageEdit[] }> {
+  const source = asObject(raw);
+  const r = new Reader(source, false);
+  r.unknown(['pipeline_id', 'stages']);
+  r.uuid('pipeline_id', { required: true });
+  const stages: StageEdit[] = [];
+  const list = Array.isArray(source.stages) ? source.stages : null;
+  if (!list || list.length === 0 || list.length > 20) r.fail('stages', 'a pipeline has 1 to 20 stages');
+  else {
+    const keys = new Set<string>();
+    const ids = new Set<string>();
+    list.forEach((item, i) => {
+      const raw = asObject(item);
+      const s = new Reader(raw, false);
+      s.unknown(['id', 'key', 'name', 'kind', 'waits_on', 'marks_qualified', 'retired']);
+      s.uuid('id');
+      if (s.out.id) {
+        if (has(raw, 'kind')) s.fail('kind', 'a stage keeps its kind — add a new stage instead');
+        if (has(raw, 'key')) s.fail('key', 'a stage keeps its key');
+      } else {
+        s.key('key', { required: true });
+        s.oneOf('kind', STAGE_KINDS);
+      }
+      s.text('name', 120, { required: true });
+      s.oneOf('waits_on', STAGE_WAITS);
+      s.bool('marks_qualified');
+      s.bool('retired');
+      for (const e of s.errors) r.fail(`stages[${i}].${e.field}`, e.message);
+      const id = s.out.id as string | undefined;
+      const key = s.out.key as string | undefined;
+      if (id && ids.has(id)) r.fail(`stages[${i}].id`, 'this stage is listed twice');
+      if (key && keys.has(key)) r.fail(`stages[${i}].key`, `"${key}" is used by another new stage`);
+      if (id) ids.add(id);
+      if (key) keys.add(key);
+      stages.push({
+        ...(id ? { id } : { key, kind: (s.out.kind as string) ?? 'open' }),
+        name: (s.out.name as string) ?? '',
+        waits_on: (s.out.waits_on as string) ?? 'us',
+        marks_qualified: s.out.marks_qualified === true,
+        retired: s.out.retired === true,
+      });
+    });
+    if (!stages.some((s) => !s.retired && (s.id || s.kind === 'open'))) {
+      r.fail('stages', 'a pipeline keeps at least one stage that is not retired');
+    }
+  }
+  if (r.errors.length > 0) return { ok: false, errors: r.errors };
+  return { ok: true, value: { pipeline_id: r.out.pipeline_id as string, stages } };
 }
 
 /* policy, mappings, source */

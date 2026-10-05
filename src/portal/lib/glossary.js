@@ -175,6 +175,60 @@ export const GLOSSARY = Object.freeze({
     label: 'ambiguous_contact',
     gloss: 'More than one customer on file shares this phone number or email. A person has to choose, or merge them, first.',
   },
+
+  /* ── the lead inbox and pipeline (ARC-360) ── */
+  open: {
+    label: 'open',
+    gloss: 'Still being worked. Its stage is one the business has not marked won or lost.',
+  },
+  won: {
+    label: 'won',
+    gloss: 'Moved to a won stage by a person. It records what they set, and is not counted as a proven result.',
+  },
+  lost: {
+    label: 'lost',
+    gloss: 'Closed as lost by a person, with the reason they gave.',
+  },
+  attention: {
+    label: 'needs attention',
+    gloss: 'Open, and something here is for a person to do: not contacted yet, a task overdue, no next step, or blocked.',
+  },
+  untouched: {
+    label: 'not contacted',
+    gloss: 'Still in the first stage of the pipeline. Nobody has moved it on since it arrived.',
+  },
+  overdue: {
+    label: 'overdue',
+    gloss: 'An open task on this lead was due before now.',
+  },
+  unowned: {
+    label: 'no owner',
+    gloss: 'Nobody on the team is named as responsible for this lead yet.',
+  },
+  waiting: {
+    label: 'waiting on customer',
+    gloss: 'In a stage the business marked as waiting on the customer, such as a quote that is out. It is not chased until a task says so.',
+  },
+  blocked: {
+    label: 'blocked',
+    gloss: 'A person decides what happens next: the customer asked not to be contacted, or the automation handed it to a person.',
+  },
+  do_not_contact: {
+    label: 'do not contact',
+    gloss: 'This address is on the do-not-contact list. Nothing automatic is sent to it, whatever the lead says.',
+  },
+  handed_to_person: {
+    label: 'handed to a person',
+    gloss: 'Lead recovery stopped and passed this lead to a person. It does not start again on its own.',
+  },
+  safety_flag: {
+    label: 'flagged',
+    gloss: 'A safety rule flagged this conversation, for example an emergency or a complaint. A person reads it before anything else happens.',
+  },
+  kept_elsewhere: {
+    label: 'kept in their system',
+    gloss: 'This field belongs to the business\'s own software. Change it there; it cannot be edited here.',
+  },
 });
 
 /** the entry for a term, or null — an unknown word is printed as it is, never guessed at. */

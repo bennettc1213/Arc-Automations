@@ -121,6 +121,12 @@
  *   Activation, pause, resume, shadow and health stay the module-lifecycle actions above;
  *   connecting and disconnecting a provider stay the `connections` function's.
  *
+ * The CRM workspace — ARC-360 (migration 0025). The table is ../_shared/crm/actions.ts, which
+ * the client-facing `crm` function runs too, with a client user as the actor:
+ *
+ *   crm-workspace · crm-lead-view · crm-contact-view · crm-lead-bulk · crm-lead-quick-add ·
+ *   crm-stages-save   (and the CRM actions above it shares by name: crm-lead-update, …)
+ *
  * Roadmap assistant — read-only, so not audited. Documented in ./roadmap.ts and
  * docs/architecture/ARC_ROADMAP_ASSISTANT.md:
  *
@@ -169,6 +175,7 @@ import { supabaseTenantStore } from '../_shared/tenants/supabase-tenant-store.ts
 import { CRM_ACTIONS, handleCrmAction } from './crm.ts';
 import { supabaseCrmStore } from '../_shared/crm/supabase-crm-store.ts';
 import { handleIntakeAction, INTAKE_ACTIONS } from './intake.ts';
+import { handleWorkspaceAction, WORKSPACE_ACTIONS } from '../_shared/crm/actions.ts';
 import { supabaseIntakeStore } from '../_shared/intake/supabase-intake-store.ts';
 import { createRoadmapLimiter, handleRoadmapAction, ROADMAP_ACTIONS } from './roadmap.ts';
 import { operatorGate } from '../_shared/operator-gate.ts';
@@ -256,6 +263,7 @@ const ACTIONS = [
   ...ACTIVATION_ACTIONS,
   ...TENANT_ACTIONS,
   ...CRM_ACTIONS,
+  ...WORKSPACE_ACTIONS.filter((name) => !CRM_ACTIONS.includes(name)),
   ...INTAKE_ACTIONS,
   ...ROADMAP_ACTIONS,
 ];
@@ -545,6 +553,32 @@ Deno.serve(async (request) => {
         return json({ error: 'creating a client needs supabase/migrations/0021_ops_tenant_creation.sql applied first', detail: message }, 501);
       }
       console.error(`tenant action ${action} failed`, error);
+      return json({ error: message }, 500);
+    }
+  }
+
+  // ── the CRM workspace (ARC-360, 0025) ──────────────────────────────────
+
+  /* the inbox, board and lead views, the same table the client's own `crm` function runs —
+     an operator here, a client user there. the names it shares with the CRM actions below
+     (crm-lead-update, crm-note-add, …) stay theirs, and call the same service. */
+  if (WORKSPACE_ACTIONS.includes(action) && !CRM_ACTIONS.includes(action)) {
+    try {
+      const result = await handleWorkspaceAction(action, {
+        deps: { crm: supabaseCrmStore(db), intake: supabaseIntakeStore(db) },
+        actor: actorId ? { kind: 'operator', userId: actorId } : null,
+        body: body as unknown as Record<string, unknown>,
+      });
+      return json(result.body, result.status);
+    } catch (error) {
+      const message = (error as Error)?.message ?? 'the action failed';
+      if (/crm_save_stages|waits_on|crm_pipeline_revisions/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'the workspace needs supabase/migrations/0025_crm_workspace.sql applied first', detail: message }, 501);
+      }
+      if (/crm_|business_/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'the workspace needs supabase/migrations/0023_crm_core.sql and 0024_native_intake.sql applied first', detail: message }, 501);
+      }
+      console.error(`workspace action ${action} failed`, error);
       return json({ error: message }, 500);
     }
   }

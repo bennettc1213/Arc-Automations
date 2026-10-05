@@ -27,6 +27,16 @@ export const NAV_GROUPS = [
         blurb: 'the lifecycle, what needs you, and whether it is all running',
       },
       {
+        /* ARC-360: the team's own working list. not a lifecycle module — it has no `module`
+           key, so it is in every client's rail — and not read off the event log: it is who
+           owns a lead and what is due, where lead capture below is what provably happened. */
+        to: 'inbox',
+        icon: 'clients',
+        label: 'lead inbox',
+        title: 'lead inbox & pipeline',
+        blurb: 'your leads to work: who owns each, what stage it is in, and what is due',
+      },
+      {
         /* the route keeps its original path. this page grew from "every lead" into the
            whole capture stage — qualification, routing, escalation — but a client who
            bookmarked /leads two years ago still lands where they meant to. */

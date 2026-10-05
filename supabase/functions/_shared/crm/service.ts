@@ -85,6 +85,14 @@ export interface CrmStore {
   createPipeline(tenantId: string, pipeline: PipelineInput): Promise<{ pipeline: Row; stages: Row[] }>;
   mergeContacts(request: { tenantId: string; winnerId: string; loserId: string; actorType: string; actorId: string | null }): Promise<Row>;
   suppressions(tenantId: string, addresses: string[]): Promise<Row[]>;
+  /* ARC-360's workspace (`workspace.ts`). optional: a store without them reads as "nobody
+     named" and "no Lead Recovery state", and cannot change stages. */
+  /** the client's members, and any other user named in `alsoNamed`, with their sign-in address. role is owner | staff | operator | former. */
+  people?(tenantId: string, alsoNamed: string[]): Promise<{ user_id: string; email: string | null; role: string }[]>;
+  /** Lead Recovery's own rows (0010 `leads`) for these ids: id, status, safety_flags. */
+  recoveryStates?(tenantId: string, ids: string[]): Promise<Row[]>;
+  /** 0025's crm_save_stages: the whole ordered list, in one transaction. */
+  saveStages?(tenantId: string, pipelineId: string, stages: unknown[], actorType: string, actorId: string): Promise<Row>;
 }
 
 export const CRM_ERROR_STATUS = Object.freeze({

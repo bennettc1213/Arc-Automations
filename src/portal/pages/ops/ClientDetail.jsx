@@ -404,6 +404,10 @@ function ClientBody({ client, base, reload, reloadBuilds, probe, runProbe }) {
           <Icon name="leads" size={13} />
           lead capture — forms, a file, the desk, their own systems
         </Link>
+        <Link className="ws-btn" to={`${base}/clients/${tenant.id}/crm`}>
+          <Icon name="clients" size={13} />
+          lead inbox — their leads, pipeline, tasks and customers
+        </Link>
       </div>
 
       {/* the execution layer. placed under the build checklist and above the stat row for

@@ -13,7 +13,7 @@
 import { CRM_ERROR_STATUS, type CrmErrorCode, type CrmStore, CrmStoreError, type CrmTable, type Row, type RowQuery } from './service.ts';
 
 // deno-lint-ignore no-explicit-any
-type Db = { from(table: string): any; rpc(name: string, args?: Record<string, unknown>): any };
+type Db = { from(table: string): any; rpc(name: string, args?: Record<string, unknown>): any; auth?: any };
 type DbError = { code?: string | null; message?: string; details?: string | null };
 
 /** `arc_crm:<code>: …` → a CrmStoreError, or null for anything else. */
@@ -117,6 +117,50 @@ export function supabaseCrmStore(db: Db): CrmStore {
       const { data, error } = await db.from('suppressions').select('*').eq('tenant_id', tenantId).in('address', addresses);
       if (error) fail('read suppressions', error);
       return data ?? [];
+    },
+
+    async people(tenantId, alsoNamed) {
+      const { data, error } = await db.from('tenant_members').select('user_id, role').eq('tenant_id', tenantId);
+      if (error) fail('read members', error);
+      const roles = new Map<string, string | null>((data ?? []).map((m: Row) => [m.user_id as string, m.role as string]));
+      const others = [...new Set(alsoNamed)].filter((id) => !roles.has(id));
+      if (others.length > 0) {
+        const { data: admins, error: adminError } = await db.from('arc_admins').select('user_id').in('user_id', others);
+        if (adminError) fail('read operators', adminError);
+        const operators = new Set((admins ?? []).map((a: Row) => a.user_id as string));
+        /* named on a record but neither a member nor an operator: somebody since unlinked. */
+        for (const id of others) roles.set(id, operators.has(id) ? 'operator' : 'former');
+      }
+      /* a sign-in address lives in auth, which only the admin API reads. without it (a test
+         client) a person is still listed, by role. */
+      const admin = db.auth?.admin;
+      return await Promise.all([...roles].map(async ([userId, role]) => {
+        let email: string | null = null;
+        if (admin?.getUserById) {
+          const { data: found } = await admin.getUserById(userId);
+          email = found?.user?.email ?? null;
+        }
+        return { user_id: userId, email, role };
+      }));
+    },
+
+    async recoveryStates(tenantId, ids) {
+      if (ids.length === 0) return [];
+      const { data, error } = await db.from('leads').select('id, status, safety_flags').eq('tenant_id', tenantId).in('id', ids);
+      if (error) fail('read recovery leads', error);
+      return data ?? [];
+    },
+
+    async saveStages(tenantId, pipelineId, stages, actorType, actorId) {
+      const { data, error } = await db.rpc('crm_save_stages', {
+        p_tenant: tenantId,
+        p_pipeline: pipelineId,
+        p_stages: stages,
+        p_actor_type: actorType,
+        p_actor: actorId,
+      });
+      if (error) fail('save stages', error);
+      return data as Row;
     },
   };
 }

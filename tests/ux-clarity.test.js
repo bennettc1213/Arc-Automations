@@ -154,7 +154,7 @@ describe('the shared shell', () => {
       assert.ok(item.label && item.title && item.icon, item.to);
       assert.ok(item.blurb && item.blurb.length >= 12, `${item.label} has a blurb`);
     }
-    assert.equal(NAV_ITEMS.length, 12, 'no client page was removed');
+    assert.equal(NAV_ITEMS.length, 13, 'no client page was removed (the lead inbox, ARC-360, made thirteen)');
     assert.equal(OPS_NAV_ITEMS.length, 10, 'no console page was removed');
   });
 

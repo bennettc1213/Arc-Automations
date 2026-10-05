@@ -32,6 +32,7 @@ const BASE = `http://localhost:${PORT}${BASE_PATH}`;
 /* every page the workspace can render, at the route the demo serves it from. */
 const PAGES = [
   ['overview', '/demo'],
+  ['inbox', '/demo/inbox'],
   ['leads', '/demo/leads'],
   ['estimates', '/demo/estimates'],
   ['reviews', '/demo/reviews'],

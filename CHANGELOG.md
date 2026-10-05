@@ -7,6 +7,35 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- `ARC_ROADMAP.md`: a one-page view of the whole build sequence, with each step's status
+  checked against the commits and migrations, the gates code alone does not close, and the
+  owner's own tasks. It summarises the canonical and master roadmap files and replaces neither.
+- `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
+  `PORTAL_CONTEXT.md`).
+
+## [1.29.0] - 2026-10-05
+
+Built straight onto the live site at Ben's request: migration `0025`, the new `crm` function
+and the redeployed `ops` function are on the live project, not only in the repository.
+
+### Added
+
+- **ARC-360: the lead inbox and CRM workspace.** A business can open ARC and work its leads.
+  - **Client dashboard: `lead inbox`** (`/portal/dashboard/inbox`, and read-only over generated
+    leads at `/demo/inbox`). Queues for what needs attention, not contacted, overdue, no owner,
+    waiting on the customer, blocked, mine, all open and booked or closed; search, filters and
+    sorting; a pipeline board (drag a card or use its menu); tasks by due date; customers.
+  - **A lead's page:** stage, owner, priority, details, next steps, notes, where it came from
+    (the form, file or endpoint by name, what was ticked), do-not-contact status and its history.
+  - **Ops console: the same workspace per client** (`/ops/console/clients/:id/crm`).
+  - **Stages a client can shape** (`0025`): rename, reorder, add, retire, and say which stages
+    are waiting on the customer. A stage's meaning (open, won, lost) is fixed once made.
+  - **Bulk move and hand-over**, each lead changed on its own with its own history entry.
+  - A new `crm` edge function for a client's own team; the role comes from `tenant_members`.
+  - What a client's own system owns is shown, disabled and named; the server refuses it anyway.
+
 ## [1.28.0] - 2026-10-02
 
 The site changes are live once pushed. Migration `0024` and the edge functions reach Supabase
