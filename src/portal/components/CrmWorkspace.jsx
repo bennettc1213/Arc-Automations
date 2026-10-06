@@ -9,12 +9,14 @@ import {
 } from '../../../supabase/functions/_shared/crm/inbox.ts';
 import { ago, ContactDetail, LeadDetail, moveLead, ownerOptions, personLabel, QuickAdd, SOURCE_WORDS, STATUS_TONE, ThreadOnly, useChange, when } from './CrmRecord';
 import { Conversations } from './CrmConversation';
+import { Bookings } from './CrmBooking';
 import '../ops.css';
 import './CrmWorkspace.css';
 
 /**
  * ARC-360 — the day-to-day CRM workspace: the lead inbox, the pipeline board, tasks, customers —
- * and, since ARC-370, the conversations with them (CrmConversation.jsx).
+ * and, since ARC-370, the conversations with them (CrmConversation.jsx), and since ARC-380 the
+ * appointments booked for them (CrmBooking.jsx).
  *
  * One component for both sides. A client's dashboard and the operator's console pass it an
  * `api` (lib/crm.js) pointed at their own door, and the demo passes one over generated rows;
@@ -31,6 +33,7 @@ const TABS = [
   ['tasks', 'tasks'],
   ['customers', 'customers'],
   ['conversations', 'conversations'],
+  ['bookings', 'bookings'],
   ['stages', 'stages'],
 ];
 const SORT_WORDS = { newest: 'newest first', oldest: 'oldest first', next_due: 'next task due', priority: 'priority', updated: 'last changed' };
@@ -42,12 +45,13 @@ function Signals({ state }) {
   return (
     <span className="crm-signals">
       {state.blocked.length > 0 && <Pill tone="warn" title={state.blocked.map((b) => b.detail).join(' · ')}><Term k="blocked">blocked</Term></Pill>}
+      {state.booking_request && <Pill tone="warn"><Term k="appt_requested">booking to answer</Term></Pill>}
       {state.overdue && <Pill tone="warn"><Term k="overdue">overdue</Term></Pill>}
       {state.untouched && <Pill tone="idle"><Term k="untouched">not contacted</Term></Pill>}
       {state.waiting && <Pill tone="neutral"><Term k="waiting">waiting on customer</Term></Pill>}
       {state.closed && <Pill tone={STATUS_TONE[state.lead.status]}><Term k={state.lead.status}>{state.lead.status}</Term></Pill>}
       {PRIORITY_TONE[state.lead.priority] && !state.closed && <Pill tone={PRIORITY_TONE[state.lead.priority]}>{state.lead.priority}</Pill>}
-      {!state.closed && !state.waiting && !state.untouched && !state.next_task && <span className="ops-muted">no next step</span>}
+      {!state.closed && !state.waiting && !state.untouched && !state.next_task && !state.next_appointment && <span className="ops-muted">no next step</span>}
     </span>
   );
 }
@@ -166,7 +170,8 @@ function Inbox({ api, ws, states, timezone, readOnly, onOpen, reload }) {
                     <td>{stage?.name ?? '—'}</td>
                     <td>{personLabel(ws.people, lead.owner_user_id) ?? <span className="ops-muted"><Term k="unowned">no owner</Term></span>}</td>
                     <td>
-                      {next ? <>{next.title}<span className="crm-item__meta">{next.due_at ? `due ${when(next.due_at, timezone)}` : 'no due date'}</span></> : <span className="ops-muted">{state.closed ? '—' : 'none'}</span>}
+                      {next ? <>{next.title}<span className="crm-item__meta">{next.due_at ? `due ${when(next.due_at, timezone)}` : 'no due date'}</span></> : !state.next_appointment && <span className="ops-muted">{state.closed ? '—' : 'none'}</span>}
+                      {state.next_appointment && <span className="crm-item__meta">{state.next_appointment.status === 'requested' ? 'asked for' : 'booked for'} {when(state.next_appointment.starts_at, timezone)}</span>}
                     </td>
                     <td><Signals state={state} /></td>
                     <td><span title={when(lead.created_at, timezone)}>{ago(lead.created_at, timezone)}</span></td>
@@ -538,6 +543,15 @@ export default function CrmWorkspace({ api, timezone: zone, readOnly: forcedRead
               timezone={timezone}
               onOpenContact={(id) => setOpen({ kind: 'contact', id })}
               onOpenThread={(id) => setOpen({ kind: 'thread', id })}
+            />
+          )}
+          {tab === 'bookings' && (
+            <Bookings
+              api={api}
+              timezone={timezone}
+              readOnly={readOnly}
+              onOpenLead={(id) => setOpen({ kind: 'lead', id })}
+              onOpenContact={(id) => setOpen({ kind: 'contact', id })}
             />
           )}
           {tab === 'stages' && <Stages key={ws.read_at} api={api} ws={ws} reload={reload} />}

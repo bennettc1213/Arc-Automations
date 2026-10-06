@@ -45,7 +45,8 @@ export const ACTIVITY_TYPES = [
   'mapping_added', 'mapping_removed',
 ] as const;
 
-export const OBJECT_TYPES = ['contact', 'lead', 'task', 'note', 'location', 'service'] as const;
+/* 0023's six, and — since ARC-380 (0027) — an appointment. */
+export const OBJECT_TYPES = ['contact', 'lead', 'task', 'note', 'location', 'service', 'appointment'] as const;
 export type ObjectType = typeof OBJECT_TYPES[number];
 
 export const AUTHORITIES = ['arc', 'external', 'hybrid'] as const;
@@ -76,6 +77,10 @@ export const POLICY_FIELDS: Readonly<Record<ObjectType, readonly string[]>> = Ob
   note: ['body'],
   location: ['name', 'address_line1', 'address_line2', 'city', 'region', 'postal_code', 'country', 'phone'],
   service: ['name', 'description', 'default_duration_minutes', 'category_id'],
+  /* whose calendar it is: the time, and whether the appointment stands. who has it in ARC
+     (`assigned_user_id`) and how it stands against their calendar are ARC's working state. */
+  appointment: ['starts_at', 'ends_at', 'status', 'title', 'service_id', 'location_id',
+    'address_line1', 'city', 'region', 'postal_code', 'customer_note'],
 });
 
 /* ── who is acting ──────────────────────────────────────── */

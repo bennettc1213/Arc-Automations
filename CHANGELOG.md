@@ -15,6 +15,49 @@ documented here. Format loosely follows
 - `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
   `PORTAL_CONTEXT.md`).
 
+## [1.31.0] - 2026-10-06
+
+### Added
+
+- **ARC-380: scheduling, availability and booking.** A lead becomes a time on a day, inside ARC.
+  - **A hosted booking page** at `/book/<key>`, and the same page as a frame for the business's
+    own site. A customer chooses what the appointment is for, a free time and leaves their
+    details; every time is shown in the business's own timezone. A booking arrives as a lead
+    with its appointment, its consent evidence and where it came from.
+  - **A customer's own link** to move or cancel their booking, within what the business allows
+    and no closer to the appointment than it allows. The link is kept only as a hash and is
+    never in a query string.
+  - **Booking from a lead** in the workspace, and a **`bookings` view** in the lead inbox: what
+    is waiting for an answer, the week, and each appointment's legal next steps — confirm,
+    decline, move, cancel, mark as done or as a no-show, hand to somebody. Every change is in
+    the appointment's history with who made it and through which door, and in the lead's timeline.
+  - **Requested or confirmed.** An appointment type can need approval: a customer's booking of
+    it holds the time and waits for a person. One that does not is confirmed at once.
+  - **Setup for the account owner**: the hours bookings follow, the step between times, notice,
+    how far ahead, buffers, how many appointments may overlap, closed days, what a customer may
+    change from their link, and whether an address outside the service area is turned away.
+  - **Two bookings cannot take the same time.** The check is in the appointment's own guard,
+    under one lock per client, so it holds on every path. The page that lost is told the time
+    has gone and is shown the times again.
+  - **The business's own calendar can be the authority** (ARC-340's policy, now covering
+    appointments). ARC then offers no times, takes a preferred time as a request, and nobody on
+    ARC's side confirms or moves it. A report from that calendar that disagrees with something
+    ARC owns is never applied and never dropped: the appointment is frozen until the account
+    owner or an operator chooses. No calendar adapter exists yet, so nothing reports.
+  - The lead inbox reads a booked time as a lead's next step and a booking request as something
+    to answer.
+  - Migration `0027_crm_booking.sql`, the `native-booking` edge function, and ten
+    `crm-booking*` / `crm-appointment-*` actions on `crm` and `ops`. Architecture:
+    `docs/architecture/ARC_BOOKING.md`.
+  - Nothing here sends the customer a message, queues a reminder or writes `events`. A confirmed
+    or completed appointment is a calendar entry a person set, and is not counted as a result.
+
+### Changed
+
+- The lead's "where it came from" names a booking page as the door it came through.
+- `npm run smoke` also renders the hosted booking page and a customer's link, at an address
+  that is neither.
+
 ## [1.30.0] - 2026-10-05
 
 ### Added

@@ -45,15 +45,17 @@ const Ops = lazyRoute(() => import('./portal/pages/Ops'));
 /* a client's hosted lead form (ARC-350). read by that business's own customer, so it is
    split out like everything else here and carries none of the site's chrome. */
 const PublicForm = lazyRoute(() => import('./portal/pages/PublicForm'));
+/* a client's hosted booking page, and the page a customer's own link opens (ARC-380). */
+const PublicBooking = lazyRoute(() => import('./portal/pages/PublicBooking'));
 
 /**
- * the cursor square and the focus ring are ARC's, on ARC's pages. a hosted form belongs to
- * the business that published it — often framed inside their own site — so it gets the
- * browser's own cursor and focus outline instead.
+ * the cursor square and the focus ring are ARC's, on ARC's pages. a hosted form or booking
+ * page belongs to the business that published it — often framed inside their own site — so it
+ * gets the browser's own cursor and focus outline instead.
  */
 function Overlays() {
   const { pathname } = useLocation();
-  if (pathname.startsWith('/form/')) return null;
+  if (pathname.startsWith('/form/') || pathname.startsWith('/book/')) return null;
   return (
     <>
       <CursorSquare />
@@ -114,6 +116,8 @@ export default function App() {
           <Route path="/ops" element={<OpsHome />} />
           <Route path="/ops/console/*" element={<Ops />} />
           <Route path="/form/:key" element={<PublicForm />} />
+          <Route path="/book/:key" element={<PublicBooking />} />
+          <Route path="/book/:key/manage" element={<PublicBooking manage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>

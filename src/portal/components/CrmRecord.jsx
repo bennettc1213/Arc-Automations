@@ -5,6 +5,7 @@ import { Empty, Pill, Term } from './ui';
 import { ActionButton, Field, Notice, SelectInput, TextArea, TextInput } from './ops-ui';
 import { formatPhone } from '../lib/format';
 import Conversation from './CrmConversation';
+import { RecordBooking } from './CrmBooking';
 import { lockedFields } from '../../../supabase/functions/_shared/crm/inbox.ts';
 
 /**
@@ -21,7 +22,7 @@ export const SOURCE_WORDS = {
   missed_call: 'missed call', inbound_call: 'call', inbound_sms: 'text', inbound_email: 'email', web_form: 'form',
   manual: 'typed in', import: 'import', webhook: 'api', referral: 'referral', external_system: 'their system', other: 'other',
 };
-const DOOR_WORDS = { form: 'form', api: 'their system, through an endpoint', import: 'a file', manual: 'typed in by a person', other: '—' };
+const DOOR_WORDS = { form: 'form', booking: 'booking page', api: 'their system, through an endpoint', import: 'a file', manual: 'typed in by a person', other: '—' };
 const ACTIVITY_WORDS = {
   lead_created: 'arrived', lead_updated: 'details changed', lead_stage_changed: 'moved', lead_owner_changed: 'handed over',
   lead_archived: 'archived', lead_restored: 'restored', note_added: 'note added', note_archived: 'note archived',
@@ -29,6 +30,9 @@ const ACTIVITY_WORDS = {
   task_reopened: 'task reopened', contact_created: 'customer added', contact_updated: 'customer details changed',
   contact_archived: 'customer archived', contact_restored: 'customer restored', contact_merged: 'merged',
   contact_owner_changed: 'customer handed over', mapping_added: 'linked to their system', mapping_removed: 'unlinked from their system',
+  appointment_requested: 'appointment requested', appointment_confirmed: 'appointment confirmed', appointment_declined: 'appointment request declined',
+  appointment_rescheduled: 'appointment moved', appointment_cancelled: 'appointment cancelled', appointment_completed: 'appointment completed',
+  appointment_no_show: 'customer did not show',
 };
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 const VALUE_SOURCES = [
@@ -464,6 +468,11 @@ export function LeadDetail({ api, leadId, timezone, readOnly, businessName, onCh
       )}
 
       <section className="crm-section">
+        <h4>appointments</h4>
+        <RecordBooking api={api} by={{ lead_id: lead.id }} timezone={timezone} readOnly={!canWrite} onChanged={changed} />
+      </section>
+
+      <section className="crm-section">
         <h4>next steps</h4>
         <TaskList api={api} tasks={view.tasks} people={people} timezone={timezone} readOnly={!canWrite} onChanged={changed} />
         {canWrite && <NewTask api={api} target={{ lead_id: lead.id }} people={people} viewer={viewer} onChanged={changed} />}
@@ -657,6 +666,11 @@ export function ContactDetail({ api, contactId, timezone, readOnly, businessName
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="crm-section">
+        <h4>appointments</h4>
+        <RecordBooking api={api} by={{ contact_id: contact.id }} timezone={timezone} readOnly={!canWrite} onChanged={changed} />
       </section>
 
       <section className="crm-section">

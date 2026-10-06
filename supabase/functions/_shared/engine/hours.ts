@@ -142,7 +142,7 @@ export function nextOpenAt(
  * A wall-clock time that does not exist (the hour a spring-forward skips) lands on the
  * instant just after the jump, which is the first moment the shop could actually be open.
  */
-function instantFor(date: string, time: string, timezone: string): Date | null {
+export function instantFor(date: string, time: string, timezone: string): Date | null {
   const guess = new Date(`${date}T${time}:00Z`);
   if (Number.isNaN(guess.getTime())) return null;
 

@@ -15,6 +15,9 @@
  *   which have booked or closed?            `closed` — a won or lost stage
  *   which are blocked?                      `blocked` — do-not-contact, or Lead Recovery handed
  *                                           it to a person / flagged it — with each reason
+ *   which have a time booked?               `next_appointment` — an appointment still holding its
+ *                                           time (ARC-380) is a next step; one still `requested`
+ *                                           is waiting on the business (`booking_request`)
  *
  * What this is not: a figure. Nothing here is counted into a report, and a lead in a `won`
  * stage is a CRM state somebody set, not a verified outcome — that is still the `events` log.
@@ -57,6 +60,10 @@ export interface LeadState {
   /** the open task due first; undated tasks after dated ones. */
   next_task: Row | null;
   open_tasks: number;
+  /** ARC-380: the appointment ahead of this lead that still holds its time, soonest first. */
+  next_appointment: Row | null;
+  /** a customer asked for a time and nobody has answered. */
+  booking_request: boolean;
   overdue: boolean;
   untouched: boolean;
   unowned: boolean;
@@ -78,6 +85,8 @@ export interface InboxInput {
   blocks?: Record<string, Row[]>;
   /** recovery lead id → { status, safety_flags } from Lead Recovery's own row. */
   recovery?: Record<string, Row>;
+  /** ARC-380: appointments still holding a time (requested or confirmed), by reference. */
+  appointments?: Row[];
 }
 
 /** the stage a new lead lands in: the first open stage still in use. */
@@ -108,6 +117,10 @@ export function leadState(input: InboxInput, lead: Row, now: Date = new Date()):
   const untouched = open && Boolean(entry) && lead.stage_id === entry!.id;
   const unowned = open && !lead.owner_user_id;
   const waiting = open && stage?.waits_on === 'customer';
+  const held = (input.appointments ?? []).filter((a) => a.lead_id === lead.id && (a.status === 'requested' || a.status === 'confirmed'));
+  const nextAppointment = [...held].filter((a) => Date.parse(a.starts_at) >= now.getTime())
+    .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))[0] ?? null;
+  const bookingRequest = open && held.some((a) => a.status === 'requested');
 
   const blocked: LeadState['blocked'] = [];
   for (const row of input.blocks?.[lead.contact_id] ?? []) {
@@ -125,16 +138,18 @@ export function leadState(input: InboxInput, lead: Row, now: Date = new Date()):
   const reasons: string[] = [];
   if (open) {
     if (blocked.length > 0) reasons.push('blocked — a person decides what happens next');
+    if (bookingRequest) reasons.push('a booking request is waiting for an answer');
     if (overdue) reasons.push('a task is overdue');
     if (untouched) reasons.push('not contacted yet');
-    if (!waiting && !next) reasons.push('no next step');
+    if (!waiting && !next && !nextAppointment) reasons.push('no next step');
     if (unowned) reasons.push('nobody owns it');
   }
   /* waiting on the customer is not ours to chase until a task says so. */
-  const attention = open && (blocked.length > 0 || overdue || (!waiting && (untouched || !next)));
+  const attention = open && (blocked.length > 0 || overdue || bookingRequest || (!waiting && (untouched || (!next && !nextAppointment))));
 
   return {
     lead, contact, stage, next_task: next, open_tasks: tasks.filter((t) => t.status === 'open').length,
+    next_appointment: nextAppointment, booking_request: bookingRequest,
     overdue, untouched, unowned, waiting, closed: !open, blocked, attention, reasons,
   };
 }

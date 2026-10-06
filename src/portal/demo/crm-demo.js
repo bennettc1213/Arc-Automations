@@ -6,6 +6,8 @@
  * rather than pretending to save something that disappears on reload. */
 
 import { isUnread } from '../../../supabase/functions/_shared/communications/model.ts';
+import { addDays, availableSlots, localDate, weekdayOf } from '../../../supabase/functions/_shared/booking/model.ts';
+import { instantFor } from '../../../supabase/functions/_shared/engine/hours.ts';
 
 const TENANT = { id: '8f1c2d34-5a6b-4c7d-8e9f-0a1b2c3d4e5f', name: 'Halstead Restoration', timezone: 'America/New_York' };
 const OWNER = '0d000000-0000-4000-8000-000000000001';
@@ -165,6 +167,94 @@ function conversationsFor(data, now, blocks) {
   return out;
 }
 
+/* ── appointments (ARC-380) ────────────────────────────────
+   a week of generated bookings in the database's own row shapes: one a customer asked for on
+   the booking page and nobody has answered, two in the calendar, one that is over and can be
+   closed, one already marked done. the times offered are the real `availableSlots` over these. */
+
+const WEEKDAYS = { open: '08:00', close: '17:00' };
+const DEMO_RULES = {
+  timezone: TENANT.timezone,
+  hours_source: 'business_hours',
+  hours: { mon: [WEEKDAYS], tue: [WEEKDAYS], wed: [WEEKDAYS], thu: [WEEKDAYS], fri: [WEEKDAYS], sat: [{ open: '09:00', close: '13:00' }] },
+  closed_dates: [],
+  slot_step_minutes: 30,
+  min_lead_minutes: 120,
+  max_days_ahead: 30,
+  buffer_before_minutes: 0,
+  buffer_after_minutes: 30,
+  capacity: 1,
+  customer_may_cancel: true,
+  customer_may_reschedule: true,
+  customer_change_cutoff_minutes: 240,
+  enforce_service_area: false,
+  authority: { authority: 'arc', connector_key: null, time_owner: 'arc', status_owner: 'arc' },
+};
+const DEMO_TYPES = [
+  ['site_visit', 'Site visit', 60, true],
+  ['moisture_check', 'Moisture check', 30, false],
+].map(([key, name, duration_minutes, requires_approval], i) => ({
+  id: id(8, i + 1), tenant_id: TENANT.id, key, name, description: null, service_id: null, duration_minutes,
+  buffer_before_minutes: null, buffer_after_minutes: null, requires_approval, is_public: true, archived_at: null, created_at: '2026-06-01T12:00:00Z',
+}));
+
+/* [contact index, type index, open days from today, time, status, source, who has it] */
+const BOOKED = [
+  [0, 0, 1, '09:00', 'requested', 'booking_page', null],
+  [4, 0, 1, '13:00', 'confirmed', 'staff', OWNER],
+  [5, 0, 2, '10:00', 'confirmed', 'staff', OWNER],
+  [3, 1, -1, '14:00', 'confirmed', 'staff', STAFF],
+  [9, 0, -4, '10:00', 'completed', 'staff', OWNER],
+];
+
+/** the business day `steps` open days from `date`, forwards or back. */
+function openDay(date, steps) {
+  let day = date;
+  for (let left = Math.abs(steps); left > 0;) {
+    day = addDays(day, Math.sign(steps));
+    if (DEMO_RULES.hours[weekdayOf(day)]) left -= 1;
+  }
+  return day;
+}
+
+function appointmentsFor(data, now) {
+  const today = localDate(new Date(now), TENANT.timezone);
+  const stamp = (ms) => new Date(ms).toISOString();
+  return BOOKED.map(([index, typeIndex, days, time, status, source, assigned], n) => {
+    const type = DEMO_TYPES[typeIndex];
+    const starts = instantFor(openDay(today, days), time, TENANT.timezone).getTime();
+    const ends = starts + type.duration_minutes * 60_000;
+    const made = stamp(Math.min(now, starts) - 20 * 3_600_000);
+    return {
+      id: id(9, n + 1), tenant_id: TENANT.id, contact_id: data.contacts[index].id, lead_id: data.leads[index].id, appointment_type_id: type.id,
+      title: type.name, service_id: null, location_id: null, status, starts_at: stamp(starts), ends_at: stamp(ends),
+      busy_from: stamp(starts), busy_until: stamp(ends + DEMO_RULES.buffer_after_minutes * 60_000), timezone: TENANT.timezone,
+      address_line1: null, city: 'Columbus', region: 'OH', postal_code: '43215',
+      customer_note: source === 'booking_page' ? 'Water is still coming in near the stairs.' : null,
+      source, booking_page_id: null, requires_approval: source === 'booking_page', assigned_user_id: assigned, reschedule_count: 0, cancel_reason: null,
+      confirmed_at: status === 'requested' ? null : made, closed_at: status === 'completed' ? stamp(ends) : null,
+      sync_state: 'local', sync_detail: {}, last_synced_at: null, changed_via: source === 'booking_page' ? 'booking_page' : 'workspace',
+      created_at: made, updated_at: made,
+    };
+  });
+}
+
+/** what happened to a generated appointment: how it was made, and that it was closed. */
+function appointmentEvents(a) {
+  const online = a.source === 'booking_page';
+  return [
+    {
+      id: `${a.id}-e1`, tenant_id: TENANT.id, appointment_id: a.id, event_type: online ? 'requested' : 'confirmed',
+      actor_type: online ? 'system' : 'client_user', actor_id: online ? null : a.assigned_user_id, detail: { via: a.changed_via }, occurred_at: a.created_at,
+    },
+    ...(a.status === 'completed'
+      ? [{ id: `${a.id}-e2`, tenant_id: TENANT.id, appointment_id: a.id, event_type: 'completed', actor_type: 'client_user', actor_id: a.assigned_user_id, detail: { via: 'workspace' }, occurred_at: a.closed_at }]
+      : []),
+  ];
+}
+
+const BOOKING_VIEWER = { kind: 'client_user', user_id: OWNER, may: { book: true, setup: true, reconcile: true } };
+
 const DEMO_SNIPPETS = [
   { id: id(7, 1), key: 'on_our_way', name: 'On our way', channel: 'sms', body: 'Hi {first_name}, {business_name} is on the way.', archived_at: null },
 ];
@@ -177,6 +267,8 @@ export function demoCrmApi() {
   /* one opted-out customer, so the blocked queue has something real to show. */
   const blocks = { [data.contacts[12].id]: [{ channel: 'sms', reason: 'opt_out', created_at: new Date(now - 30 * 3_600_000).toISOString(), expires_at: null }] };
   const talks = conversationsFor(data, now, blocks);
+  const appointments = appointmentsFor(data, now);
+  const holding = appointments.filter((a) => a.status === 'requested' || a.status === 'confirmed');
   const workspace = {
     tenant: TENANT,
     viewer: VIEWER,
@@ -190,6 +282,7 @@ export function demoCrmApi() {
     recovery: {},
     people: PEOPLE_LIST,
     services: [],
+    appointments: holding.map((a) => ({ id: a.id, lead_id: a.lead_id, status: a.status, title: a.title, starts_at: a.starts_at, sync_state: a.sync_state })),
     truncated: { open: false, closed: false },
     read_at: new Date(now).toISOString(),
   };
@@ -284,5 +377,32 @@ export function demoCrmApi() {
     }),
     sendMessage: refuse, cancelMessage: refuse, reconcileMessage: refuse, flushMessages: refuse, markRead: refuse,
     assignConversation: refuse, doNotContact: refuse, saveSnippet: refuse,
+
+    booking: async () => ({
+      tenant: TENANT, rules: DEMO_RULES, mode: 'slots', unavailable: null, types: DEMO_TYPES, pages: [],
+      appointments: [...appointments].sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
+      contacts: data.contacts.filter((c) => appointments.some((a) => a.contact_id === c.id)).map((c) => ({ id: c.id, display_name: c.display_name, phone: c.phone, email: c.email })),
+      people: PEOPLE_LIST, services: [], viewer: BOOKING_VIEWER, truncated: false, read_at: new Date(now).toISOString(),
+    }),
+    bookingRecord: async ({ lead_id: leadId, contact_id: contactId }) => {
+      const mine = appointments.filter((a) => (leadId ? a.lead_id === leadId : a.contact_id === contactId)).sort((a, b) => b.starts_at.localeCompare(a.starts_at));
+      return {
+        rules: DEMO_RULES, mode: 'slots', unavailable: null, types: DEMO_TYPES, appointments: mine, events: mine.flatMap(appointmentEvents),
+        people: PEOPLE_LIST, viewer: BOOKING_VIEWER, read_at: new Date(now).toISOString(),
+      };
+    },
+    bookingSlots: async ({ appointment_type_id: typeId, appointment_id: appointmentId, from, days = 1 }) => {
+      const moving = appointments.find((a) => a.id === appointmentId);
+      const type = moving
+        ? { duration_minutes: (Date.parse(moving.ends_at) - Date.parse(moving.starts_at)) / 60_000, buffer_before_minutes: 0, buffer_after_minutes: DEMO_RULES.buffer_after_minutes }
+        : DEMO_TYPES.find((t) => t.id === typeId) ?? DEMO_TYPES[0];
+      const day = from ?? localDate(new Date(), TENANT.timezone);
+      return {
+        mode: 'slots', timezone: TENANT.timezone, from: day, days, unavailable: null,
+        slots: availableSlots({ rules: DEMO_RULES, type, held: holding, now: new Date(), from: day, days, excludeId: moving?.id ?? null }),
+      };
+    },
+    bookAppointment: refuse, changeAppointment: refuse, reconcileAppointment: refuse, saveBookingSettings: refuse,
+    saveAppointmentType: refuse, saveBookingPage: refuse, setBookingPageStatus: refuse,
   };
 }

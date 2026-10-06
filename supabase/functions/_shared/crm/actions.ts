@@ -42,6 +42,26 @@
  * There is no action that takes a message from a provider: that is `ingestInboundMessage`,
  * called by a connector's own door with a `system` or `external` actor, never by a person.
  *
+ * ARC-380 — appointments (`_shared/booking/service.ts`):
+ *
+ *   crm-booking            the calendar: rules, types, pages, and what is booked from last week on
+ *   crm-booking-record     { lead_id | contact_id }   one lead's or customer's appointments, with
+ *                          each one's history, and what is needed to book another
+ *   crm-booking-slots      { appointment_type_id | appointment_id, from?, days? }   the times that
+ *                          can be offered — none where their own calendar owns the time
+ *   crm-appointment-book   { booking: { appointment_type_id, starts_at, lead_id | contact_id, … } }
+ *   crm-appointment-change { appointment_id, change: { action: confirm | decline | cancel |
+ *                          complete | no_show | reschedule | assign, starts_at?, reason?, … } }
+ *   crm-appointment-reconcile { appointment_id, resolution: keep_ours | accept_theirs }
+ *                          the account owner or an operator settles what their calendar reported
+ *   crm-booking-settings-save { settings: {...} }      the account owner or an operator
+ *   crm-appointment-type-save { type: {...}, id? }
+ *   crm-booking-page-save  { page: { name, definition, … }, id? }   a new page is a draft
+ *   crm-booking-page-status { id, status: draft | published | archived }
+ *
+ * There is no action that reports what an external calendar says: that is
+ * `reportExternalAppointment`, called by a connector as an `external` actor, never by a person.
+ *
  * 422 with `field_errors` lists every problem with an input at once.
  */
 
@@ -53,11 +73,19 @@ import type { IntakeDeps } from '../intake/service.ts';
 import * as workspace from './workspace.ts';
 import * as comms from '../communications/service.ts';
 import type { CommunicationsDeps, CommunicationsStore, SendingDeps } from '../communications/service.ts';
+import * as booking from '../booking/service.ts';
+import type { BookingDeps, BookingStore } from '../booking/service.ts';
 
-/** what both doors hand the table: ARC-340/350's stores, and ARC-370's when the door has them. */
-export type WorkspaceDeps = IntakeDeps & { comms?: CommunicationsStore; sending?: SendingDeps | null };
+/** what both doors hand the table: ARC-340/350's stores, and ARC-370's and ARC-380's when the door has them. */
+export type WorkspaceDeps = IntakeDeps & { comms?: CommunicationsStore; sending?: SendingDeps | null; booking?: BookingStore };
 
 type Handler = (deps: WorkspaceDeps, actor: CrmActor, body: Record<string, unknown>) => Promise<CrmOutcome<unknown>>;
+
+/** a booking action, or a plain refusal from a door that was not given the store. */
+const calendar = (run: (deps: BookingDeps, actor: CrmActor, body: Record<string, unknown>) => Promise<CrmOutcome<unknown>>): Handler =>
+  (d, a, b) => (d.booking
+    ? run({ crm: d.crm, booking: d.booking, now: d.now }, a, b)
+    : Promise.resolve({ ok: false as const, code: 'invalid' as const, message: 'booking is not switched on in this deployment' }));
 
 /** a conversation action, or a plain refusal from a door that was not given the store. */
 const conversation = (run: (deps: CommunicationsDeps, actor: CrmActor, body: Record<string, unknown>) => Promise<CrmOutcome<unknown>>): Handler =>
@@ -93,6 +121,17 @@ const HANDLERS: Readonly<Record<string, [key: string, status: number, run: Handl
   'crm-do-not-contact': ['listed', 200, conversation((d, a, b) => comms.suppressAddress(d, a, b.tenant_id, b.request))],
   'crm-snippets': ['snippets', 200, conversation((d, a, b) => comms.listSnippets(d, a, b.tenant_id))],
   'crm-snippet-save': ['snippet', 200, conversation((d, a, b) => comms.saveSnippet(d, a, b.tenant_id, b.snippet))],
+
+  'crm-booking': ['booking', 200, calendar((d, a, b) => booking.getBookingOverview(d, a, b.tenant_id))],
+  'crm-booking-record': ['record', 200, calendar((d, a, b) => booking.getRecordBooking(d, a, b.tenant_id, { lead_id: b.lead_id, contact_id: b.contact_id }))],
+  'crm-booking-slots': ['availability', 200, calendar((d, a, b) => booking.getAvailability(d, a, b.tenant_id, b))],
+  'crm-appointment-book': ['booked', 201, calendar((d, a, b) => booking.bookAppointment(d, a, b.tenant_id, b.booking))],
+  'crm-appointment-change': ['appointment', 200, calendar((d, a, b) => booking.changeAppointment(d, a, b.tenant_id, b.appointment_id, b.change))],
+  'crm-appointment-reconcile': ['appointment', 200, calendar((d, a, b) => booking.reconcileAppointment(d, a, b.tenant_id, b.appointment_id, b.resolution))],
+  'crm-booking-settings-save': ['rules', 200, calendar((d, a, b) => booking.saveSettings(d, a, b.tenant_id, b.settings))],
+  'crm-appointment-type-save': ['type', 200, calendar((d, a, b) => booking.saveAppointmentType(d, a, b.tenant_id, b.type, b.id))],
+  'crm-booking-page-save': ['page', 200, calendar((d, a, b) => booking.saveBookingPage(d, a, b.tenant_id, b.page, b.id))],
+  'crm-booking-page-status': ['page', 200, calendar((d, a, b) => booking.setPageStatus(d, a, b.tenant_id, b.id, b.status))],
 });
 
 export const WORKSPACE_ACTIONS = Object.keys(HANDLERS);

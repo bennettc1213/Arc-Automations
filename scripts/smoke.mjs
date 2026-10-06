@@ -51,6 +51,9 @@ const PAGES = [
   /* a client's hosted lead form, at a link that is not a form key: the page a mistyped or
      stale link lands on. it is not a key, so the page asks no server and this stays offline. */
   ['hosted-form', '/form/not-a-form'],
+  /* the same for a hosted booking page, and for a customer's own link with nothing in it. */
+  ['hosted-booking', '/book/not-a-page'],
+  ['hosted-booking-manage', '/book/not-a-page/manage'],
 ];
 
 const VIEWPORTS = [

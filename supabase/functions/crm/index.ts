@@ -18,16 +18,22 @@
  * re-reads the do-not-contact list first. A provider's inbound message has no action here —
  * a signed-in person cannot post one.
  *
+ * ARC-380 adds appointments through the same table: the calendar, booking a time for a lead,
+ * confirming, moving and cancelling one. The time is given by 0027's guard under a lock, never
+ * by this function, and nothing here tells the customer — a confirmation is a message, and a
+ * message is ARC-370's.
+ *
  * Nothing here starts an automation or writes `events`.
  *
  * Deploy:  supabase functions deploy crm
- *          (JWT verification left ON: every caller here is signed in. needs 0023–0026.)
+ *          (JWT verification left ON: every caller here is signed in. needs 0023–0027.)
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { clientActor, handleWorkspaceAction, WORKSPACE_ACTIONS } from '../_shared/crm/actions.ts';
 import { supabaseCrmStore } from '../_shared/crm/supabase-crm-store.ts';
 import { supabaseIntakeStore } from '../_shared/intake/supabase-intake-store.ts';
+import { supabaseBookingStore } from '../_shared/booking/supabase-booking-store.ts';
 import { conversationDeps } from '../_shared/communications/wiring.ts';
 import { resolveRuntimeEnvironment } from '../_shared/connections/runtime-env.ts';
 
@@ -106,6 +112,7 @@ Deno.serve(async (request) => {
       deps: {
         crm: supabaseCrmStore(db),
         intake: supabaseIntakeStore(db),
+        booking: supabaseBookingStore(db),
         ...conversationDeps(db, {
           environment: ENVIRONMENT,
           siteUrl: SITE_URL || null,
@@ -120,6 +127,9 @@ Deno.serve(async (request) => {
     return json(result.body, result.status);
   } catch (failure) {
     const message = (failure as Error)?.message ?? 'the action failed';
+    if (/crm_appointment|crm_booking|crm_book_appointment/i.test(message) && /does not exist|could not find/i.test(message)) {
+      return json({ error: 'booking needs supabase/migrations/0027_crm_booking.sql applied first' }, 501);
+    }
     if (/crm_conversations|crm_messages|crm_snippets|crm_message_|crm_queue_message|crm_conversation_/i.test(message) && /does not exist|could not find/i.test(message)) {
       return json({ error: 'conversations need supabase/migrations/0026_crm_communications.sql applied first' }, 501);
     }

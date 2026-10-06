@@ -137,6 +137,15 @@
  *   A message is one `send_message` action on ARC-200's queue. No provider adapter is
  *   registered yet, so `crm-message-send` answers `no_channel` here and writes nothing.
  *
+ * Booking — ARC-380 (migration 0027), in the same table and through the same two doors.
+ * Documented in ../_shared/crm/actions.ts and docs/architecture/ARC_BOOKING.md:
+ *
+ *   crm-booking · crm-booking-record · crm-booking-slots · crm-appointment-book ·
+ *   crm-appointment-change · crm-appointment-reconcile · crm-booking-settings-save ·
+ *   crm-appointment-type-save · crm-booking-page-save · crm-booking-page-status
+ *
+ *   Whose calendar it is stays `crm-policy-set` above, with `object_type: appointment`.
+ *
  * Roadmap assistant — read-only, so not audited. Documented in ./roadmap.ts and
  * docs/architecture/ARC_ROADMAP_ASSISTANT.md:
  *
@@ -187,6 +196,7 @@ import { supabaseCrmStore } from '../_shared/crm/supabase-crm-store.ts';
 import { handleIntakeAction, INTAKE_ACTIONS } from './intake.ts';
 import { handleWorkspaceAction, WORKSPACE_ACTIONS } from '../_shared/crm/actions.ts';
 import { supabaseIntakeStore } from '../_shared/intake/supabase-intake-store.ts';
+import { supabaseBookingStore } from '../_shared/booking/supabase-booking-store.ts';
 import { conversationDeps } from '../_shared/communications/wiring.ts';
 import { createRoadmapLimiter, handleRoadmapAction, ROADMAP_ACTIONS } from './roadmap.ts';
 import { operatorGate } from '../_shared/operator-gate.ts';
@@ -579,6 +589,8 @@ Deno.serve(async (request) => {
         deps: {
           crm: supabaseCrmStore(db),
           intake: supabaseIntakeStore(db),
+          /* ARC-380: the calendar, through the same store the client's `crm` door uses. */
+          booking: supabaseBookingStore(db),
           /* ARC-370: the conversation actions, wired exactly as the client's `crm` door wires them. */
           ...conversationDeps(db, {
             environment: ENVIRONMENT,
@@ -594,6 +606,9 @@ Deno.serve(async (request) => {
       return json(result.body, result.status);
     } catch (error) {
       const message = (error as Error)?.message ?? 'the action failed';
+      if (/crm_appointment|crm_booking|crm_book_appointment/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'booking needs supabase/migrations/0027_crm_booking.sql applied first', detail: message }, 501);
+      }
       if (/crm_conversations|crm_messages|crm_snippets|crm_message_|crm_queue_message|crm_conversation_/i.test(message) && /does not exist|could not find/i.test(message)) {
         return json({ error: 'conversations need supabase/migrations/0026_crm_communications.sql applied first', detail: message }, 501);
       }

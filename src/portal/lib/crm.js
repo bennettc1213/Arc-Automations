@@ -69,6 +69,18 @@ export function crmApi(door, tenantId) {
     assignConversation: async (conversationId, userId) => (await run('crm-conversation-assign', { conversation_id: conversationId, assigned_user_id: userId })).conversation,
     doNotContact: async (request) => (await run('crm-do-not-contact', { request })).listed,
     saveSnippet: async (snippet) => (await run('crm-snippet-save', { snippet })).snippet,
+    /* ARC-380 — appointments. `by` is { lead_id } or { contact_id }; `ask` names a type, or an
+       appointment that is being moved. */
+    booking: async () => (await run('crm-booking')).booking,
+    bookingRecord: async (by) => (await run('crm-booking-record', by)).record,
+    bookingSlots: async (ask) => (await run('crm-booking-slots', ask)).availability,
+    bookAppointment: async (booking) => (await run('crm-appointment-book', { booking })).booked,
+    changeAppointment: async (appointmentId, change) => (await run('crm-appointment-change', { appointment_id: appointmentId, change })).appointment,
+    reconcileAppointment: async (appointmentId, resolution) => (await run('crm-appointment-reconcile', { appointment_id: appointmentId, resolution })).appointment,
+    saveBookingSettings: async (settings) => (await run('crm-booking-settings-save', { settings })).rules,
+    saveAppointmentType: async (type, id) => (await run('crm-appointment-type-save', { type, ...(id ? { id } : {}) })).type,
+    saveBookingPage: async (page, id) => (await run('crm-booking-page-save', { page, ...(id ? { id } : {}) })).page,
+    setBookingPageStatus: async (id, status) => (await run('crm-booking-page-status', { id, status })).page,
   };
 }
 

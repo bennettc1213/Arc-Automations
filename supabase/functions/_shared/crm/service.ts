@@ -122,6 +122,13 @@ export const CRM_ERROR_STATUS = Object.freeze({
   no_address: 422,
   no_channel: 409,
   module_not_ready: 409,
+  /* ARC-380: why a time may not be booked or an appointment changed (0027). */
+  slot_taken: 409,
+  slot_unavailable: 409,
+  invalid_transition: 409,
+  needs_reconciliation: 409,
+  too_late: 409,
+  outside_service_area: 422,
 } as const);
 export type CrmErrorCode = keyof typeof CRM_ERROR_STATUS;
 

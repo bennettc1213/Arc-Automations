@@ -20,6 +20,7 @@ import { can, contactSafety, type CrmActor, type CrmPermission, effectivePolicy,
 import * as crm from './service.ts';
 import { type CrmErrorCode, type CrmOutcome, CrmStoreError, type Row } from './service.ts';
 import type { IntakeDeps } from '../intake/service.ts';
+import type { BookingStore } from '../booking/service.ts';
 
 /* ── plumbing ───────────────────────────────────────────── */
 
@@ -134,12 +135,14 @@ export interface Workspace {
   recovery: Record<string, Row>;
   people: Person[];
   services: Row[];
+  /** ARC-380: the appointments still holding a time for these leads — what the inbox reads as a next step. */
+  appointments: Row[];
   /** true when a list reached its limit and older rows were not read. */
   truncated: { open: boolean; closed: boolean };
   read_at: string;
 }
 
-export function getWorkspace(deps: IntakeDeps, actor: CrmActor | null, tenantId: unknown): Promise<CrmOutcome<Workspace>> {
+export function getWorkspace(deps: IntakeDeps & { booking?: BookingStore }, actor: CrmActor | null, tenantId: unknown): Promise<CrmOutcome<Workspace>> {
   return act(deps, actor, 'read', tenantId, async (id, who) => {
     const store = deps.crm;
     const now = deps.now?.() ?? new Date();
@@ -187,6 +190,17 @@ export function getWorkspace(deps: IntakeDeps, actor: CrmActor | null, tenantId:
       : [];
     const recovery = Object.fromEntries(recoveryRows.map((r) => [r.id, { status: r.status, safety_flags: r.safety_flags ?? [] }]));
 
+    /* an appointment still holding a time is a lead's next step, and a request is waiting on
+       the business. read by reference: the inbox stores neither. */
+    const held = deps.booking
+      ? await deps.booking.rows('crm_appointments', id, {
+        in: ['status', ['requested', 'confirmed']], after: ['ends_at', new Date(now.getTime() - 86_400_000).toISOString()], order: ['starts_at', 'asc'], limit: 1000,
+      })
+      : [];
+    const appointments = held.filter((a) => a.lead_id).map((a) => ({
+      id: a.id, lead_id: a.lead_id, status: a.status, title: a.title, starts_at: new Date(a.starts_at).toISOString(), sync_state: a.sync_state,
+    }));
+
     const named = [...leads.map((l) => l.owner_user_id), ...tasks.map((t) => t.assigned_user_id)].filter(Boolean);
     return {
       ok: true,
@@ -203,6 +217,7 @@ export function getWorkspace(deps: IntakeDeps, actor: CrmActor | null, tenantId:
         recovery,
         people: await peopleFor(deps, id, who, named),
         services: services.map((s) => ({ id: s.id, key: s.key, name: s.name })),
+        appointments,
         truncated: { open: open.length >= WORKSPACE_LIMITS.open, closed: closed.length >= WORKSPACE_LIMITS.closed },
         read_at: now.toISOString(),
       },
@@ -215,7 +230,7 @@ export function getWorkspace(deps: IntakeDeps, actor: CrmActor | null, tenantId:
 export interface LeadSource {
   event: Row | null;
   /** the door it came in by, by name: a form, an endpoint, a file, the desk. */
-  door: { kind: 'form' | 'api' | 'import' | 'manual' | 'other'; name: string | null };
+  door: { kind: 'form' | 'booking' | 'api' | 'import' | 'manual' | 'other'; name: string | null };
   /** what the visitor's browser said about where they came from — recorded, never checked. */
   claimed: Row;
   /** what a form showed and what was ticked. evidence, not permission to send. */
@@ -242,6 +257,8 @@ async function sourceOf(deps: IntakeDeps, tenantId: string, lead: Row): Promise<
   /* an endpoint's name only. its token hash is never read into a response. */
   else if (event.endpoint_id) door = { kind: 'api', name: (await deps.intake.row('crm_intake_endpoints', tenantId, event.endpoint_id))?.name ?? null };
   else if (event.import_id) door = { kind: 'import', name: event.detail?.import?.file_name ?? (await deps.intake.row('crm_imports', tenantId, event.import_id))?.file_name ?? null };
+  /* ARC-380: a hosted booking page. which page is on the source record ARC wrote itself. */
+  else if (event.detail?.booking_page) door = { kind: 'booking', name: event.detail.booking_page.name ?? null };
   else if (event.source === 'manual') door = { kind: 'manual', name: null };
   const consent = (await deps.intake.rows('crm_consent_records', tenantId, { eq: { source_event_id: event.id }, order: ['captured_at', 'asc'] }))
     .map((c) => ({ channel: c.channel, address: c.address, granted: c.granted, disclosure: c.disclosure, captured_at: c.captured_at }));

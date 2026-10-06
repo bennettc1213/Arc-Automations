@@ -293,6 +293,52 @@ export const GLOSSARY = Object.freeze({
     label: 'consent',
     gloss: 'What is on file about this customer agreeing to be contacted this way. It is shown to the sender; the do-not-contact list still decides at the moment of sending.',
   },
+
+  /* ── an appointment (the bookings view) ── */
+  appt_requested: {
+    label: 'requested',
+    gloss: 'The customer asked for this time and nobody has answered yet. The time is held for them until it is confirmed or declined.',
+  },
+  appt_confirmed: {
+    label: 'confirmed',
+    gloss: 'In the calendar. The time is theirs, and nobody else can book it.',
+  },
+  appt_declined: {
+    label: 'declined',
+    gloss: 'The request was turned down. The time is free again. Nothing was sent to the customer from here.',
+  },
+  appt_cancelled: {
+    label: 'cancelled',
+    gloss: 'Called off, by the business or by the customer. The time is free again and the appointment stays in the history.',
+  },
+  appt_completed: {
+    label: 'completed',
+    gloss: 'A person marked the visit as done. It is a note on the calendar, not a counted result.',
+  },
+  appt_no_show: {
+    label: 'no-show',
+    gloss: 'A person marked that the customer was not there at the time booked.',
+  },
+  appt_approval: {
+    label: 'needs approval',
+    gloss: 'A customer who books this online is asking for the time. It becomes an appointment when a person confirms it.',
+  },
+  their_calendar: {
+    label: 'kept in their calendar',
+    gloss: 'The business keeps its own calendar. Times are not offered from here, and a booking is a request for that calendar to answer.',
+  },
+  sync_pending: {
+    label: 'waiting on their calendar',
+    gloss: 'Their own calendar has not confirmed this yet. It stays a request until it does.',
+  },
+  sync_conflict: {
+    label: 'needs settling',
+    gloss: 'Their calendar and this one disagree about this appointment. Nothing is changed until a person chooses which is right.',
+  },
+  booking_capacity: {
+    label: 'at the same time',
+    gloss: 'How many appointments may overlap. One crew is one: a time that is taken is not offered again.',
+  },
 });
 
 /** the entry for a term, or null — an unknown word is printed as it is, never guessed at. */

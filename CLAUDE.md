@@ -247,6 +247,25 @@ yet**: `PRODUCTION_CHANNEL_ADAPTERS` is empty (Twilio is `arc_managed`, not a cl
 screen says there is no channel; a send through ARC's Twilio is ARC-LR-420's. `synthetic-channel.ts` is
 the test adapter and refuses production.
 
+**A lead becomes an appointment, and a time is given to one booking** (`0027`, `_shared/booking/`,
+`native-booking`, `CrmBooking.jsx`, `PublicBooking.jsx`, ARC-380; docs/architecture/ARC_BOOKING.md).
+A hosted page (`/book/<key>`; the embed is an iframe of it), a person booking from a lead, and the
+workspace's `bookings` view all end in `crm_book_appointment`; a stranger's booking goes through
+ARC-350's own `crm_intake_arrival` in the same transaction, so there is no second way to make a
+customer or a lead. Which times are offered is `availableSlots` (portal-safe: opening hours in the
+business's own timezone, notice, horizon, buffers, capacity) and is only an offer — the time is given
+by `crm_appointments_guard` under one lock per client, whichever path wrote the row. `requested` and
+`confirmed` hold a time; the legal changes are `APPOINTMENT_TRANSITIONS`, drift-tested against the
+guard, and the screen's buttons are `nextActions` over that list. Whose calendar it is is ARC-340's
+policy with `object_type: appointment`: where theirs owns the time ARC offers none, takes a
+`requested`/`pending` preferred time, and nobody on ARC's side confirms or moves it; a report that
+disagrees with a field ARC owns (`crm_appointment_external_report`) is never applied and never
+dropped — the appointment is frozen until a person settles it. A customer's own link is a token kept
+only as its hash, in the address's fragment and a request body, never a query string. Nothing here
+writes `events`, sends a message or queues a reminder: a confirmed appointment is a calendar entry,
+not a result, and telling the customer is ARC-370's. Not dispatch — `capacity` is a number,
+`assigned_user_id` a name. No calendar adapter exists, so nothing reports and nothing is pushed.
+
 **The words on screen are the system's words, each with its meaning attached** (ARC-340 clarity
 pass, `lib/glossary.js`, `Term` / `Consequence` in `ui.jsx`). A state name is never renamed or
 hidden to make a page simpler: wrap it in `<Term k="…">` and add the gloss to the glossary.

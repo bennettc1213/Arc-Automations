@@ -471,3 +471,83 @@
 .crm-stop .ops-input {
   max-width: 260px;
 }
+
+/* ── bookings (ARC-380) ─────────────────────────────────── */
+
+.crm-appt {
+  display: grid;
+  gap: 4px;
+}
+
+.crm-appt p {
+  margin: 0;
+}
+
+.crm-appt__when b {
+  font-variant-numeric: tabular-nums;
+}
+
+.crm-appt__actions {
+  margin-top: 4px;
+  align-items: flex-start;
+}
+
+.crm-appt__actions .ops-input {
+  width: auto;
+  min-width: 150px;
+}
+
+.crm-week {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.crm-day {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.crm-day.is-today {
+  border-color: currentColor;
+}
+
+.crm-day.is-empty {
+  opacity: 0.75;
+}
+
+.crm-day h5 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+.crm-day .crm-col__empty {
+  margin: 0;
+}
+
+.crm-hours {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.crm-hours li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.crm-hours .crm-check {
+  min-width: 120px;
+}
+
+.crm-hours .ops-input {
+  width: auto;
+}

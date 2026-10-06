@@ -23,9 +23,10 @@ disagree about what a button does.
   it writes no `events` row and is never counted as a result.
 - **Not a second way to change a record.** Every write is ARC-340's own service call, or
   ARC-350's `createManualLead` for a quick-add. The timeline is still written by 0023's triggers.
-- **Not a booking screen, and it starts no automation.** The conversation with a customer is
-  ARC-370's (`ARC_COMMUNICATIONS_HUB.md`): a message a person writes there is one durable
-  action on the queue, never something this screen sends itself.
+- **It starts no automation.** The conversation with a customer is ARC-370's
+  (`ARC_COMMUNICATIONS_HUB.md`): a message a person writes there is one durable action on the
+  queue, never something this screen sends itself. An appointment is ARC-380's
+  (`ARC_BOOKING.md`): the time is given by the database, and booking one sends nothing.
 
 ## The inbox
 
@@ -96,7 +97,8 @@ refuses them on the server regardless. Where leads are created externally, "add 
 
 ## Not built here
 
-Saved views (the queues are the built-in ones; filters are not stored), merging contacts from
-the client side, and booking (ARC-380). Conversations were added by ARC-370: a lead and a
-customer each show theirs, and the workspace has a `conversations` tab. See
-`ARC_COMMUNICATIONS_HUB.md`.
+Saved views (the queues are the built-in ones; filters are not stored) and merging contacts
+from the client side. Conversations were added by ARC-370: a lead and a customer each show
+theirs, and the workspace has a `conversations` tab. See `ARC_COMMUNICATIONS_HUB.md`.
+Appointments were added by ARC-380: a lead and a customer each show theirs, the workspace has a
+`bookings` tab, and the inbox reads a booked time as a next step. See `ARC_BOOKING.md`.

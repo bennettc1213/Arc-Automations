@@ -67,8 +67,11 @@ describe('0023 as written', () => {
     assert.deepEqual(checkList('crm_source_events', 'source'), [...LEAD_SOURCES]);
     assert.deepEqual(checkList('crm_activities', 'activity_type'), [...ACTIVITY_TYPES]);
     assert.deepEqual(checkList('crm_activities', 'actor_type'), [...ACTOR_TYPES]);
-    assert.deepEqual(checkList('crm_external_mappings', 'object_type'), [...OBJECT_TYPES]);
-    assert.deepEqual(checkList('crm_source_policies', 'object_type'), [...OBJECT_TYPES]);
+    /* 0023's six kinds of record. ARC-380 (0027) widens both lists with `appointment`, and
+       tests/booking-db.test.js holds 0027's own lists to the model's. */
+    const core = OBJECT_TYPES.filter((type) => type !== 'appointment');
+    assert.deepEqual(checkList('crm_external_mappings', 'object_type'), core);
+    assert.deepEqual(checkList('crm_source_policies', 'object_type'), core);
     assert.deepEqual(checkList('crm_source_policies', 'authority'), [...AUTHORITIES]);
     assert.deepEqual(checkList('crm_pipeline_stages', 'kind'), [...STAGE_KINDS]);
     assert.deepEqual(checkList('crm_leads', 'priority'), [...PRIORITIES]);
