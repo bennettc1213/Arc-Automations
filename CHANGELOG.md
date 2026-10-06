@@ -15,6 +15,47 @@ documented here. Format loosely follows
 - `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
   `PORTAL_CONTEXT.md`).
 
+## [1.30.0] - 2026-10-05
+
+### Added
+
+- **ARC-370: the communications hub.** The conversation with a customer, inside the CRM.
+  - **A conversation on every lead and customer**, and a `conversations` tab in the lead inbox
+    (unread first, then numbers nobody is on file for). Each message shows who said it — the
+    customer, a named person, an automation, or the business's own system — the channel, the
+    time, where it has got to (queued, held, sent, delivered, read, failed, blocked, unknown,
+    cancelled) and whether it was answered. Lead Recovery's own texts with the same number are
+    shown in the same timeline, read from its record and never copied.
+  - **Why a message cannot be sent is on the page before anybody types:** on the do-not-contact
+    list, the customer declined, lead recovery is still handling the conversation, a safety flag
+    has not been read, no provider is connected, or the module is not active.
+  - **"Do not contact"** from the screen, for anybody on the team. It only ever adds to the list.
+  - **Internal notes** are labelled as that, in their own section, and say they are never sent.
+  - **Canned replies** a person picks, reads and edits before sending (`{first_name}`,
+    `{business_name}` only).
+  - Migration `0026_crm_communications.sql`: `crm_conversations`, `crm_messages`,
+    `crm_conversation_events`, `crm_snippets`, and the functions that write them. A message a
+    person writes is one row and one `send_message` action on the existing durable queue, in
+    one transaction. The do-not-contact list, consent evidence, takeover and safety flags are
+    re-read immediately before the send.
+  - An inbound contract (`ingestInboundMessage`) and a delivery-report contract
+    (`recordDelivery`): one message per provider id however often it is redelivered, STOP
+    writes the opt-out in the same transaction, and a delivery state only moves forward.
+  - An unknown send outcome is never resent. An operator settles it after checking the provider.
+  - `docs/architecture/ARC_COMMUNICATIONS_HUB.md`.
+
+### Changed
+
+- `automation_runs.run_kind` gains `crm_message`, and `suppressions.source` gains `client_user`.
+- A client that has conversations cannot be deleted as a test client.
+- The demo's lead inbox (`/demo/inbox`) shows generated conversations, read-only.
+
+### Not in this release
+
+- **No client can send from ARC yet.** No messaging provider that a client connects is
+  registered, and ARC's own Twilio is not sent through from here. The screen says there is no
+  channel instead of queueing something that cannot leave.
+
 ## [1.29.0] - 2026-10-05
 
 Built straight onto the live site at Ben's request: migration `0025`, the new `crm` function

@@ -7,12 +7,14 @@ import { isNotDeployed } from '../lib/crm';
 import {
   filterLeads, inboxStates, INBOX_QUEUES, lockedFields, queueCounts, QUEUE_WORDS, SORTS, sortLeads, taskBucket, createdElsewhere,
 } from '../../../supabase/functions/_shared/crm/inbox.ts';
-import { ago, ContactDetail, LeadDetail, moveLead, ownerOptions, personLabel, QuickAdd, SOURCE_WORDS, STATUS_TONE, useChange, when } from './CrmRecord';
+import { ago, ContactDetail, LeadDetail, moveLead, ownerOptions, personLabel, QuickAdd, SOURCE_WORDS, STATUS_TONE, ThreadOnly, useChange, when } from './CrmRecord';
+import { Conversations } from './CrmConversation';
 import '../ops.css';
 import './CrmWorkspace.css';
 
 /**
- * ARC-360 — the day-to-day CRM workspace: the lead inbox, the pipeline board, tasks, customers.
+ * ARC-360 — the day-to-day CRM workspace: the lead inbox, the pipeline board, tasks, customers —
+ * and, since ARC-370, the conversations with them (CrmConversation.jsx).
  *
  * One component for both sides. A client's dashboard and the operator's console pass it an
  * `api` (lib/crm.js) pointed at their own door, and the demo passes one over generated rows;
@@ -28,6 +30,7 @@ const TABS = [
   ['board', 'pipeline'],
   ['tasks', 'tasks'],
   ['customers', 'customers'],
+  ['conversations', 'conversations'],
   ['stages', 'stages'],
 ];
 const SORT_WORDS = { newest: 'newest first', oldest: 'oldest first', next_due: 'next task due', priority: 'priority', updated: 'last changed' };
@@ -529,14 +532,26 @@ export default function CrmWorkspace({ api, timezone: zone, readOnly: forcedRead
           {tab === 'board' && <Board {...view} />}
           {tab === 'tasks' && <Tasks {...view} />}
           {tab === 'customers' && <Customers {...view} />}
+          {tab === 'conversations' && (
+            <Conversations
+              api={api}
+              timezone={timezone}
+              onOpenContact={(id) => setOpen({ kind: 'contact', id })}
+              onOpenThread={(id) => setOpen({ kind: 'thread', id })}
+            />
+          )}
           {tab === 'stages' && <Stages key={ws.read_at} api={api} ws={ws} reload={reload} />}
         </div>
         {open && (
           <aside className="crm-split__record">
-            {open.kind === 'lead' ? (
-              <LeadDetail api={api} leadId={open.id} timezone={timezone} readOnly={readOnly} onChanged={reload} onOpenContact={(id) => setOpen({ kind: 'contact', id })} onClose={() => setOpen(null)} />
-            ) : (
-              <ContactDetail api={api} contactId={open.id} timezone={timezone} readOnly={readOnly} onChanged={reload} onOpenLead={(id) => setOpen({ kind: 'lead', id })} onClose={() => setOpen(null)} />
+            {open.kind === 'lead' && (
+              <LeadDetail api={api} leadId={open.id} timezone={timezone} readOnly={readOnly} businessName={ws.tenant.name} onChanged={reload} onOpenContact={(id) => setOpen({ kind: 'contact', id })} onClose={() => setOpen(null)} />
+            )}
+            {open.kind === 'contact' && (
+              <ContactDetail api={api} contactId={open.id} timezone={timezone} readOnly={readOnly} businessName={ws.tenant.name} onChanged={reload} onOpenLead={(id) => setOpen({ kind: 'lead', id })} onClose={() => setOpen(null)} />
+            )}
+            {open.kind === 'thread' && (
+              <ThreadOnly api={api} conversationId={open.id} timezone={timezone} readOnly={readOnly} businessName={ws.tenant.name} onClose={() => setOpen(null)} />
             )}
           </aside>
         )}

@@ -229,6 +229,70 @@ export const GLOSSARY = Object.freeze({
     label: 'kept in their system',
     gloss: 'This field belongs to the business\'s own software. Change it there; it cannot be edited here.',
   },
+
+  /* ── conversations with a customer (ARC-370) ──
+     a message's own states, keyed apart from a lead's: "blocked" on a message is about one
+     send, and "blocked" on a lead is about who decides what happens to it. */
+  msg_received: {
+    label: 'received',
+    gloss: 'The customer sent this to the business.',
+  },
+  msg_queued: {
+    label: 'queued',
+    gloss: 'Written and waiting to be sent. It has not left yet and can still be cancelled.',
+  },
+  msg_held: {
+    label: 'held',
+    gloss: 'Waiting on something a person can see, such as a paused module or a provider that is not ready. It is not lost and has not been sent.',
+  },
+  msg_sending: {
+    label: 'sending',
+    gloss: 'Being handed to the provider right now.',
+  },
+  msg_sent: {
+    label: 'sent',
+    gloss: 'The provider accepted it. That is not yet proof that it reached the customer.',
+  },
+  msg_delivered: {
+    label: 'delivered',
+    gloss: 'The provider reports that it arrived.',
+  },
+  msg_read: {
+    label: 'read',
+    gloss: 'The provider reports that the customer opened it. Not every provider can say so.',
+  },
+  msg_failed: {
+    label: 'failed',
+    gloss: 'It was not sent, or the provider reported that it did not arrive. Nothing tries again on its own after this.',
+  },
+  msg_blocked: {
+    label: 'blocked',
+    gloss: 'Stopped before it left, because this address may not be contacted right now. The reason is written next to it.',
+  },
+  msg_unknown: {
+    label: 'unknown',
+    gloss: 'Nobody knows whether this was sent, for example because the provider stopped answering. It is never sent again unless a person confirms it did not go.',
+  },
+  msg_cancelled: {
+    label: 'cancelled',
+    gloss: 'Called back by a person before it was sent.',
+  },
+  internal_note: {
+    label: 'internal notes',
+    gloss: 'Written by the team, for the team. A note stays here and is never sent to the customer.',
+  },
+  unread: {
+    label: 'unread',
+    gloss: 'The customer has written since anybody on the team last looked at this conversation.',
+  },
+  unmatched_thread: {
+    label: 'nobody on file',
+    gloss: 'No customer on file has this phone number or email yet. Add a lead with it and the conversation appears on that customer.',
+  },
+  consent_basis: {
+    label: 'consent',
+    gloss: 'What is on file about this customer agreeing to be contacted this way. It is shown to the sender; the do-not-contact list still decides at the moment of sending.',
+  },
 });
 
 /** the entry for a term, or null — an unknown word is printed as it is, never guessed at. */

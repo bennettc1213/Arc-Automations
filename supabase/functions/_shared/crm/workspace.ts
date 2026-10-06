@@ -91,7 +91,7 @@ function viewerOf(actor: CrmActor, tenantId: string): Viewer {
  * operator only as "ARC"; an operator sees everybody by address. Nobody outside this client
  * and ARC is ever listed.
  */
-async function peopleFor(deps: IntakeDeps, tenantId: string, actor: CrmActor, alsoNamed: string[]): Promise<Person[]> {
+export async function peopleFor(deps: Pick<IntakeDeps, 'crm'>, tenantId: string, actor: CrmActor, alsoNamed: string[]): Promise<Person[]> {
   const rows = deps.crm.people ? await deps.crm.people(tenantId, alsoNamed) : [];
   const viewerId = actor.kind === 'operator' || actor.kind === 'client_user' ? actor.userId : null;
   const out: Person[] = rows.map((row) => {

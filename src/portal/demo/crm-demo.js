@@ -5,6 +5,8 @@
  * different source. it is read-only: every write is refused with a sentence that says so,
  * rather than pretending to save something that disappears on reload. */
 
+import { isUnread } from '../../../supabase/functions/_shared/communications/model.ts';
+
 const TENANT = { id: '8f1c2d34-5a6b-4c7d-8e9f-0a1b2c3d4e5f', name: 'Halstead Restoration', timezone: 'America/New_York' };
 const OWNER = '0d000000-0000-4000-8000-000000000001';
 const STAFF = '0d000000-0000-4000-8000-000000000002';
@@ -87,12 +89,94 @@ function refuse() {
   return Promise.reject(new Error('this is the demo — nothing here is saved. sign in to work your own leads.'));
 }
 
+/* ── conversations (ARC-370) ───────────────────────────────
+   a few generated threads, in the database's own row shapes: what lead recovery texted on
+   its own (its record, shown by reference), what the customer wrote back, and what a person
+   on the team sent. every delivery state on screen here is one the real screen can show. */
+
+/* contact index → [who, hours ago, body, state?]. who: 'lr' lead recovery · 'in' the customer · a user id */
+const TALK = {
+  3: [
+    ['lr', 20, 'Sorry we missed your call — this is Halstead Restoration. What can we help with?', 'delivered'],
+    ['in', 19.8, 'Pipe burst under the kitchen sink, water everywhere'],
+    [STAFF, 19.5, 'Shut the main valve if you can reach it. A crew is 25 minutes out.', 'read'],
+    ['in', 19.4, 'Valve is off. Thank you'],
+    [STAFF, 3, 'Moisture readings are in — sending them over this afternoon.', 'delivered'],
+  ],
+  4: [
+    [OWNER, 28, 'Hi Alicia, this is Halstead. Does Thursday at 10 work for the site visit?', 'delivered'],
+    ['in', 26, 'Thursday works. Park in the back'],
+  ],
+  8: [
+    ['in', 121, 'Did you get the photos of the ceiling?'],
+    [OWNER, 120, 'Got them. Your estimate is attached to the email I just sent.', 'sent'],
+  ],
+  6: [
+    ['in', 60, 'Our sump pump failed overnight. Can someone come look?'],
+  ],
+  12: [
+    ['lr', 40, 'Thanks for getting in touch with Halstead Restoration. What can we help with?', 'delivered'],
+    ['in', 39, 'STOP'],
+  ],
+};
+
+function conversationsFor(data, now, blocks) {
+  const at = (hours) => new Date(now - hours * 3_600_000).toISOString();
+  const out = new Map();
+  for (const [index, lines] of Object.entries(TALK)) {
+    const contact = data.contacts[Number(index)];
+    const lead = data.leads[Number(index)];
+    const conversationId = id(5, Number(index) + 1);
+    const messages = [];
+    const recovery = [];
+    lines.forEach(([who, hours, body, state], n) => {
+      if (who === 'lr') {
+        recovery.push({ id: `${conversationId}-r${n}`, direction: 'outbound', body, status: state ?? 'delivered', error_class: null, occurred_at: at(hours) });
+        return;
+      }
+      const inbound = who === 'in';
+      messages.push({
+        id: id(6, Number(index) * 10 + n), tenant_id: TENANT.id, conversation_id: conversationId, channel: 'sms', address: contact.phone,
+        direction: inbound ? 'inbound' : 'outbound', origin: inbound ? 'provider' : 'manual', body, body_withheld: false,
+        contact_id: contact.id, lead_id: lead.id, author_type: inbound ? 'customer' : 'client_user', author_id: inbound ? null : who,
+        connector_key: null, external_id: null, connection_id: null, status: inbound ? 'received' : state ?? 'sent', status_code: null, status_detail: null,
+        consent_basis: inbound ? null : 'inbound_message', safety_acknowledged: [], attachments: [], run_id: null, action_id: null,
+        occurred_at: at(hours), created_at: at(hours),
+      });
+    });
+    const inbound = lines.filter(([who]) => who === 'in').map(([, hours]) => hours);
+    const outbound = lines.filter(([who]) => who !== 'in').map(([, hours]) => hours);
+    const last = Math.min(...lines.map(([, hours]) => hours));
+    out.set(contact.id, {
+      contact,
+      messages,
+      recovery,
+      conversation: {
+        id: conversationId, tenant_id: TENANT.id, channel: 'sms', address: contact.phone, assigned_user_id: lead.owner_user_id,
+        last_message_at: at(last), last_inbound_at: inbound.length ? at(Math.min(...inbound)) : null,
+        last_outbound_at: outbound.length ? at(Math.min(...outbound)) : null,
+        /* read up to the last thing the team sent: a later reply from the customer is unread. */
+        last_read_at: outbound.length ? at(Math.min(...outbound)) : null, last_read_by: lead.owner_user_id,
+        created_at: at(Math.max(...lines.map(([, hours]) => hours))),
+      },
+      block: blocks[contact.id] ? { reason: 'opt_out', since: at(39) } : null,
+    });
+  }
+  return out;
+}
+
+const DEMO_SNIPPETS = [
+  { id: id(7, 1), key: 'on_our_way', name: 'On our way', channel: 'sms', body: 'Hi {first_name}, {business_name} is on the way.', archived_at: null },
+];
+const DEMO_BLOCK = { code: 'demo', detail: 'this is the demo — nothing here is sent.' };
+
 export function demoCrmApi() {
   /* "now" rounded to the hour, so the generated ages are stable while somebody looks. */
   const now = Math.floor(Date.now() / 3_600_000) * 3_600_000;
   const data = build(now);
   /* one opted-out customer, so the blocked queue has something real to show. */
   const blocks = { [data.contacts[12].id]: [{ channel: 'sms', reason: 'opt_out', created_at: new Date(now - 30 * 3_600_000).toISOString(), expires_at: null }] };
+  const talks = conversationsFor(data, now, blocks);
   const workspace = {
     tenant: TENANT,
     viewer: VIEWER,
@@ -158,5 +242,47 @@ export function demoCrmApi() {
     },
     updateLead: refuse, bulk: refuse, archiveLead: refuse, restoreLead: refuse, quickAdd: refuse, updateContact: refuse,
     addNote: refuse, archiveNote: refuse, createTask: refuse, updateTask: refuse, saveStages: refuse,
+
+    thread: async ({ contact_id: contactId }) => {
+      const contact = data.contacts.find((c) => c.id === contactId);
+      if (!contact) throw new Error('no such customer');
+      const talk = talks.get(contactId);
+      return {
+        contact,
+        threads: [{
+          channel: 'sms',
+          address: contact.phone,
+          conversation: talk?.conversation ?? null,
+          unread: talk ? isUnread(talk.conversation) : false,
+          shared_by: 1,
+          messages: talk?.messages ?? [],
+          actions: {},
+          recovery: talk?.recovery ?? [],
+          do_not_contact: talk?.block ?? null,
+          compose: { can_send: false, block: DEMO_BLOCK, needs_acknowledgement: [], consent_basis: talk?.messages.some((m) => m.direction === 'inbound') ? 'inbound_message' : 'none_on_file', through: null },
+          truncated: false,
+        }],
+        snippets: DEMO_SNIPPETS,
+        people: PEOPLE_LIST,
+        viewer: { kind: 'client_user', user_id: OWNER, may: { send: true, suppress: true, assign: true, reconcile: false, snippets: true } },
+        read_at: new Date(now).toISOString(),
+      };
+    },
+    conversations: async () => ({
+      conversations: [...talks.values()]
+        .map((talk) => {
+          const last = [...talk.messages].sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at))[0] ?? null;
+          return {
+            conversation: talk.conversation,
+            unread: isUnread(talk.conversation),
+            contacts: [{ id: talk.contact.id, display_name: talk.contact.display_name }],
+            last: last ? { body: last.body, direction: last.direction, at: last.occurred_at } : null,
+          };
+        })
+        .sort((a, b) => Number(b.unread) - Number(a.unread) || Date.parse(b.conversation.last_message_at) - Date.parse(a.conversation.last_message_at)),
+      truncated: false,
+    }),
+    sendMessage: refuse, cancelMessage: refuse, reconcileMessage: refuse, flushMessages: refuse, markRead: refuse,
+    assignConversation: refuse, doNotContact: refuse, saveSnippet: refuse,
   };
 }

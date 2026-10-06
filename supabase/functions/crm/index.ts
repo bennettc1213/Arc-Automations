@@ -12,20 +12,32 @@
  * anything is read. 0023/0025 check the same actor again inside every write, and the
  * timeline (`crm_activities`) is written by the database in the same statement.
  *
- * Nothing here sends a message, starts an automation or writes `events`.
+ * ARC-370 adds the conversation with a customer through the same table. A message a person
+ * writes here is never sent by this function: it becomes one row and one durable
+ * `send_message` action (0026, on ARC-200's queue), and what sends it is a runner that
+ * re-reads the do-not-contact list first. A provider's inbound message has no action here —
+ * a signed-in person cannot post one.
+ *
+ * Nothing here starts an automation or writes `events`.
  *
  * Deploy:  supabase functions deploy crm
- *          (JWT verification left ON: every caller here is signed in. needs 0023, 0024, 0025.)
+ *          (JWT verification left ON: every caller here is signed in. needs 0023–0026.)
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { clientActor, handleWorkspaceAction, WORKSPACE_ACTIONS } from '../_shared/crm/actions.ts';
 import { supabaseCrmStore } from '../_shared/crm/supabase-crm-store.ts';
 import { supabaseIntakeStore } from '../_shared/intake/supabase-intake-store.ts';
+import { conversationDeps } from '../_shared/communications/wiring.ts';
+import { resolveRuntimeEnvironment } from '../_shared/connections/runtime-env.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+/* the same rule as `ops` and `connections`: an unset environment is production. */
+const ENVIRONMENT = resolveRuntimeEnvironment(Deno.env.get('ARC_ENVIRONMENT'));
+const SITE_URL = (Deno.env.get('ARC_SITE_URL') ?? '').replace(/\/+$/, '');
+const OAUTH_REDIRECT_URL = Deno.env.get('ARC_OAUTH_REDIRECT_URL') ?? null;
 
 /* the same as `ops`: the bearer token is the credential, so no cookie rides along and any
    origin may ask — what it gets back is decided by whose token it is. */
@@ -91,13 +103,26 @@ Deno.serve(async (request) => {
 
   try {
     const result = await handleWorkspaceAction(action, {
-      deps: { crm: supabaseCrmStore(db), intake: supabaseIntakeStore(db) },
+      deps: {
+        crm: supabaseCrmStore(db),
+        intake: supabaseIntakeStore(db),
+        ...conversationDeps(db, {
+          environment: ENVIRONMENT,
+          siteUrl: SITE_URL || null,
+          oauthRedirectUrl: OAUTH_REDIRECT_URL,
+          env: (name) => Deno.env.get(name),
+          worker: 'crm-messages',
+        }),
+      },
       actor,
       body,
     });
     return json(result.body, result.status);
   } catch (failure) {
     const message = (failure as Error)?.message ?? 'the action failed';
+    if (/crm_conversations|crm_messages|crm_snippets|crm_message_|crm_queue_message|crm_conversation_/i.test(message) && /does not exist|could not find/i.test(message)) {
+      return json({ error: 'conversations need supabase/migrations/0026_crm_communications.sql applied first' }, 501);
+    }
     if (/crm_save_stages|waits_on|crm_pipeline_revisions/i.test(message) && /does not exist|could not find/i.test(message)) {
       return json({ error: 'the workspace needs supabase/migrations/0025_crm_workspace.sql applied first' }, 501);
     }

@@ -23,6 +23,25 @@
  *   crm-task-update        { task_id, task: {...} }   completing one is `{ status: 'done' }`
  *   crm-stages-save        { pipeline_id, stages: [...] }   the account owner or an operator
  *
+ * ARC-370 — the conversation with a customer (`_shared/communications/service.ts`):
+ *
+ *   crm-thread             { contact_id | conversation_id }   what was said, where each message
+ *                          has got to, and whether one could be sent now — with the reason not
+ *   crm-conversations      every thread for the client: unread first, then the unmatched
+ *   crm-message-send       { message: { contact_id, lead_id?, channel, body, client_key,
+ *                          acknowledged_safety? } }   one message and one durable action, or neither
+ *   crm-message-cancel     { message_id }   only before it has started sending
+ *   crm-message-reconcile  { message_id, resolution }   an operator settles an unknown outcome
+ *   crm-messages-flush     run this client's due message work once
+ *   crm-conversation-read  { conversation_id }
+ *   crm-conversation-assign { conversation_id, assigned_user_id }
+ *   crm-do-not-contact     { request: { contact_id | conversation_id, channel, reason, note? } }
+ *                          adds to the do-not-contact list. nothing here takes an address off it
+ *   crm-snippets / crm-snippet-save   { snippet: { key, name, channel, body, archived? } }
+ *
+ * There is no action that takes a message from a provider: that is `ingestInboundMessage`,
+ * called by a connector's own door with a `system` or `external` actor, never by a person.
+ *
  * 422 with `field_errors` lists every problem with an input at once.
  */
 
@@ -32,8 +51,19 @@ import { CRM_ERROR_STATUS, type CrmOutcome } from './service.ts';
 import * as intake from '../intake/service.ts';
 import type { IntakeDeps } from '../intake/service.ts';
 import * as workspace from './workspace.ts';
+import * as comms from '../communications/service.ts';
+import type { CommunicationsDeps, CommunicationsStore, SendingDeps } from '../communications/service.ts';
 
-type Handler = (deps: IntakeDeps, actor: CrmActor, body: Record<string, unknown>) => Promise<CrmOutcome<unknown>>;
+/** what both doors hand the table: ARC-340/350's stores, and ARC-370's when the door has them. */
+export type WorkspaceDeps = IntakeDeps & { comms?: CommunicationsStore; sending?: SendingDeps | null };
+
+type Handler = (deps: WorkspaceDeps, actor: CrmActor, body: Record<string, unknown>) => Promise<CrmOutcome<unknown>>;
+
+/** a conversation action, or a plain refusal from a door that was not given the store. */
+const conversation = (run: (deps: CommunicationsDeps, actor: CrmActor, body: Record<string, unknown>) => Promise<CrmOutcome<unknown>>): Handler =>
+  (d, a, b) => (d.comms
+    ? run({ crm: d.crm, comms: d.comms, sending: d.sending ?? null, now: d.now }, a, b)
+    : Promise.resolve({ ok: false as const, code: 'invalid' as const, message: 'conversations are not switched on in this deployment' }));
 
 /** [what the result is called in the response, status on success, the call] */
 const HANDLERS: Readonly<Record<string, [key: string, status: number, run: Handler]>> = Object.freeze({
@@ -51,6 +81,18 @@ const HANDLERS: Readonly<Record<string, [key: string, status: number, run: Handl
   'crm-task-create': ['task', 201, (d, a, b) => crm.createTask(d.crm, a, b.tenant_id, b.task)],
   'crm-task-update': ['task', 200, (d, a, b) => crm.updateTask(d.crm, a, b.tenant_id, b.task_id, b.task)],
   'crm-stages-save': ['saved', 200, (d, a, b) => workspace.saveStages(d, a, b.tenant_id, { pipeline_id: b.pipeline_id, stages: b.stages })],
+
+  'crm-thread': ['thread', 200, conversation((d, a, b) => comms.getThread(d, a, b.tenant_id, { contact_id: b.contact_id, conversation_id: b.conversation_id }))],
+  'crm-conversations': ['inbox', 200, conversation((d, a, b) => comms.listConversations(d, a, b.tenant_id))],
+  'crm-message-send': ['sent', 201, conversation((d, a, b) => comms.sendMessage(d, a, b.tenant_id, b.message))],
+  'crm-message-cancel': ['message', 200, conversation((d, a, b) => comms.cancelMessage(d, a, b.tenant_id, b.message_id))],
+  'crm-message-reconcile': ['reconciled', 200, conversation((d, a, b) => comms.reconcileMessage(d, a, b.tenant_id, b))],
+  'crm-messages-flush': ['pass', 200, conversation((d, a, b) => comms.flushQueue(d, a, b.tenant_id))],
+  'crm-conversation-read': ['conversation', 200, conversation((d, a, b) => comms.markRead(d, a, b.tenant_id, b.conversation_id))],
+  'crm-conversation-assign': ['conversation', 200, conversation((d, a, b) => comms.assignConversation(d, a, b.tenant_id, b))],
+  'crm-do-not-contact': ['listed', 200, conversation((d, a, b) => comms.suppressAddress(d, a, b.tenant_id, b.request))],
+  'crm-snippets': ['snippets', 200, conversation((d, a, b) => comms.listSnippets(d, a, b.tenant_id))],
+  'crm-snippet-save': ['snippet', 200, conversation((d, a, b) => comms.saveSnippet(d, a, b.tenant_id, b.snippet))],
 });
 
 export const WORKSPACE_ACTIONS = Object.keys(HANDLERS);
@@ -62,7 +104,7 @@ export interface ActionResponse {
 
 export async function handleWorkspaceAction(
   action: string,
-  context: { deps: IntakeDeps; actor: CrmActor | null; body: Record<string, unknown> },
+  context: { deps: WorkspaceDeps; actor: CrmActor | null; body: Record<string, unknown> },
 ): Promise<ActionResponse> {
   if (!context.actor) return { status: 401, body: { error: 'not signed in', code: 'unauthorized' } };
   const handler = HANDLERS[action];

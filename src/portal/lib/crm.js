@@ -58,6 +58,17 @@ export function crmApi(door, tenantId) {
     createTask: async (task) => (await run('crm-task-create', { task })).task,
     updateTask: async (taskId, task) => (await run('crm-task-update', { task_id: taskId, task })).task,
     saveStages: async (pipelineId, stages) => (await run('crm-stages-save', { pipeline_id: pipelineId, stages })).saved,
+    /* ARC-370 — the conversation with a customer. `by` is { contact_id } or { conversation_id }. */
+    thread: async (by) => (await run('crm-thread', by)).thread,
+    conversations: async () => (await run('crm-conversations')).inbox,
+    sendMessage: async (message) => (await run('crm-message-send', { message })).sent,
+    cancelMessage: async (messageId) => (await run('crm-message-cancel', { message_id: messageId })).message,
+    reconcileMessage: async (messageId, resolution) => (await run('crm-message-reconcile', { message_id: messageId, resolution })).reconciled,
+    flushMessages: async () => (await run('crm-messages-flush')).pass,
+    markRead: async (conversationId) => (await run('crm-conversation-read', { conversation_id: conversationId })).conversation,
+    assignConversation: async (conversationId, userId) => (await run('crm-conversation-assign', { conversation_id: conversationId, assigned_user_id: userId })).conversation,
+    doNotContact: async (request) => (await run('crm-do-not-contact', { request })).listed,
+    saveSnippet: async (snippet) => (await run('crm-snippet-save', { snippet })).snippet,
   };
 }
 

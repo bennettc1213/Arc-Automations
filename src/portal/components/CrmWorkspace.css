@@ -383,3 +383,91 @@
   gap: 8px;
   margin: 12px 0 14px;
 }
+
+/* ── a conversation (ARC-370) ─────────────────────────────
+   what the customer wrote sits on the left edge, what the business sent on the right, and
+   what an automation sent is marked as that — never styled to look like a person. */
+
+.crm-thread {
+  margin-top: 12px;
+}
+
+.crm-thread + .crm-thread {
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+}
+
+.crm-thread__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.crm-msgs {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.crm-msg {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  max-width: 92%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.crm-msg--outbound {
+  justify-self: end;
+  border-left-width: 1px;
+  border-right: 3px solid var(--accent);
+}
+
+.crm-msg--auto {
+  border-right-style: dashed;
+}
+
+.crm-msg__who,
+.crm-msg__state {
+  margin: 0;
+  font-size: 12px;
+}
+
+.crm-msg__body {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.crm-msg__state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.crm-compose {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.crm-compose__flags {
+  display: grid;
+  gap: 6px;
+}
+
+.crm-stop {
+  margin-top: 10px;
+}
+
+.crm-stop .ops-input {
+  max-width: 260px;
+}

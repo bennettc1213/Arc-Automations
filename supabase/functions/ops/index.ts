@@ -127,6 +127,16 @@
  *   crm-workspace · crm-lead-view · crm-contact-view · crm-lead-bulk · crm-lead-quick-add ·
  *   crm-stages-save   (and the CRM actions above it shares by name: crm-lead-update, …)
  *
+ * Conversations — ARC-370 (migration 0026), in the same table and through the same two doors.
+ * Documented in ../_shared/crm/actions.ts and docs/architecture/ARC_COMMUNICATIONS_HUB.md:
+ *
+ *   crm-thread · crm-conversations · crm-message-send · crm-message-cancel ·
+ *   crm-message-reconcile (an operator only) · crm-messages-flush · crm-conversation-read ·
+ *   crm-conversation-assign · crm-do-not-contact · crm-snippets · crm-snippet-save
+ *
+ *   A message is one `send_message` action on ARC-200's queue. No provider adapter is
+ *   registered yet, so `crm-message-send` answers `no_channel` here and writes nothing.
+ *
  * Roadmap assistant — read-only, so not audited. Documented in ./roadmap.ts and
  * docs/architecture/ARC_ROADMAP_ASSISTANT.md:
  *
@@ -177,6 +187,7 @@ import { supabaseCrmStore } from '../_shared/crm/supabase-crm-store.ts';
 import { handleIntakeAction, INTAKE_ACTIONS } from './intake.ts';
 import { handleWorkspaceAction, WORKSPACE_ACTIONS } from '../_shared/crm/actions.ts';
 import { supabaseIntakeStore } from '../_shared/intake/supabase-intake-store.ts';
+import { conversationDeps } from '../_shared/communications/wiring.ts';
 import { createRoadmapLimiter, handleRoadmapAction, ROADMAP_ACTIONS } from './roadmap.ts';
 import { operatorGate } from '../_shared/operator-gate.ts';
 import { roadmapModelFor } from '../_shared/roadmap/model.ts';
@@ -565,13 +576,27 @@ Deno.serve(async (request) => {
   if (WORKSPACE_ACTIONS.includes(action) && !CRM_ACTIONS.includes(action)) {
     try {
       const result = await handleWorkspaceAction(action, {
-        deps: { crm: supabaseCrmStore(db), intake: supabaseIntakeStore(db) },
+        deps: {
+          crm: supabaseCrmStore(db),
+          intake: supabaseIntakeStore(db),
+          /* ARC-370: the conversation actions, wired exactly as the client's `crm` door wires them. */
+          ...conversationDeps(db, {
+            environment: ENVIRONMENT,
+            siteUrl: SITE_URL || null,
+            oauthRedirectUrl: OAUTH_REDIRECT_URL,
+            env: (name) => Deno.env.get(name),
+            worker: 'ops-messages',
+          }),
+        },
         actor: actorId ? { kind: 'operator', userId: actorId } : null,
         body: body as unknown as Record<string, unknown>,
       });
       return json(result.body, result.status);
     } catch (error) {
       const message = (error as Error)?.message ?? 'the action failed';
+      if (/crm_conversations|crm_messages|crm_snippets|crm_message_|crm_queue_message|crm_conversation_/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'conversations need supabase/migrations/0026_crm_communications.sql applied first', detail: message }, 501);
+      }
       if (/crm_save_stages|waits_on|crm_pipeline_revisions/i.test(message) && /does not exist|could not find/i.test(message)) {
         return json({ error: 'the workspace needs supabase/migrations/0025_crm_workspace.sql applied first', detail: message }, 501);
       }

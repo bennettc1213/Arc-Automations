@@ -114,6 +114,14 @@ export const CRM_ERROR_STATUS = Object.freeze({
   arc_authority: 409,
   /* ARC-350: a public form's hourly ceiling (0024). */
   rate_limited: 429,
+  /* ARC-370: why a message may not be sent (0026's crm_message_gate, and the route). */
+  do_not_contact: 409,
+  consent_declined: 409,
+  automation_active: 409,
+  safety_review: 409,
+  no_address: 422,
+  no_channel: 409,
+  module_not_ready: 409,
 } as const);
 export type CrmErrorCode = keyof typeof CRM_ERROR_STATUS;
 

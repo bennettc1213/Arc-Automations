@@ -99,10 +99,12 @@ export function backoffSeconds(type: Pick<ActionTypeDefinition, 'retryBaseSecond
 
 /* ── runs ─────────────────────────────────────────────────── */
 
-/** A lead conversation is created by the Lead Recovery engine; the scheduler creates the others. */
-export const RUN_KINDS = ['lead_conversation', 'connector_test', 'observation_window'] as const;
+/** A lead conversation is created by the Lead Recovery engine; the scheduler creates the others.
+ *  `crm_message` (0026, ARC-370) is one message a person wrote, queued with its run in one
+ *  transaction by `crm_queue_message`. */
+export const RUN_KINDS = ['lead_conversation', 'connector_test', 'observation_window', 'crm_message'] as const;
 export type RunKind = typeof RUN_KINDS[number];
-export const SCHEDULER_RUN_KINDS: readonly RunKind[] = ['connector_test', 'observation_window'];
+export const SCHEDULER_RUN_KINDS: readonly RunKind[] = ['connector_test', 'observation_window', 'crm_message'];
 
 export const RUN_STATUSES = ['pending', 'running', 'paused', 'blocked', 'completed', 'failed', 'cancelled'] as const;
 export type RunStatus = typeof RUN_STATUSES[number];

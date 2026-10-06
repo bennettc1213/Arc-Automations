@@ -4,6 +4,7 @@ import Icon from './Icon';
 import { Empty, Pill, Term } from './ui';
 import { ActionButton, Field, Notice, SelectInput, TextArea, TextInput } from './ops-ui';
 import { formatPhone } from '../lib/format';
+import Conversation from './CrmConversation';
 import { lockedFields } from '../../../supabase/functions/_shared/crm/inbox.ts';
 
 /**
@@ -216,7 +217,7 @@ function Notes({ api, notes, target, people, timezone, viewer, readOnly, onChang
       </ul>
       {!readOnly && viewer.may.record && (
         <div className="ops-form crm-form">
-          <Field label="add a note" wide hint="a note is never edited afterwards — it can be archived, and the history keeps it.">
+          <Field label="add a note" wide hint="a note stays inside ARC and is never sent to the customer. it is never edited afterwards — it can be archived, and the history keeps it.">
             <TextArea value={body} maxLength={5000} onChange={(e) => setBody(e.target.value)} />
           </Field>
           <div className="ops-form__row">
@@ -277,7 +278,7 @@ function Safety({ safety }) {
 
 /* ── one lead ───────────────────────────────────────────── */
 
-export function LeadDetail({ api, leadId, timezone, readOnly, onChanged, onOpenContact, onClose }) {
+export function LeadDetail({ api, leadId, timezone, readOnly, businessName, onChanged, onOpenContact, onClose }) {
   const [state, setState] = useState({ kind: 'loading' });
   const [edit, setEdit] = useState(null);
   const change = useChange();
@@ -454,6 +455,14 @@ export function LeadDetail({ api, leadId, timezone, readOnly, onChanged, onOpenC
         )}
       </section>
 
+      {contact && (
+        <section className="crm-section">
+          <h4>conversation</h4>
+          <p className="crm-item__meta">what this customer and the business have said to each other. every message here is one the customer saw.</p>
+          <Conversation api={api} by={{ contact_id: contact.id }} lead={lead} timezone={timezone} readOnly={readOnly || Boolean(lead.archived_at)} businessName={businessName} />
+        </section>
+      )}
+
       <section className="crm-section">
         <h4>next steps</h4>
         <TaskList api={api} tasks={view.tasks} people={people} timezone={timezone} readOnly={!canWrite} onChanged={changed} />
@@ -461,7 +470,7 @@ export function LeadDetail({ api, leadId, timezone, readOnly, onChanged, onOpenC
       </section>
 
       <section className="crm-section">
-        <h4>notes</h4>
+        <h4><Term k="internal_note">internal notes</Term></h4>
         <Notes api={api} notes={view.notes} target={{ lead_id: lead.id }} people={people} timezone={timezone} viewer={viewer} readOnly={!canWrite} onChanged={changed} />
       </section>
 
@@ -536,7 +545,7 @@ const CONTACT_FIELDS = [
   ['postal_code', 'ZIP', 20],
 ];
 
-export function ContactDetail({ api, contactId, timezone, readOnly, onChanged, onOpenLead, onClose }) {
+export function ContactDetail({ api, contactId, timezone, readOnly, businessName, onChanged, onOpenLead, onClose }) {
   const [state, setState] = useState({ kind: 'loading' });
   const [edit, setEdit] = useState(null);
 
@@ -628,6 +637,12 @@ export function ContactDetail({ api, contactId, timezone, readOnly, onChanged, o
       </section>
 
       <section className="crm-section">
+        <h4>conversations</h4>
+        <p className="crm-item__meta">what this customer and the business have said to each other, on every channel there is an address for.</p>
+        <Conversation api={api} by={{ contact_id: contact.id }} timezone={timezone} readOnly={readOnly || Boolean(contact.archived_at)} businessName={businessName} />
+      </section>
+
+      <section className="crm-section">
         <h4>leads</h4>
         {view.leads.length === 0 ? <p className="ops-muted">no leads.</p> : (
           <ul className="crm-items">
@@ -651,7 +666,7 @@ export function ContactDetail({ api, contactId, timezone, readOnly, onChanged, o
       </section>
 
       <section className="crm-section">
-        <h4>notes</h4>
+        <h4><Term k="internal_note">internal notes</Term></h4>
         <Notes api={api} notes={view.notes} target={{ contact_id: contact.id }} people={people} timezone={timezone} viewer={viewer} readOnly={!canWrite} onChanged={changed} />
       </section>
 
@@ -740,6 +755,26 @@ export function QuickAdd({ api, services, onAdded, onClose }) {
       )}
       <p className="ws-note">adding a lead sends nothing and starts nothing. it is recorded, typed in by you, and waits in the inbox.</p>
     </div>
+  );
+}
+
+/** a conversation with an address nobody on file holds yet, opened from the conversations view. */
+export function ThreadOnly({ api, conversationId, timezone, readOnly, businessName, onChanged, onClose }) {
+  return (
+    <article className="crm-record" aria-label="a conversation with nobody on file">
+      <header className="crm-record__head">
+        <div>
+          <p className="crm-record__eyebrow">conversation</p>
+          <h3 className="crm-record__title">nobody on file yet</h3>
+        </div>
+        <div className="crm-record__status">
+          <button type="button" className="ws-btn" aria-label="close this conversation" onClick={onClose}>
+            <Icon name="close" size={13} />
+          </button>
+        </div>
+      </header>
+      <Conversation api={api} by={{ conversation_id: conversationId }} timezone={timezone} readOnly={readOnly} businessName={businessName} onChanged={onChanged} />
+    </article>
   );
 }
 

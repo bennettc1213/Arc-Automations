@@ -226,6 +226,27 @@ or ARC-350's `createManualLead`; a bulk change is each lead's own update. A stag
 and `crm_save_stages` is the only way to change a pipeline. A won stage is what a person set — it writes
 no `events` row and no figure reads it.
 
+**A conversation is kept by address, and a message a person writes is one action on the one queue**
+(`0026`, `_shared/communications/`, `CrmConversation.jsx`, ARC-370; docs/architecture/ARC_COMMUNICATIONS_HUB.md).
+`crm_conversations` is one thread per client, channel and address — like `suppressions`, so a merge moves
+nothing; which customer it belongs to is read from the contacts holding that address, and two is never
+guessed between. `crm_queue_message` writes the message, a `crm_message` run and a `send_message` action
+(0017's own type) in one transaction, or nothing. The run is a module's: the service asks the registry for
+a module that **requires** the channel's capability and is active (`modulesRequiring`) and never names
+one, so pausing it holds a person's messages too. `crm_message_gate` — the do-not-contact list, consent
+evidence, Lead Recovery still talking (`automation_active`: take the lead over first) and unread safety
+flags — is read at queueing and again under the message's lock in `crm_message_begin_send`; the action's
+payload is `{ message_id }` only. `MessageSendRunner` reports a send as sent, provably-not-sent (retryable
+or not) or **unknown**, and an unknown outcome is never resent until an operator reconciles it
+(`deliveryState` shows one truth from the message and its action). Inbound is `ingestInboundMessage` →
+`crm_message_arrival`: once per provider id, STOP read by `engine/rules.ts` and written to `suppressions`
+in the same transaction, a credential-shaped body withheld rather than refused; no signed-in person can
+post one. Lead Recovery's own `messages` are shown in the timeline by reference, never copied, and a
+note is a different table with no path to a send. Nothing here writes `events`. **No client can send
+yet**: `PRODUCTION_CHANNEL_ADAPTERS` is empty (Twilio is `arc_managed`, not a client connection), so the
+screen says there is no channel; a send through ARC's Twilio is ARC-LR-420's. `synthetic-channel.ts` is
+the test adapter and refuses production.
+
 **The words on screen are the system's words, each with its meaning attached** (ARC-340 clarity
 pass, `lib/glossary.js`, `Term` / `Consequence` in `ui.jsx`). A state name is never renamed or
 hidden to make a page simpler: wrap it in `<Term k="…">` and add the gloss to the glossary.
