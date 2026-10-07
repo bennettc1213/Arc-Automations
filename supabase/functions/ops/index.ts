@@ -146,6 +146,14 @@
  *
  *   Whose calendar it is stays `crm-policy-set` above, with `object_type: appointment`.
  *
+ * Onboarding — ARC-390 (migration 0028). Documented in ./onboarding.ts and
+ * docs/architecture/ARC_ONBOARDING.md:
+ *
+ *   onboarding-overview · onboarding-save · onboarding-authority-apply · onboarding-enable
+ *
+ *   A saved plan selects no module and moves no record. The route and who keeps each kind of
+ *   record change only in `onboarding-authority-apply`, for the change the operator read.
+ *
  * Roadmap assistant — read-only, so not audited. Documented in ./roadmap.ts and
  * docs/architecture/ARC_ROADMAP_ASSISTANT.md:
  *
@@ -198,6 +206,9 @@ import { handleWorkspaceAction, WORKSPACE_ACTIONS } from '../_shared/crm/actions
 import { supabaseIntakeStore } from '../_shared/intake/supabase-intake-store.ts';
 import { supabaseBookingStore } from '../_shared/booking/supabase-booking-store.ts';
 import { conversationDeps } from '../_shared/communications/wiring.ts';
+import { PRODUCTION_CHANNEL_ADAPTERS } from '../_shared/communications/channels.ts';
+import { handleOnboardingAction, ONBOARDING_ACTIONS } from './onboarding.ts';
+import { supabaseOnboardingStore } from '../_shared/onboarding/supabase-onboarding-store.ts';
 import { createRoadmapLimiter, handleRoadmapAction, ROADMAP_ACTIONS } from './roadmap.ts';
 import { operatorGate } from '../_shared/operator-gate.ts';
 import { roadmapModelFor } from '../_shared/roadmap/model.ts';
@@ -286,6 +297,7 @@ const ACTIONS = [
   ...CRM_ACTIONS,
   ...WORKSPACE_ACTIONS.filter((name) => !CRM_ACTIONS.includes(name)),
   ...INTAKE_ACTIONS,
+  ...ONBOARDING_ACTIONS,
   ...ROADMAP_ACTIONS,
 ];
 
@@ -663,6 +675,38 @@ Deno.serve(async (request) => {
         return json({ error: 'lead capture needs supabase/migrations/0024_native_intake.sql applied first', detail: message }, 501);
       }
       console.error(`intake action ${action} failed`, error);
+      return json({ error: message }, 500);
+    }
+  }
+
+  // ── route-aware onboarding (ARC-390, 0028) ─────────────────────────────
+
+  /* delegated whole. the plan and its history are 0028's; the ARC pieces it sets up are made
+     by the intake and booking services through the same stores their own actions use, and
+     the channels are the adapters this deployment can really send through. */
+  if (ONBOARDING_ACTIONS.includes(action)) {
+    try {
+      const result = await handleOnboardingAction(action, {
+        deps: {
+          onboarding: supabaseOnboardingStore(db),
+          crm: supabaseCrmStore(db),
+          intake: supabaseIntakeStore(db),
+          booking: supabaseBookingStore(db),
+          channels: PRODUCTION_CHANNEL_ADAPTERS.map((adapter) => adapter.channel),
+        },
+        body: body as unknown as Record<string, unknown>,
+        actorId,
+      });
+      return json(result.body, result.status);
+    } catch (error) {
+      const message = (error as Error)?.message ?? 'the action failed';
+      if (/tenant_onboarding|onboarding_/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'onboarding needs supabase/migrations/0028_onboarding.sql applied first', detail: message }, 501);
+      }
+      if (/crm_|business_/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'onboarding needs supabase/migrations/0023_crm_core.sql to 0027_crm_booking.sql applied first', detail: message }, 501);
+      }
+      console.error(`onboarding action ${action} failed`, error);
       return json({ error: message }, 500);
     }
   }

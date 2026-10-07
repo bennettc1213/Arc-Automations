@@ -197,7 +197,8 @@ These are operational tables: no figure reads them, a contact holds no consent o
 value. Every write names its actor and 0023 checks it again; the timeline (`crm_activities`) is
 written by triggers and records field names, never values. Lead Recovery's `leads` stays the
 engine's row — a CRM lead points at it; never build a second contact model. The business's name
-and timezone stay the tenant's. There is no screen yet.
+and timezone stay the tenant's. Hours, public contact details and services are edited on the
+onboarding page (ARC-390); locations, service areas and a field-by-field policy have no screen yet.
 
 **A lead enters the CRM through one function, whichever door it came by** (`0024`,
 `_shared/intake/`, `native-intake`, `ops` `intake-*`, ARC-350; docs/architecture/ARC_NATIVE_INTAKE.md).
@@ -265,6 +266,24 @@ only as its hash, in the address's fragment and a request body, never a query st
 writes `events`, sends a message or queues a reminder: a confirmed appointment is a calendar entry,
 not a result, and telling the customer is ARC-370's. Not dispatch — `capacity` is a number,
 `assigned_user_id` a name. No calendar adapter exists, so nothing reports and nothing is pushed.
+
+**A company is put on a route from one page, and a plan is only a plan** (`0028`,
+`_shared/onboarding/`, `ops` `onboarding-*`, `OnboardingPanel.jsx`, ARC-390;
+docs/architecture/ARC_ONBOARDING.md). Three things kept apart: what the business said
+(`answers`), an operator's decision (`plan`: a route and, per capability, `arc` / `external` /
+`not_needed`), and the capability matrix — derived on every read, never stored, so a capability
+is `arc` only once the ARC piece exists and `external` only once ARC can reach their system;
+everything between is `blocked` with the reason. A capability is something a business does,
+never a product (`CAPABILITIES`, portal-safe; not the registry's adapter capabilities), and the
+route rules are `parsePlanInput`'s, checked again by 0028's guard. Saving a plan writes the plan:
+it selects no module, records no route, publishes nothing and moves no record
+(`recommendPlan` returns data). The route and who keeps each kind of record
+(`business_profiles.route`, `crm_source_policies`) change only in `onboarding_apply_authority`,
+which re-derives the change and refuses unless the caller sends back the digest of what it
+read; nothing is deleted in either direction, so a route can change later with every record,
+mapping and history line kept. Steps are read off `onboarding_facts` — never ticked — and
+`onboarding-enable` makes ARC pieces as drafts through the services that own them. Operators
+only; a client does not see it yet. Going live is still ARC-120's gate.
 
 **The words on screen are the system's words, each with its meaning attached** (ARC-340 clarity
 pass, `lib/glossary.js`, `Term` / `Consequence` in `ui.jsx`). A state name is never renamed or

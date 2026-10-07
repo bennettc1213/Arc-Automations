@@ -326,6 +326,10 @@ export default function NewClient({ base, clients, allClients, reload, initial =
               <Icon name="chevron" size={13} />
               open {created.name}&rsquo;s checklist
             </Link>
+            <Link className="ws-btn" to={`${base}/clients/${created.id}/onboarding`}>
+              <Icon name="roster" size={13} />
+              start their onboarding
+            </Link>
             <button
               type="button"
               className="ws-btn"

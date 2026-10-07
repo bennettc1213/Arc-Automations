@@ -392,6 +392,10 @@ function ClientBody({ client, base, reload, reloadBuilds, probe, runProbe }) {
       <TenantModulesPanel tenantId={tenant.id} timezone={tenant.timezone} base={base} readOnly={archived} />
 
       <div className="ops-row">
+        <Link className="ws-btn" to={`${base}/clients/${tenant.id}/onboarding`}>
+          <Icon name="roster" size={13} />
+          onboarding — their route, who provides what, and what is missing
+        </Link>
         <Link className="ws-btn" to={`${base}/clients/${tenant.id}/settings`}>
           <Icon name="edit" size={13} />
           settings — company, hours, templates and the rest, with history

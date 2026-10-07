@@ -15,6 +15,60 @@ documented here. Format loosely follows
 - `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
   `PORTAL_CONTEXT.md`).
 
+## [1.32.0] - 2026-10-07
+
+### Added
+
+- **ARC-390: route-aware onboarding.** One console page per client
+  (`/ops/console/clients/:id/onboarding`) that puts a company on a route: what it has today,
+  who provides each thing a business does, where each kind of record is kept, and what is
+  still missing before the hand-over to activation.
+  - **A current-stack questionnaire**: the five route questions, what they use for each
+    capability and whether they want to keep it, and whether there is a customer list to bring
+    in. The answers suggest a route and a plan; the suggestion is copied into the plan only
+    when an operator asks for it, and sets nothing up.
+  - **Capabilities, not products.** Ten things a business does — customer records, lead
+    intake, lead pipeline, website form, text messaging, email, calendar, online booking,
+    field-service management, accounting — each provided by ARC, by their own system, or left
+    out on purpose. A system is named from the connector registry, or by what the business
+    calls it when ARC has no entry for it.
+  - **A capability matrix read off what exists.** A capability given to ARC shows as ARC's
+    only once the ARC piece is there; one left with their system shows as external only once
+    ARC can reach it. Everything between is `blocked`, with the reason and the step that
+    closes it. Gaps are always listed.
+  - **The route rules**: ARC Native keeps every record in ARC, ARC Connected keeps the customer
+    list in their system, ARC Hybrid names at least one system they keep. Checked on the page,
+    in the function and in the database.
+  - **The route and who keeps each kind of record change in one place**, behind what the change
+    will do: how many records ARC holds, how many are linked to the other system, and what
+    stops or starts. The apply is refused if any of that changed since it was read. Nothing is
+    deleted in either direction, so a client can change route later and keep every customer,
+    lead, mapping and line of history.
+  - **Steps that cannot go stale.** Each of the twelve is done because the thing exists — hours
+    set, form published, authority applied — never because somebody ticked it, so onboarding
+    resumes from wherever it was left.
+  - **Setting up the ARC pieces**: the pipeline, a draft form, an appointment type and a draft
+    booking page, each made by the service that owns it. Never published and never switched on
+    from here.
+  - **Business profile**: opening hours, public contact details and services now have a screen.
+  - **History**: every answer saved, plan saved, ARC piece set up and change applied, with who.
+- `docs/architecture/ARC_ONBOARDING.md`, and it joins the Roadmap Assistant's documents.
+
+### Changed
+
+- The client page and the "client created" screen link to onboarding.
+- The glossary explains the five states a capability can be in, "where it is kept", and the
+  three routes.
+
+### Notes
+
+- Onboarding selects no module and never activates one: selecting stays the client page's
+  panel, and going live stays the activation page's.
+- No provider a client connects with their own credential exists in the registry yet, so a
+  record-owning capability left with their system reads `blocked` until one does.
+- Needs `0028_onboarding.sql` applied and the `ops` function redeployed. Until then the page
+  says it is not deployed here.
+
 ## [1.31.0] - 2026-10-06
 
 ### Added

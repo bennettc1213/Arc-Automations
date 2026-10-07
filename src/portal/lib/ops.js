@@ -1609,3 +1609,40 @@ export async function cancelIntakeImport(tenantId, importId) {
 export function intakeHookUrl() {
   return `${functionUrl('native-intake')}/hook`;
 }
+
+/* ── onboarding (0028, ARC-390) ────────────────────────────────
+   four `onboarding-*` actions, each answering with the whole of where the client's
+   onboarding now stands. a save carries the revision the page was drawn from; applying a
+   change of route or authority carries the digest shown beside what it will change. the two
+   below them are ARC-340's own actions, which the business step uses unchanged. */
+export async function getOnboarding(tenantId) {
+  return (await callOps({ action: 'onboarding-overview', tenant_id: tenantId })).onboarding;
+}
+
+export async function saveOnboarding(tenantId, expectedRevision, { answers, plan } = {}) {
+  return (
+    await callOps({
+      action: 'onboarding-save',
+      tenant_id: tenantId,
+      expected_revision: expectedRevision,
+      ...(answers ? { answers } : {}),
+      ...(plan ? { plan } : {}),
+    })
+  ).onboarding;
+}
+
+export async function applyOnboardingAuthority(tenantId, acknowledged) {
+  return (await callOps({ action: 'onboarding-authority-apply', tenant_id: tenantId, acknowledged })).onboarding;
+}
+
+export async function enableOnboardingCapability(tenantId, capability) {
+  return (await callOps({ action: 'onboarding-enable', tenant_id: tenantId, capability })).onboarding;
+}
+
+export async function saveBusinessProfile(tenantId, profile) {
+  return (await callOps({ action: 'crm-profile-save', tenant_id: tenantId, profile })).profile;
+}
+
+export async function saveBusinessService(tenantId, service, id) {
+  return (await callOps({ action: 'crm-service-save', tenant_id: tenantId, service, ...(id ? { id } : {}) })).service;
+}

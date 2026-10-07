@@ -339,6 +339,44 @@ export const GLOSSARY = Object.freeze({
     label: 'at the same time',
     gloss: 'How many appointments may overlap. One crew is one: a time that is taken is not offered again.',
   },
+
+  /* ── onboarding: who provides each thing a business does (ARC-390) ── */
+  onb_arc: {
+    label: 'ARC',
+    gloss: 'ARC does this for the business, and the piece of ARC behind it exists and is ready.',
+  },
+  onb_external: {
+    label: 'external',
+    gloss: 'The business keeps using its own system for this. Either ARC can reach that system, or nothing ARC does depends on it.',
+  },
+  onb_not_needed: {
+    label: 'not needed',
+    gloss: 'Left out of this setup on purpose. Nothing is set up for it and nothing waits on it.',
+  },
+  onb_blocked: {
+    label: 'blocked',
+    gloss: 'Somebody was named to provide this, and it does not work yet. The reason is printed next to it.',
+  },
+  onb_undecided: {
+    label: 'undecided',
+    gloss: 'Nobody has said who provides this yet. It counts as a gap until somebody does.',
+  },
+  record_authority: {
+    label: 'where it is kept',
+    gloss: 'The one side that may change a kind of record. The other side can read it and cannot edit it, so the two never disagree.',
+  },
+  route_native: {
+    label: 'ARC Native',
+    gloss: 'ARC is where customers, leads and bookings are kept. The business does not use another system for them.',
+  },
+  route_hybrid: {
+    label: 'ARC Hybrid',
+    gloss: 'ARC keeps some things and the business keeps some of its own tools. Which side keeps what is agreed line by line.',
+  },
+  route_connected: {
+    label: 'ARC Connected',
+    gloss: 'The business keeps its own system for customers and jobs. ARC works on top of it and does not replace it.',
+  },
 });
 
 /** the entry for a term, or null — an unknown word is printed as it is, never guessed at. */
