@@ -3,6 +3,7 @@ import { Panel, Pill, StatCard, Sparkline, Empty } from '../../components/ui';
 import { Disclosure, Help, Notice } from '../../components/ops-ui';
 import ClientTable, { attentionFor } from '../../components/ClientTable';
 import Icon from '../../components/Icon';
+import '../../ecosystem/launch.css';
 import { formatCount, formatDuration, formatRelative } from '../../lib/format';
 
 /**
@@ -41,6 +42,11 @@ export default function Roster({ clients, totals, base, probe }) {
 
   return (
     <>
+      <Link className="ops-ecosystem-launch" to={`${base}/ecosystem`}>
+        <span aria-hidden="true">◈</span>
+        <div><small>ARC MISSION CONTROL</small><strong>AI Ecosystem</strong><p>Meet Damon Reid. Explore each client’s orbital station, events and memory.</p></div>
+        <b>Launch ecosystem ↗</b>
+      </Link>
       {flagged.length > 0 && (
         <Panel title="needs looking at" note={`${flagged.length} of ${totals.clients}`}>
           <ul className="ws-list">

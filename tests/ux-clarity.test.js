@@ -155,7 +155,9 @@ describe('the shared shell', () => {
       assert.ok(item.blurb && item.blurb.length >= 12, `${item.label} has a blurb`);
     }
     assert.equal(NAV_ITEMS.length, 13, 'no client page was removed (the lead inbox, ARC-360, made thirteen)');
-    assert.equal(OPS_NAV_ITEMS.length, 10, 'no console page was removed');
+    for (const route of ['', 'clients', 'activity', 'past-clients', 'servers', 'alerts', 'supabase', 'audit', 'clients/new', 'identity', 'ecosystem']) {
+      assert.ok(OPS_NAV_ITEMS.some(item => item.to === route), `console page preserved: ${route || 'roster'}`);
+    }
   });
 
   test('both workspaces start with a skip link to the same page landmark', () => {

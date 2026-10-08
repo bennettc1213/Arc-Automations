@@ -48,6 +48,13 @@ export const OPS_NAV_GROUPS = [
     label: 'the wiring',
     items: [
       {
+        to: 'ecosystem',
+        icon: 'pulse',
+        label: 'AI Ecosystem',
+        title: 'ARC Mission Control',
+        blurb: 'follow Damon Reid through each client’s recovery ecosystem',
+      },
+      {
         to: 'servers',
         icon: 'servers',
         label: 'connections',

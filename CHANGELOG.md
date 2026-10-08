@@ -15,6 +15,15 @@ documented here. Format loosely follows
 - `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
   `PORTAL_CONTEXT.md`).
 
+## [1.33.0] - 2026-10-07
+
+### Added
+
+- **ARC Mission Control**: protected OPS AI Ecosystem launcher and client selector, a voxel 3D orbital station following Damon Reid, a draggable 2D map, eleven inspectable stations, reduced motion and WebGL fallback.
+- Tenant-scoped event streaming with polling reconciliation, distinct demo recovery/safety/provider-failure replays, evidence references and in-station access to ARC's existing versioned configuration editor. Provider readiness and unimplemented calling remain explicitly unverified or disabled.
+- Obsidian folder connection and Markdown journal export under `Damon Read Memory`, plus an authenticated local bridge for complete event backfill and continuous tenant-separated memory logging. Production classifier retrieval from the vault is not enabled.
+- Ecosystem model, memory isolation and idempotency tests, plus desktop/mobile browser checks of replay, navigation, failure states, editing, fallback and the OPS route gate.
+
 ## [1.32.0] - 2026-10-07
 
 ### Added

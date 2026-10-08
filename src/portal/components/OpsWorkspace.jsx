@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { DateTime } from 'luxon';
 import Sidebar from './Sidebar';
@@ -29,6 +29,8 @@ import { checkingVerdict, pipelineVerdict, probePipelines, rosterTotals } from '
 import { formatClock } from '../lib/format';
 import '../workspace.css';
 import '../ops.css';
+
+const MissionControl = lazy(() => import('../pages/ops/MissionControl'));
 
 /**
  * the frame the ops console renders inside.
@@ -301,6 +303,11 @@ export default function OpsWorkspace({ roster, email, onSignOut, onReload, onRel
     probe,
     runProbe,
   };
+
+  // Full-screen, lazy-loaded and behind the same Ops admin gate as this workspace.
+  if (location.pathname.replace(/\/+$/, '') === `${base}/ecosystem`) {
+    return <Suspense fallback={<div className="portal" role="status" style={{ padding: 40 }}>Loading mission control…</div>}><MissionControl {...ctx} /></Suspense>;
+  }
 
   return (
     <div className={`portal ws${railCollapsed ? ' ws--tight' : ''}${drawerOpen ? ' ws--open' : ''}`}>

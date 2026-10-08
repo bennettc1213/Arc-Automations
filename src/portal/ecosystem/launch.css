@@ -1,0 +1,66 @@
+.ops-ecosystem-launch {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  text-decoration: none;
+  color: #f1dfcb !important;
+  background: radial-gradient(ellipse at 90% 80%, #4d3344, #1c2531 60%);
+  border: 1px solid #6a5141;
+  border-radius: 8px;
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  box-shadow: 0 8px 30px #0002;
+}
+.ops-ecosystem-launch > span:first-child {
+  font-size: 38px;
+  color: #f5b981;
+}
+.ops-ecosystem-launch small {
+  display: block;
+  font:
+    9px 'IBM Plex Mono',
+    monospace;
+  letter-spacing: 1.6px;
+  color: #dda477;
+}
+.ops-ecosystem-launch strong {
+  display: block;
+  font-size: 23px;
+  font-weight: 500;
+  margin: 4px 0;
+}
+.ops-ecosystem-launch p {
+  font-size: 12px;
+  color: #b4c0d0;
+  margin: 0;
+}
+.ops-ecosystem-launch > b {
+  margin-left: auto;
+  font-size: 13px;
+  border: 1px solid #a47a57;
+  padding: 11px 16px;
+  border-radius: 4px;
+  background: #e7a66b;
+  color: #211d1b;
+  white-space: nowrap;
+}
+.ops-ecosystem-launch:hover {
+  border-color: #efb17b;
+}
+@media (max-width: 760px) {
+  .ops-ecosystem-launch {
+    padding: 18px;
+    gap: 15px;
+    flex-wrap: wrap;
+  }
+  .ops-ecosystem-launch strong {
+    font-size: 20px;
+  }
+  .ops-ecosystem-launch p {
+    font-size: 10px;
+  }
+  .ops-ecosystem-launch > b {
+    font-size: 11px;
+    padding: 8px 12px;
+  }
+}
