@@ -32,6 +32,7 @@ import {
   handleMessageStatus,
   intakeLead,
   loadConfig,
+  recordAnsweredCall,
   shouldRecoverCall,
 } from '../_shared/engine/runtime.ts';
 import type { EngineDeps } from '../_shared/engine/runtime.ts';
@@ -183,8 +184,19 @@ Deno.serve(async (request) => {
       const tenantConfig = await store.findTenantByTwilioNumber(called);
       if (!tenantConfig) return twiml(emptyTwiml());
 
-      /* the branch the whole module hangs off. an answered call produces nothing at all. */
+      /* the branch the whole module hangs off. an answered call produces no lead, no run and
+         no text — only a count (ARC-MK-210), so the ledger can say how many calls the
+         business picked up itself. `completed` is the one status that means a person
+         answered; anything else unrecognised is recorded as nothing. the count must never
+         cost a call its 200, so a failed write is logged and swallowed. */
       if (!shouldRecoverCall(dialStatus)) {
+        if (dialStatus.toLowerCase() === 'completed') {
+          try {
+            await recordAnsweredCall(deps, { tenantId: tenantConfig.tenantId, callSid });
+          } catch (error) {
+            console.error(`dial-status: answered call for ${tenantConfig.tenantId} was not counted`, error);
+          }
+        }
         return twiml(emptyTwiml());
       }
 

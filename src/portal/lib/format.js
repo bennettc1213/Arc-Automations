@@ -213,7 +213,7 @@ export function eventLabel(eventType, payload = {}) {
     case 'message_failed':
       return `text could not be delivered${payload.provider_code ? ` — carrier code ${payload.provider_code}` : ''}`;
     case 'lead_booked':
-      return 'lead booked';
+      return payload.appointment_at ? 'lead booked, with a visit time' : 'lead booked';
     case 'lead_suppressed':
       return payload.reason === 'wrong_contact'
         ? 'wrong number — no further contact'
@@ -222,6 +222,21 @@ export function eventLabel(eventType, payload = {}) {
       return `sequence finished${payload.stop_reason ? ` — ${String(payload.stop_reason).replace(/_/g, ' ')}` : ''}`;
     case 'automation_failed':
       return 'sequence stopped on an error';
+    /* the proof ledger (ARC-MK-210). */
+    case 'call_answered':
+      return 'call answered by the business';
+    case 'lead_outcome_requested':
+      return 'owner asked whether the job happened';
+    case 'lead_outcome_recorded':
+      return payload.outcome === 'happened'
+        ? 'job confirmed — it happened'
+        : payload.outcome === 'quoted'
+          ? 'visit confirmed — quote still open'
+          : `job disputed${payload.reason ? ` — ${String(payload.reason).replace(/_/g, ' ')}` : ''}`;
+    case 'lead_dispute_settled':
+      return payload.decision === 'accepted' ? 'dispute accepted — not billed' : 'dispute not accepted — the job counts';
+    case 'pilot_terms_recorded':
+      return 'pilot terms agreed and recorded';
     case 'estimate_created':
       return 'estimate opened';
     case 'estimate_followup_sent':

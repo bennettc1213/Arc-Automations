@@ -12,18 +12,20 @@
  *   - `ownerJobs` is the one list the jobs screen, the tally and the export all read. where
  *     the workspace was handed a proof ledger (the demo's seven written examples) the jobs
  *     are those, already carrying their verdicts. otherwise they are the client's own leads
- *     from the event log, each showing only what the log proves.
+ *     from the event log, each showing only what the log proves, with the verdict the same
+ *     rule gave it.
  *   - `ownerMonth` and `ownerNeeds` are counted from those jobs and from the attention
  *     queue. nothing here keeps a number of its own.
  *
- * what it does NOT do, on purpose: decide that a real job counts. the evidence a job needs
- * is ARC-MK-210's to define, so a real lead here is never "counts" — it is shown, with the
- * reason it is not counted yet. and the fee is never worked out here: a figure that cannot
- * be shown is null with its reason, and the page prints a dash, never a zero.
+ * what it does NOT do, on purpose: decide that a job counts. that is the ledger's rule
+ * (`ledger.js`, ARC-MK-210), read off the event log once in `buildDashboardData`; each lead
+ * arrives here already carrying its verdict, and this file only words it. the fee is the
+ * ledger's arithmetic too. a figure that cannot be shown is null with its reason, and the
+ * page prints a dash, never a zero.
  */
 
 import { formatStamp, maskPhone } from './format.js';
-import { LEDGER_STATUS } from '../demo/proof-ledger.js';
+import { LEDGER_STATUS, disputeReasonWords } from './ledger.js';
 
 /* ── who gets the four screens ──────────────────────────── */
 
@@ -43,8 +45,9 @@ export function isLaunchClient(availability) {
 
 /* ── jobs ───────────────────────────────────────────────── */
 
-export const NOT_COUNTED_YET =
-  'the rules that decide whether a job counts are not switched on for your account yet. shown, never billed.';
+/* a lead whose verdict did not arrive. it should not happen — every lead is run through
+   the ledger — so it is said plainly rather than dressed as a status. */
+export const NO_VERDICT = 'this lead’s record could not be read, so nothing about it is counted.';
 
 const verdict = (status, reason) => ({ status, ...LEDGER_STATUS[status], reason });
 
@@ -54,6 +57,9 @@ const verdict = (status, reason) => ({ status, ...LEDGER_STATUS[status], reason 
 function liveJob(lead, timezone) {
   const isCall = lead.source === 'missed_call';
   const texted = lead.latencyMs !== null && lead.latencyMs !== undefined && !lead.failed;
+  const ledger = lead.ledger ?? null;
+  const when = ledger?.appointmentAt ? formatStamp(ledger.appointmentAt, timezone) : null;
+  const cancelled = ledger?.answer?.outcome === 'not_counted' && ledger.answer.beforeVisit;
 
   const text = lead.failed
     ? ['arc tried, and the text did not send', false]
@@ -63,8 +69,19 @@ function liveJob(lead, timezone) {
 
   let booking;
   if (lead.handoff) booking = [`handed to you${lead.handoff.reason ? ` — ${lead.handoff.reason}` : ''}. arc stopped texting.`, null];
-  else if (lead.booked) booking = ['booked', true];
+  else if (lead.booked && cancelled) booking = [`booked${when ? ` for ${when}` : ''}, then ruled out — ${disputeReasonWords(ledger.answer.reason)}`, false];
+  else if (lead.booked) booking = when ? [`booked for ${when}`, true] : ['booked, with no visit time on record', false];
   else booking = ['none', lead.replied ? false : null];
+
+  let owner = ['nothing to confirm', null];
+  if (lead.booked && !lead.handoff && !cancelled) {
+    const answer = ledger?.answer ?? null;
+    if (answer?.outcome === 'happened') owner = ['you said the job happened', true];
+    else if (answer?.outcome === 'quoted') owner = ['you said the visit happened, and the quote is open', true];
+    else if (answer?.outcome === 'not_counted') owner = [`you said it should not count — ${disputeReasonWords(answer.reason)}`, false];
+    else if (ledger?.visit === 'ahead') owner = ['not asked yet — the visit is still ahead', null];
+    else if (ledger?.visit === 'passed') owner = [ledger.asked ? 'asked, not answered yet' : 'not answered yet', false];
+  }
 
   const record = [
     { label: 'came in from', value: lead.sourceLabel ?? 'a lead', held: true },
@@ -73,16 +90,14 @@ function liveJob(lead, timezone) {
     { label: 'arc’s first text', value: text[0], held: text[1] },
     { label: 'the customer’s reply', value: lead.replied ? 'they replied' : 'no reply', held: Boolean(lead.replied) },
     { label: 'booking or handoff', value: booking[0], held: booking[1] },
-    { label: 'your confirmation', value: 'not asked yet', held: null },
+    { label: 'your confirmation', value: owner[0], held: owner[1] },
   ];
 
   return {
     key: lead.id,
     title: lead.name ?? (lead.phone ? maskPhone(lead.phone) : 'unknown caller'),
     record,
-    verdict: lead.handoff
-      ? verdict('handed', 'arc stopped texting and handed this to a person. a handoff is never billed.')
-      : verdict('pending', NOT_COUNTED_YET),
+    verdict: ledger ? verdict(ledger.status, ledger.reason) : verdict('unverified', NO_VERDICT),
   };
 }
 
@@ -91,7 +106,7 @@ function liveJob(lead, timezone) {
  *
  *   example   true when these are the written examples, so the page can say so
  *   jobs      [{ key, title, record: [{ label, value, held }], verdict }]
- *   tally     total and waiting are counts; `counts` is null when nothing may be counted yet
+ *   tally     counted from the ledger's totals over every lead, not the capped list
  */
 export function ownerJobs(data) {
   if (data?.proofLedger) {
@@ -105,14 +120,17 @@ export function ownerJobs(data) {
   }
 
   const jobs = (data?.threads ?? []).map((lead) => liveJob(lead, data.tenant?.timezone ?? 'UTC'));
+  const count = (status) => data?.ledger?.totals?.[status] ?? jobs.filter((job) => job.verdict.status === status).length;
+  const billed = data?.ledger?.totals?.billed ?? jobs.filter((job) => job.verdict.billed).length;
+  const total = data?.ledger?.totals?.total ?? jobs.length;
   return {
     example: false,
     jobs,
     tally: {
-      total: jobs.length,
-      counts: null,
-      needsYou: jobs.filter((job) => job.verdict.status === 'handed').length,
-      notBilled: jobs.length,
+      total,
+      counts: billed,
+      needsYou: count('needs_owner') + count('handed_off'),
+      notBilled: total - billed,
     },
     /* the true count behind a capped list, so the page can say "150 of 412". */
     of: data?.threadTotal ?? jobs.length,
@@ -138,9 +156,9 @@ export function ownerNeeds(data) {
 
   if (data?.proofLedger) {
     items = data.proofLedger.leads
-      .filter((lead) => lead.verdict.status === 'needs_you' || lead.verdict.status === 'handed')
+      .filter((lead) => lead.verdict.status === 'needs_owner' || lead.verdict.status === 'handed_off')
       .map((lead) =>
-        lead.verdict.status === 'handed'
+        lead.verdict.status === 'handed_off'
           ? {
               key: lead.key,
               kind: 'handoff',
@@ -159,7 +177,22 @@ export function ownerNeeds(data) {
             },
       );
   } else {
-    items = (data?.attention?.items ?? []).map((item) => ({
+    const timezone = data?.tenant?.timezone ?? 'UTC';
+    /* the one question the ledger is waiting on, first: a visit whose time has passed and
+       that nobody has answered about. read off each lead's verdict, so answering it — or
+       the window closing — takes it off this list with nothing stored. */
+    const questions = (data?.threads ?? [])
+      .filter((lead) => lead.ledger?.status === 'needs_owner')
+      .map((lead) => ({
+        key: `outcome-${lead.id}`,
+        kind: 'outcome',
+        title: `the visit booked for ${formatStamp(lead.ledger.appointmentAt, timezone)}`,
+        detail: lead.name ?? (lead.phone ? maskPhone(lead.phone) : null),
+        reason: lead.ledger.reason,
+        openedAt: lead.ledger.appointmentAt,
+        to: 'jobs',
+      }));
+    items = questions.concat((data?.attention?.items ?? []).map((item) => ({
       key: item.key,
       kind: HANDOFF_REASONS.has(item.reasonKey) ? 'handoff' : 'other',
       title: item.customer,
@@ -167,7 +200,7 @@ export function ownerNeeds(data) {
       reason: item.reason,
       openedAt: item.openedAt ?? null,
       to: item.to ?? null,
-    }));
+    })));
   }
 
   return {
@@ -181,19 +214,17 @@ export function ownerNeeds(data) {
 
 /* ── this month ─────────────────────────────────────────── */
 
-const figure = (key, label, value, note) => ({ key, label, value, note, available: value !== null && value !== undefined });
-
-const termsEntered = (terms) =>
-  Boolean(terms) && ['monthlyBase', 'perRecoveredJob', 'monthlyCap'].every((key) => typeof terms[key] === 'number');
+const figure = (key, label, value, note, kind = 'count') => ({ key, label, value, note, kind, available: value !== null && value !== undefined });
 
 /**
  * the three figures at the top, the smaller counts under them, and one card per leak.
  *
- * `value: null` is "cannot be shown", and `note` is then the reason. the fee is always
- * null here: with no terms entered there is nothing to multiply, and with terms entered
- * the arithmetic still waits for the counting rules. it is never a zero.
+ * `value: null` is "cannot be shown", and `note` is then the reason. the fee is the
+ * ledger's arithmetic over the jobs that became billable this month and the terms on
+ * record; with no terms recorded there is nothing to multiply, and it is null — never a
+ * zero. the written examples carry no dates and no terms, so the demo's fee is null too.
  */
-export function ownerMonth(data, { terms = null, leaks = [] } = {}) {
+export function ownerMonth(data, { leaks = [] } = {}) {
   const jobs = ownerJobs(data);
   const needs = ownerNeeds(data);
   const example = jobs.example;
@@ -201,19 +232,29 @@ export function ownerMonth(data, { terms = null, leaks = [] } = {}) {
   const live = example || module?.state === 'live';
   const notLive = module?.awaiting ?? 'your phone line is not connected yet';
 
+  const month = example ? null : (data?.ledger?.month ?? null);
+  const fee = month?.feeCents ?? null;
+
+  let broughtBack;
+  if (example) broughtBack = figure('brought_back', 'jobs brought back', jobs.tally.counts, 'every step on record, and you said it happened');
+  else if (!live) broughtBack = figure('brought_back', 'jobs brought back', null, notLive);
+  else if (!month) broughtBack = figure('brought_back', 'jobs brought back', null, 'this month’s count could not be read');
+  else broughtBack = figure('brought_back', 'jobs brought back', month.billed, `counted in ${month.label}, every step on record`);
+
   const figures = [
-    jobs.tally.counts === null
-      ? figure('brought_back', 'jobs brought back', null, live ? 'counted once the proof rules are switched on for your account' : notLive)
-      : figure('brought_back', 'jobs brought back', jobs.tally.counts, 'every step on record, and you said it happened'),
+    broughtBack,
     live
       ? figure('waiting', 'waiting on you', needs.total, needs.total === 0 ? 'nothing needs you right now' : 'open “needs you” to see them')
       : figure('waiting', 'waiting on you', null, notLive),
-    figure(
-      'fee',
-      'fee owed',
-      null,
-      termsEntered(terms) ? 'worked out once the proof rules are switched on' : 'your pilot terms are not entered yet',
-    ),
+    fee === null || !live
+      ? figure('fee', 'fee owed', null, !example && !live ? notLive : 'your pilot terms are not entered yet', 'money')
+      : figure(
+          'fee',
+          'fee owed',
+          fee,
+          month.capped ? 'held at the most a month can cost' : 'your monthly base, plus each job that counts this month',
+          'money',
+        ),
   ];
 
   /* what is provable today without any counting rule: things that happened. in the demo
@@ -235,6 +276,11 @@ export function ownerMonth(data, { terms = null, leaks = [] } = {}) {
       { label: 'customers replied', value: m.replied },
       { label: 'handed to a person', value: m.escalations },
     ];
+    /* only once the line has reported one: a line whose answered calls are not being
+       recorded has not answered zero calls. */
+    if (typeof data.ledger?.callsAnswered === 'number') {
+      proven.unshift({ label: 'calls you answered yourself', value: data.ledger.callsAnswered });
+    }
   }
 
   return {

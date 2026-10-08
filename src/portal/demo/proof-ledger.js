@@ -8,20 +8,23 @@
  *
  *   - `PROOF_LEDGER_LEADS` states only what happened to each lead. no lead carries its own
  *     verdict.
- *   - `ledgerVerdict` reads the verdict off those facts, by the rule the homepage prints
- *     (`site.price.counts`): the call, the text, the reply, the booking and the visit all on
- *     record, and the owner saying the job happened.
+ *   - `ledgerVerdict` reads the verdict off those facts with the ledger's own rule
+ *     (`lib/ledger.js`, ARC-MK-210) — the one a client's real leads go through, and the one
+ *     the homepage prints (`site.price.counts`): the call, the text, the reply, the booking
+ *     and the visit all on record, and the owner saying the job happened.
  *
  * so a lead cannot be labelled "counts" by hand — remove a link and it stops counting.
  *
  * these are written examples, not generated events, and nothing here is read by a figure
- * on any other page. it is the demo's reading of the rule: the evidence a real job needs,
- * and what happens when an owner never answers, are still to be designed and agreed.
+ * on any other page. what they are is the rule shown on seven stories; what a real job's
+ * evidence is, is the event log's to say.
  *
  * deterministic: the same seven every build. arrivals are a weekday and a clock time, not
  * a date, so the page never goes stale. no step after the arrival carries a time — how fast
  * the text goes out is a number we publish once it has been measured on a real line.
  */
+
+import { LEDGER_STATUS, ledgerStatus } from '../lib/ledger.js';
 
 export const PROOF_LEDGER_COMPANY = 'Halstead Heating & Air';
 
@@ -141,44 +144,42 @@ export const PROOF_LEDGER_LEADS = [
   },
 ];
 
-/* the five things a lead can be, in the homepage's words. `billed` is the only thing an
-   invoice would read: one status bills, the rest are shown and never billed. */
-export const LEDGER_STATUS = {
-  counts: { label: 'counts', tone: 'ok', billed: true },
-  pending: { label: 'not counted yet', tone: 'idle', billed: false },
-  needs_you: { label: 'waiting on you', tone: 'warn', billed: false },
-  no: { label: 'does not count', tone: 'neutral', billed: false },
-  handed: { label: 'handed to you', tone: 'warn', billed: false },
-};
+/* the statuses and the rule are the ledger's own (ARC-MK-210, `lib/ledger.js`) — the same
+   lines a real lead goes through. re-exported so the page and its tests have one name. */
+export { LEDGER_STATUS };
 
-const verdict = (status, reason) => ({ status, ...LEDGER_STATUS[status], reason });
+/* a written example, as the facts the rule reads. an example has no dates, so the visit is
+   stated ('ahead' / 'done') rather than worked out from a clock, and nobody has been asked
+   yet: a job nobody answered about is waiting on the owner. */
+export function ledgerFacts(lead) {
+  const cancelled = lead.visit === 'cancelled';
+  let answer = null;
+  if (cancelled) answer = { outcome: 'not_counted', reason: 'customer_cancelled', beforeVisit: true, late: false };
+  else if (lead.owner === 'happened') answer = { outcome: 'happened', reason: null, beforeVisit: false, late: false };
+  else if (lead.owner === 'did_not_happen') answer = { outcome: 'not_counted', reason: 'did_not_happen', beforeVisit: false, late: false };
 
-/* the chain, in order. the first missing link is the reason. */
+  return {
+    answered: lead.answered,
+    texted: Boolean(lead.text),
+    textFailed: false,
+    replied: Boolean(lead.reply),
+    booked: Boolean(lead.booking),
+    outOfOrder: null,
+    ruledOut: lead.ruledOut ?? null,
+    handoff: Boolean(lead.handoff),
+    visit: !lead.booking ? null : lead.visit === 'ahead' ? 'ahead' : 'passed',
+    answer,
+    settlement: null,
+    asked: false,
+    windowClosed: false,
+  };
+}
+
+/* the chain, in order. the first missing link is the reason. only what the page prints is
+   kept: an example has no date for a fee to read. */
 export function ledgerVerdict(lead) {
-  if (lead.answered === true) {
-    return verdict('no', 'you answered it yourself. that job was never missed, so it is yours.');
-  }
-  if (!lead.text) return verdict('no', 'arc never texted this customer, so arc did not bring it back.');
-  if (lead.handoff) {
-    return verdict(
-      'handed',
-      'anything that sounds unsafe goes straight to a person. arc stopped texting, so this is never billed.',
-    );
-  }
-  if (lead.ruledOut === 'wrong_number') {
-    return verdict('no', 'it was never a customer. shown so you can see it was caught, never billed.');
-  }
-  if (!lead.reply) return verdict('no', 'the customer never answered. shown, never billed.');
-  if (!lead.booking) return verdict('no', 'nothing was booked. shown, never billed.');
-  if (lead.visit === 'cancelled') {
-    return verdict('no', 'the customer cancelled before the visit. no visit, no job, no fee.');
-  }
-  if (lead.visit !== 'done') {
-    return verdict('pending', 'the visit has not happened yet. a booking alone is never billed.');
-  }
-  if (lead.owner === 'happened') return verdict('counts', 'every step is on record, and you said the job happened.');
-  if (lead.owner === 'did_not_happen') return verdict('no', 'you said the job did not happen.');
-  return verdict('needs_you', 'the visit time has passed. one question is waiting for you: did the job happen?');
+  const { status, label, tone, billed, reason } = ledgerStatus(ledgerFacts(lead));
+  return { status, label, tone, billed, reason };
 }
 
 const SOURCE = {
@@ -235,8 +236,8 @@ export function buildProofLedger(leads = PROOF_LEDGER_LEADS) {
     leads: rows,
     tally: {
       total: rows.length,
-      counts: count('counts'),
-      needsYou: count('needs_you'),
+      counts: rows.filter((row) => row.verdict.billed).length,
+      needsYou: count('needs_owner'),
       notBilled: rows.filter((row) => !row.verdict.billed).length,
     },
   };

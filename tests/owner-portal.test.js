@@ -4,7 +4,7 @@
  *   - who gets the four screens is read off what the client has, never set;
  *   - no page is removed: every original page still resolves at an address;
  *   - a figure that cannot be shown is a dash and the reason, never a zero, and a real lead
- *     is never marked as counting before the counting rules exist;
+ *     counts only because the ledger's rule (ARC-MK-210) found every link in the event log;
  *   - the account screen shows a projection: no address whole, nothing that is not the
  *     owner's to read, and only to a member of that client;
  *   - the screens are written in an owner's words.
@@ -28,7 +28,8 @@ import {
   OWNER_NAV_ITEMS,
   activeItem,
 } from '../src/portal/lib/nav.js';
-import { NOT_COUNTED_YET, isLaunchClient, jobsTable, ownerJobs, ownerMonth, ownerNeeds } from '../src/portal/lib/owner.js';
+import { NO_VERDICT, isLaunchClient, jobsTable, ownerJobs, ownerMonth, ownerNeeds } from '../src/portal/lib/owner.js';
+import { buildDashboardData } from '../src/portal/lib/dashboard-data.js';
 import { buildProofLedger } from '../src/portal/demo/proof-ledger.js';
 import { buildDemoAccountSettings } from '../src/portal/demo/owner-account.js';
 import { ownerCopyProblem } from '../src/lib/owner-copy.js';
@@ -45,6 +46,7 @@ import { readAccountSettings } from '../supabase/functions/_shared/account/servi
 import { AFTER_HOURS_BEHAVIOURS } from '../supabase/functions/_shared/lead-recovery-config.ts';
 import { MemoryStore } from '../supabase/functions/_shared/engine/store.ts';
 import { leadRecoveryConfig, seedPublishedConfig } from './config-fixtures.js';
+import { LEDGER_NOW, LEDGER_TENANT, chain, daysAgo, daysAhead, event, terms } from './ledger-fixtures.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (file) => readFileSync(path.join(ROOT, file), 'utf8');
@@ -61,32 +63,18 @@ const launchAvailability = (state = 'live') => ({
   installs: mod('unavailable'),
 });
 
-const lead = (over = {}) => ({
-  id: 'lead-1',
-  startedAt: '2026-10-05T14:00:00.000Z',
-  source: 'missed_call',
-  sourceLabel: 'missed call',
-  name: 'Pat Example',
-  phone: '+16145550101',
-  latencyMs: 4000,
-  failed: false,
-  replied: true,
-  booked: true,
-  deliveredAt: null,
-  handoff: null,
-  ...over,
-});
+/* a signed-in launch client, from the event log up — the same chain the portal runs. four
+   leads: one that counts, one waiting on the owner, one handed to a person and one with a
+   visit still ahead. */
+const liveEvents = () => [
+  ...chain('lead-1', { name: 'Pat Example', phone: '+16145550101', visitAt: daysAgo(4), answers: [{ id: 'a1', at: daysAgo(3), outcome: 'happened' }] }),
+  ...chain('lead-2', { phone: '+16145550102', arrived: daysAgo(5), visitAt: daysAgo(2) }),
+  ...chain('lead-3', { phone: '+16145550103', arrived: daysAgo(1), handoff: 'smelled gas' }),
+  ...chain('lead-4', { phone: '+16145550104', arrived: daysAgo(1, 2), visitAt: daysAhead(2) }),
+];
 
-const liveData = (over = {}) => ({
-  tenant: { id: TENANT_A, name: 'Example Heating', slug: 'example', timezone: 'America/New_York', status: 'active' },
-  availability: launchAvailability(),
-  threads: [lead(), lead({ id: 'lead-2', name: null, replied: false, booked: false, handoff: { reason: 'smelled gas' } })],
-  threadTotal: 2,
-  attention: {
-    total: 1,
-    items: [{ key: 'k1', reasonKey: 'handoff', customer: 'Pat Example', reason: 'handed to a person', detail: 'smelled gas', openedAt: '2026-10-05T14:00:00.000Z', to: 'leads?record=lead-2' }],
-  },
-  leadCapture: { metrics: { opportunities: 2, answered: 2, replied: 1, escalations: 1 } },
+const liveData = (events = liveEvents(), over = {}) => ({
+  ...buildDashboardData(LEDGER_TENANT, events, LEDGER_NOW),
   ...over,
 });
 
@@ -97,7 +85,7 @@ const demoData = () => ({
   threads: [],
 });
 
-const monthOptions = { terms: site.price.terms, leaks: site.leaks.items };
+const monthOptions = { leaks: site.leaks.items };
 
 /* ── who gets the four screens ──────────────────────────── */
 
@@ -188,34 +176,69 @@ describe('jobs', () => {
     assert.equal(jobs.example, true);
     assert.equal(jobs.jobs.length, 7);
     assert.equal(jobs.tally.counts, 1);
-    assert.equal(jobs.jobs[0].verdict.status, 'counts');
+    assert.equal(jobs.jobs[0].verdict.status, 'confirmed');
+    assert.equal(jobs.jobs[0].verdict.label, 'counts');
   });
 
-  test('a real lead is never marked as counting, and never billed', () => {
+  test('the fixture is a launch client: lead capture live, and nothing else in the plan', () => {
+    const data = liveData();
+    assert.equal(isLaunchClient(data.availability), true);
+    assert.equal(data.availability.lead_capture.state, 'live');
+  });
+
+  test('a real lead carries the verdict the ledger gave it, and the tally is the ledger’s', () => {
     const jobs = ownerJobs(liveData());
     assert.equal(jobs.example, false);
-    assert.equal(jobs.tally.counts, null, 'not a zero: nothing may be counted yet');
-    for (const job of jobs.jobs) {
-      assert.notEqual(job.verdict.status, 'counts');
-      assert.equal(job.verdict.billed, false);
-    }
-    assert.equal(jobs.jobs[0].verdict.reason, NOT_COUNTED_YET);
+    const byKey = Object.fromEntries(jobs.jobs.map((job) => [job.key, job.verdict]));
+    assert.deepEqual(
+      Object.fromEntries(Object.entries(byKey).map(([key, verdict]) => [key, verdict.status])),
+      { 'lead-3': 'handed_off', 'lead-4': 'booked', 'lead-2': 'needs_owner', 'lead-1': 'confirmed' },
+    );
+    assert.equal(byKey['lead-1'].billed, true);
+    assert.deepEqual(jobs.tally, { total: 4, counts: 1, needsYou: 2, notBilled: 3 });
+  });
+
+  test('take the owner’s yes away and nothing counts', () => {
+    const events = liveEvents().filter((row) => row.eventType !== 'lead_outcome_recorded');
+    const jobs = ownerJobs(liveData(events));
+    assert.equal(jobs.tally.counts, 0);
+    for (const job of jobs.jobs) assert.equal(job.verdict.billed, false);
+  });
+
+  test('a lead that arrives with no verdict is said plainly, and never billed', () => {
+    const data = liveData();
+    const [job] = ownerJobs({ ...data, ledger: null, threads: [{ ...data.threads[0], ledger: null }] }).jobs;
+    assert.equal(job.verdict.reason, NO_VERDICT);
+    assert.equal(job.verdict.billed, false);
   });
 
   test('a real lead shows the same seven lines, and only what the record holds', () => {
-    const [booked, handed] = ownerJobs(liveData()).jobs;
+    const jobs = Object.fromEntries(ownerJobs(liveData()).jobs.map((job) => [job.key, job]));
     const labels = buildProofLedger().leads[0].record.map((line) => line.label);
-    assert.deepEqual(booked.record.map((line) => line.label), labels);
-    assert.equal(booked.record[3].held, true);
-    assert.equal(booked.record[6].held, null, 'the owner has not been asked');
-    assert.equal(handed.verdict.status, 'handed');
-    assert.match(handed.record[5].value, /handed to you — smelled gas/);
-    assert.equal(handed.title, '••• ••• 0101', 'no name: the number is masked, not printed');
+    for (const job of Object.values(jobs)) assert.deepEqual(job.record.map((line) => line.label), labels);
+
+    const counted = jobs['lead-1'].record;
+    assert.equal(counted[3].held, true);
+    assert.match(counted[5].value, /^booked for /);
+    assert.deepEqual([counted[6].value, counted[6].held], ['you said the job happened', true]);
+
+    assert.deepEqual([jobs['lead-2'].record[6].value, jobs['lead-2'].record[6].held], ['not answered yet', false]);
+    assert.equal(jobs['lead-4'].record[6].held, null, 'the visit is still ahead: nothing to ask');
+    assert.match(jobs['lead-3'].record[5].value, /handed to you — smelled gas/);
+    assert.equal(jobs['lead-3'].title, '••• ••• 0103', 'no name: the number is masked, not printed');
+    assert.equal(jobs['lead-1'].title, 'Pat Example');
   });
 
   test('a text that failed is the gap, not a sent text', () => {
-    const [job] = ownerJobs(liveData({ threads: [lead({ failed: true, latencyMs: null })] })).jobs;
+    const [job] = ownerJobs(liveData(chain('lead-1', { textFailed: true, reply: false }))).jobs;
     assert.equal(job.record[3].held, false);
+    assert.equal(job.verdict.status, 'not_billable');
+  });
+
+  test('a booking with no visit time is shown as the gap it is', () => {
+    const [job] = ownerJobs(liveData(chain('lead-1', { visitAt: null }))).jobs;
+    assert.deepEqual([job.record[5].value, job.record[5].held], ['booked, with no visit time on record', false]);
+    assert.equal(job.verdict.label, 'cannot be proven');
   });
 
   test('the export is the jobs screen as a table', () => {
@@ -243,27 +266,44 @@ describe('this month', () => {
     assert.deepEqual(month.proven.map((row) => row.value), [7, 7, 6, 1]);
   });
 
-  test('the fee is never a number here — a dash and the reason', () => {
+  test('with no terms on record the fee is a dash and the reason, never a zero', () => {
     for (const data of [demoData(), liveData()]) {
       const fee = byKey(ownerMonth(data, monthOptions), 'fee');
       assert.equal(fee.value, null);
       assert.equal(fee.available, false);
       assert.equal(fee.note, 'your pilot terms are not entered yet');
     }
-    const entered = byKey(ownerMonth(liveData(), { ...monthOptions, terms: { monthlyBase: 1, perRecoveredJob: 1, monthlyCap: 1 } }), 'fee');
-    assert.equal(entered.value, null);
-    assert.match(entered.note, /proof rules/);
   });
 
-  test('a signed-in client’s jobs brought back is unavailable, not zero', () => {
+  test('with terms on record the fee is the ledger’s arithmetic, in cents', () => {
+    const month = ownerMonth(liveData([...liveEvents(), terms(daysAgo(30))]), monthOptions);
+    const fee = byKey(month, 'fee');
+    assert.equal(fee.value, 20000 + 9000);
+    assert.equal(fee.kind, 'money');
+    assert.match(fee.note, /monthly base, plus each job that counts/);
+    const capped = byKey(ownerMonth(liveData([...liveEvents(), terms(daysAgo(30), { cap_cents: 21000 })]), monthOptions), 'fee');
+    assert.equal(capped.value, 21000);
+    assert.match(capped.note, /most a month can cost/);
+  });
+
+  test('a signed-in client’s figures are counted from their own log', () => {
     const month = ownerMonth(liveData(), monthOptions);
-    assert.equal(byKey(month, 'brought_back').value, null);
-    assert.equal(byKey(month, 'waiting').value, 1);
-    assert.deepEqual(month.proven.map((row) => row.value), [2, 2, 1, 1]);
+    assert.equal(byKey(month, 'brought_back').value, 1);
+    assert.match(byKey(month, 'brought_back').note, /october 2026/);
+    assert.equal(byKey(month, 'waiting').value, 2, 'one question, one handoff');
+    assert.deepEqual(month.proven.map((row) => row.value), [4, 4, 4, 1]);
   });
 
-  test('a line that is not connected shows no figure at all', () => {
-    const month = ownerMonth(liveData({ availability: launchAvailability('awaiting') }), monthOptions);
+  test('calls the owner answered are shown once the line reports them', () => {
+    const month = ownerMonth(liveData([...liveEvents(), event('call_answered', daysAgo(1))]), monthOptions);
+    assert.deepEqual(month.proven[0], { label: 'calls you answered yourself', value: 1 });
+    assert.equal(ownerMonth(liveData(), monthOptions).proven.length, 4);
+  });
+
+  test('a line that is not connected shows no figure at all, terms or not', () => {
+    const data = liveData([terms(daysAgo(30))]);
+    assert.equal(data.availability.lead_capture.state, 'awaiting');
+    const month = ownerMonth(data, monthOptions);
     for (const figure of month.figures) assert.equal(figure.value, null, figure.key);
     assert.equal(month.proven, null);
     assert.equal(month.leaks[0].running, false);
@@ -286,16 +326,24 @@ describe('needs you', () => {
     assert.deepEqual(needs.groups.map((group) => [group.key, group.items.length]), [['outcome', 1], ['handoff', 1]]);
   });
 
-  test('signed in, it is the attention queue, sorted into kinds', () => {
+  test('signed in: the outcome question first, then the attention queue, sorted into kinds', () => {
     const data = liveData();
-    data.attention.items.push({ key: 'k2', reasonKey: 'unacknowledged', customer: 'Sam', reason: 'routed, nobody picked it up' });
+    data.attention.items.push({ key: 'k2', reasonKey: 'unacknowledged', customer: 'Sam', reason: 'nobody picked it up' });
     const needs = ownerNeeds(data);
-    assert.equal(needs.total, 2);
-    assert.deepEqual(needs.groups.map((group) => group.key), ['handoff', 'other']);
+    assert.deepEqual(needs.groups.map((group) => group.key), ['outcome', 'handoff', 'other']);
+    const [question] = needs.groups[0].items;
+    assert.match(question.title, /^the visit booked for /);
+    assert.equal(question.detail, '••• ••• 0102');
+    assert.match(question.reason, /did the job happen\?/);
+  });
+
+  test('answering the question takes it off the list, with nothing stored', () => {
+    const answered = [...liveEvents(), ...chain('lead-2', { phone: '+16145550102', arrived: daysAgo(5), visitAt: daysAgo(2), answers: [{ id: 'a2', at: daysAgo(1), outcome: 'happened' }] }).slice(-1)];
+    assert.equal(ownerNeeds(liveData(answered)).groups.some((group) => group.key === 'outcome'), false);
   });
 
   test('nothing waiting is an empty list, with no group drawn', () => {
-    assert.deepEqual(ownerNeeds(liveData({ attention: { total: 0, items: [] } })).groups, []);
+    assert.deepEqual(ownerNeeds(liveData(chain('lead-1', { reply: false }))).groups, []);
   });
 });
 
@@ -460,6 +508,7 @@ const plain = (html) =>
 describe('the four screens, rendered', () => {
   const demo = { data: demoData(), base: '/demo', live: false };
   const live = { data: liveData(), base: '/portal/dashboard', live: false };
+  const priced = { ...live, data: liveData([...liveEvents(), terms(daysAgo(30))]) };
 
   test('this month prints a dash and the reason for the fee, in the demo and signed in', () => {
     for (const props of [demo, live]) {
@@ -469,19 +518,21 @@ describe('the four screens, rendered', () => {
     }
   });
 
-  test('signed in, jobs brought back is a dash — and the demo says its figures are examples', () => {
-    assert.match(render('ThisMonth', live), /jobs brought back<\/span><span class="ws-stat__value"><span aria-hidden="true">—/);
+  test('signed in, the figures are counts — and the demo says its figures are examples', () => {
+    assert.match(render('ThisMonth', live), /jobs brought back<\/span><span class="ws-stat__value">1</);
+    assert.match(render('ThisMonth', priced), /fee owed<\/span><span class="ws-stat__value">\$290</);
     assert.match(render('ThisMonth', demo), /example figures, counted from seven example leads/);
     assert.doesNotMatch(render('ThisMonth', live), /example/);
   });
 
-  test('the jobs screen is the proof ledger in the demo, and never says a real lead counts', () => {
+  test('the jobs screen is the proof ledger in the demo, and a real lead counts only by the rule', () => {
     assert.match(render('Jobs', demo), /example 1 of 7/);
     const html = render('Jobs', live);
-    assert.match(html, /lead 1 of 2/);
+    assert.match(html, /lead 1 of 4/);
     assert.doesNotMatch(html, /example/);
-    assert.doesNotMatch(html, /ws-pill--ok/);
-    assert.match(html, /not switched on yet/);
+    assert.equal([...html.matchAll(/ws-pill--ok/g)].length, 1, 'one lead counts, and only one');
+    assert.match(html, /every step is on record, and you said the job happened\./);
+    assert.doesNotMatch(html, /not switched on/);
   });
 
   test('needs you shows the question and how to answer it, with no button that does nothing', () => {
@@ -489,7 +540,8 @@ describe('the four screens, rendered', () => {
     assert.match(html, /did the job happen\?/);
     assert.match(html, /answering from this screen is not switched on yet/);
     assert.doesNotMatch(html, /<button/);
-    assert.match(render('NeedsYou', { ...live, data: liveData({ attention: { total: 0, items: [] } }) }), /nothing needs you/);
+    assert.match(render('NeedsYou', live), /did the job happen\?/);
+    assert.match(render('NeedsYou', { ...live, data: liveData(chain('lead-1', { reply: false })) }), /nothing needs you/);
   });
 
   test('account shows the example settings in the demo, and the reason when there are none', () => {
@@ -509,7 +561,7 @@ describe('the four screens, rendered', () => {
   });
 
   test('the first three screens are written in an owner’s words', () => {
-    for (const props of [demo, live]) {
+    for (const props of [demo, live, priced]) {
       for (const page of ['ThisMonth', 'Jobs', 'NeedsYou']) {
         assert.equal(ownerCopyProblem(plain(render(page, props))), null, `${page} (${props.base})`);
       }

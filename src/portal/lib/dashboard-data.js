@@ -46,6 +46,7 @@ import {
 import { computeModuleHealth, overallHealth } from './health.js';
 import { buildAttentionQueue } from './attention.js';
 import { buildActivity } from './activity.js';
+import { buildLedger } from './ledger.js';
 
 /* threads kept in the payload. the leads table pages through these; the overview rail
    shows the first handful. deliberately bounded — the old repo shipped 3.26MB to render a
@@ -120,6 +121,11 @@ export function buildDashboardData(tenant, events = [], now = DateTime.now(), al
 
   const health = computeModuleHealth(events, availability, now);
 
+  /* which jobs count, and the fee (ARC-MK-210). read off the same leads and the same log
+     as everything else here, over every lead rather than the capped list, so the month's
+     figure and a job's own status cannot come from two different sets of rows. */
+  const ledger = buildLedger(leadCapture.leads, events, { now, timezone: zone });
+
   return {
     tenant,
     generatedFor: now.toISO(),
@@ -148,7 +154,9 @@ export function buildDashboardData(tenant, events = [], now = DateTime.now(), al
        `buildLeadCapture` returns the same thread objects with the qualifier's verdict and
        any handoff folded onto them, so shipping both would serialise every lead twice and
        leave two arrays free to disagree about what a lead is. */
-    threads: leadCapture.leads.slice(0, THREAD_LIMIT),
+    threads: leadCapture.leads
+      .slice(0, THREAD_LIMIT)
+      .map((lead) => ({ ...lead, ledger: ledger.byLead.get(lead.id) ?? null })),
     /* the true count behind the capped list, so the leads table can say "150 of 412"
        rather than implying the client only ever had 150 leads. */
     threadTotal: leadCapture.leads.length,
@@ -163,6 +171,15 @@ export function buildDashboardData(tenant, events = [], now = DateTime.now(), al
     activity: buildActivity(events, ACTIVITY_LIMIT),
     /* metrics only. the rows live in `threads` above. */
     leadCapture: { metrics: leadCapture.metrics, recordTotal: leadCapture.leads.length },
+    /* the ledger's totals, month and terms. each lead's own verdict rides on its thread. */
+    ledger: {
+      terms: ledger.terms,
+      totals: ledger.totals,
+      month: ledger.month,
+      callsAnswered: ledger.callsAnswered,
+      ownerSaidNo: ledger.ownerSaidNo,
+      lateDisputes: ledger.lateDisputes,
+    },
     estimates: capped(estimates),
     reviews: capped(reviews),
     memberships: capped(memberships),

@@ -1352,6 +1352,100 @@ function generateExecutionLayer(rng, events, now) {
   return added;
 }
 
+/* ── the proof ledger's evidence ─────────────────────────── */
+
+/* what stands between a booking and a job that counts (ARC-MK-210): the visit time, the
+ * question to the owner, the owner's answer, the odd dispute and its settlement, and the
+ * calls the business picked up itself.
+ *
+ * it draws from a stream of its own. the seed is a fixed sales asset and this pass arrived
+ * after every figure on every earlier page was settled, so it must not take one draw from
+ * the stream that produced them — the visit time is worked out from the booking's own
+ * clock, and everything random here comes from `ledgerRng`.
+ *
+ * no pilot terms are generated: a price is agreed with a client, not printed in a demo, so
+ * the demo's fee stays a dash with its reason.
+ */
+const DEMO_DISPUTE_REASONS = ['customer_cancelled', 'did_not_happen', 'duplicate', 'out_of_area'];
+
+function generateLedgerEvidence(ledgerRng, events, now) {
+  const added = [];
+
+  for (const booking of events.filter((e) => e.eventType === 'lead_booked' && !e.isCanary)) {
+    const bookedAt = DateTime.fromISO(booking.occurredAt, { zone: 'utc' });
+    /* the next morning but one, on the hour: a visit is an appointment, not a timestamp. */
+    const visitAt = bookedAt.plus({ hours: 20 }).startOf('hour');
+    booking.payload = { ...booking.payload, appointment_at: visitAt.toISO() };
+    if (visitAt > now) continue;
+
+    const base = {
+      correlationId: booking.correlationId,
+      entityType: 'lead',
+      entityId: booking.correlationId,
+      sourceSystem: 'manual',
+      workflowId: 'arc_lead_recovery',
+      /* the booking's own run: an answer about a job is not the sequence running again. */
+      executionId: booking.executionId,
+    };
+
+    const askedAt = visitAt.plus({ hours: 2 });
+    if (askedAt > now) continue;
+    added.push(makeEvent(ledgerRng, { ...base, eventType: 'lead_outcome_requested', occurredAt: askedAt }));
+
+    const answeredAt = askedAt.plus({ hours: ledgerRng.int(1, 40), minutes: ledgerRng.int(0, 59) });
+    const roll = ledgerRng.next();
+    /* the newest visits are still waiting on the owner, which is what the question is for. */
+    if (answeredAt > now || roll > 0.9) continue;
+
+    const disputed = roll > 0.82;
+    const answer = makeEvent(ledgerRng, {
+      ...base,
+      eventType: 'lead_outcome_recorded',
+      occurredAt: answeredAt,
+      actor: 'human',
+      payload: disputed
+        ? { outcome: 'not_counted', reason: ledgerRng.pick(DEMO_DISPUTE_REASONS), answered_by: 'owner' }
+        : { outcome: roll > 0.7 ? 'quoted' : 'happened', answered_by: 'owner' },
+    });
+    added.push(answer);
+
+    const settledAt = answeredAt.plus({ hours: ledgerRng.int(3, 30) });
+    if (disputed && settledAt <= now && ledgerRng.chance(0.8)) {
+      added.push(
+        makeEvent(ledgerRng, {
+          ...base,
+          eventType: 'lead_dispute_settled',
+          occurredAt: settledAt,
+          actor: 'human',
+          payload: { decision: 'accepted', dispute_id: answer.id, note: null },
+        }),
+      );
+    }
+  }
+
+  /* a handful of calls a day that somebody in the office picked up. no lead, no number. */
+  for (let dayOffset = DEMO_HISTORY_DAYS; dayOffset >= 0; dayOffset--) {
+    const day = now.minus({ days: dayOffset }).startOf('day');
+    const calls = ledgerRng.int(1, 3);
+    for (let i = 0; i < calls; i++) {
+      const when = day.plus({ hours: ledgerRng.int(8, 17), minutes: ledgerRng.int(0, 59) });
+      if (when > now) continue;
+      added.push(
+        makeEvent(ledgerRng, {
+          eventType: 'call_answered',
+          occurredAt: when,
+          sourceSystem: 'twilio',
+          workflowId: 'arc_lead_recovery',
+          actor: 'system',
+          payload: {},
+        }),
+      );
+    }
+  }
+
+  return added;
+}
+
 /* ── per-module verification ─────────────────────────────── */
 
 /* the hourly canary traverses the lead pipeline and is generated above. the other four
@@ -1444,6 +1538,9 @@ export function generateDemoData(seed = 20260828, at = DateTime.now()) {
   /* last of all. it reads the finished threads back and adds the execution layer's own
      evidence to them, so not one draw above it moves. */
   events.push(...generateExecutionLayer(rng, events, now));
+  /* the proof ledger's evidence, off a stream of its own: the alerts below still draw from
+     `rng`, and they must get the same numbers they always have. */
+  events.push(...generateLedgerEvidence(makeRng(seed ^ 0x1ed6e4), events, now));
 
   const alerts = DEMO_INCIDENTS.map((incident) => {
     const start = incidentStart(incident, now, zone);

@@ -13,8 +13,8 @@ import './Owner.css';
  * one card per lead, the same seven lines in the order they happened, then the status and
  * the reason. where the workspace was handed a proof ledger (the demo) this is that page,
  * unchanged. otherwise it is the client's own leads from the event log, drawn with the same
- * card — and a real lead is never marked as counting here, because the rule that decides
- * that is not switched on yet. it says so on every card.
+ * card, each with the status the ledger's rule gave it (ARC-MK-210) and the reason. the page
+ * decides nothing: a lead counts here only because `ledger.js` found every link on record.
  */
 export default function Jobs(props) {
   const { data, base } = props;
@@ -27,9 +27,8 @@ export default function Jobs(props) {
       <Panel title="how to read this" note="your leads, from the record">
         <p className="pl-rule">{site.price.counts}</p>
         <p className="pl-sub">
-          each lead below shows what is on record, in order. a missing step is marked, never
-          hidden. nothing here is billed yet: the rules that decide whether a job counts are
-          not switched on for your account.
+          each lead below shows what is on record, in order, and why it counts or does not. a
+          missing step is marked, never hidden. a job counts only when every step is there.
         </p>
 
         <ul className="pl-tally" aria-label="your leads, by status">
@@ -38,15 +37,12 @@ export default function Jobs(props) {
             <span>leads on record</span>
           </li>
           <li>
-            <b>
-              <span aria-hidden="true">—</span>
-              <span className="ws-sr">not available</span>
-            </b>
-            <span>counts — not switched on yet</span>
+            <b>{formatCount(tally.counts)}</b>
+            <span>counts</span>
           </li>
           <li>
             <b>{formatCount(tally.needsYou)}</b>
-            <span>handed to you</span>
+            <span>waiting on you</span>
           </li>
           <li>
             <b>{formatCount(tally.notBilled)}</b>

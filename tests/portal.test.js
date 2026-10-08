@@ -18,7 +18,7 @@ import { NAV_GROUPS, activeItem, navGroupsFor, navItemsFor } from '../src/portal
 import { buildActivity, matchesGroup, safeMeta } from '../src/portal/lib/activity.js';
 import { EVENT_TYPES, moduleForEvent } from '../src/portal/lib/types.js';
 import { maskEmail, maskPhone } from '../src/portal/lib/format.js';
-import { validateBody, validateEvent } from '../supabase/functions/ingest/validate.ts';
+import { EVENT_TYPES as BOUNDARY_EVENT_TYPES, validateBody, validateEvent } from '../supabase/functions/ingest/validate.ts';
 import { NOW, TENANT, ago, canary, estimate, ev, install, job, lead, membership } from './helpers.js';
 
 const availabilityFor = (tenant, events) => computeModuleAvailability(tenant, events, NOW);
@@ -462,7 +462,7 @@ describe('pii masking', () => {
 
 describe('the event vocabulary', () => {
   test('the browser and the ingest boundary agree on every event type', () => {
-    const boundary = new Set(EVENT_TYPES);
+    const boundary = new Set(BOUNDARY_EVENT_TYPES);
     const portal = new Set(EVENT_TYPES);
     assert.deepEqual([...boundary].sort(), [...portal].sort());
   });

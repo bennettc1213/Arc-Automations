@@ -36,6 +36,16 @@ import {
   type ClassificationDecision,
 } from '../classifier.ts';
 import { eventKey } from '../event-writer.ts';
+import {
+  bookingEventKey,
+  callAnsweredEventKey,
+  outcomeEventKey,
+  parseOutcomeInput,
+  parseSettlementInput,
+  parseTermsInput,
+  settlementEventKey,
+  termsEventKey,
+} from '../ledger/model.ts';
 import { canonicalJson, configHash } from '../canonical-json.ts';
 import { type Resolution } from '../config/compose.ts';
 import { resolveEffectiveConfig } from '../config/engine.ts';
@@ -2324,12 +2334,27 @@ export async function resolveHandoffFor(
  */
 export async function markBooked(
   deps: EngineDeps,
-  args: { tenantId: string; leadId: string; outcome?: LeadRow['bookingOutcome']; valueCents?: number | null; actor?: string | null },
+  args: {
+    tenantId: string;
+    leadId: string;
+    outcome?: LeadRow['bookingOutcome'];
+    valueCents?: number | null;
+    actor?: string | null;
+    /** when the visit is (ARC-MK-210). the ledger cannot count a booking with no time. */
+    appointmentAt?: string | null;
+  },
 ): Promise<{ ok: boolean; outcome: string }> {
   const { store } = deps;
   const now = deps.now();
   const lead = await store.getLead(args.tenantId, args.leadId);
   if (!lead) return { ok: false, outcome: 'no lead with that id for this client' };
+
+  let appointmentAt: string | null = null;
+  if (args.appointmentAt !== undefined && args.appointmentAt !== null && args.appointmentAt !== '') {
+    const parsed = new Date(args.appointmentAt);
+    if (Number.isNaN(parsed.getTime())) return { ok: false, outcome: 'the visit time is not a date' };
+    appointmentAt = parsed.toISOString();
+  }
 
   const run = await store.getRunForLead(args.tenantId, lead.id, MODULE_KEY);
   if (run) await store.cancelPendingActions(args.tenantId, run.id, 'the lead was booked');
@@ -2358,15 +2383,136 @@ export async function markBooked(
       event_type: booking === 'booked' ? 'lead_booked' : 'automation_completed',
       occurred_at: iso(now),
       actor: 'human',
-      event_key: eventKey('lr', 'booking', lead.correlationId, booking),
+      /* a booking is keyed on its visit time: recording the same visit twice writes one row,
+         and a rescheduled visit is a new row — the latest is the one the ledger reads. */
+      event_key: booking === 'booked' ? bookingEventKey(lead.correlationId, appointmentAt) : eventKey('lr', 'booking', lead.correlationId, booking),
       payload:
         booking === 'booked'
-          ? { outcome: booking, value_cents: typeof args.valueCents === 'number' ? Math.round(args.valueCents) : null, recorded_by: args.actor ?? null }
+          ? {
+              outcome: booking,
+              value_cents: typeof args.valueCents === 'number' ? Math.round(args.valueCents) : null,
+              recorded_by: args.actor ?? null,
+              appointment_at: appointmentAt,
+            }
           : { stop_reason: 'closed', detail: `closed as ${booking}` },
     }),
   ]);
 
   return { ok: true, outcome: booking };
+}
+
+/* ── the proof ledger's evidence (ARC-MK-210) ─────────────────
+ *
+ * Three things a person says, each appended to `events` and nothing else. None of them
+ * decides whether a job counts — `src/portal/lib/ledger.js` reads that off the log — and
+ * none touches a lead, a run or a queue: an answer about a visit that already happened
+ * changes no operational state.
+ *
+ * Each names the row it replaces, so a retry or a double tap writes one row and a changed
+ * mind writes a second, with the first still on the record.
+ */
+
+type LedgerWrite = { ok: true; outcome: string; written: boolean } | { ok: false; outcome: string };
+
+/** "Did the job happen?", answered by the owner or by an operator on the owner's word. */
+export async function recordOutcome(
+  deps: EngineDeps,
+  args: { tenantId: string; leadId: string; input: unknown; actorId?: string | null },
+): Promise<LedgerWrite> {
+  const parsed = parseOutcomeInput(args.input);
+  if (!parsed.ok) return { ok: false, outcome: parsed.errors.join('; ') };
+
+  const lead = await deps.store.getLead(args.tenantId, args.leadId);
+  if (!lead) return { ok: false, outcome: 'no lead with that id for this client' };
+  /* there is nothing to answer about until a visit is booked. */
+  if (lead.bookingOutcome !== 'booked') return { ok: false, outcome: 'this lead has no booked visit to answer for' };
+
+  const { outcome, reason, answeredBy, replaces } = parsed.value;
+  const result = await deps.store.emit(args.tenantId, [
+    baseEvent(lead, {
+      event_type: 'lead_outcome_recorded',
+      occurred_at: iso(deps.now()),
+      actor: 'human',
+      event_key: outcomeEventKey(lead.correlationId, replaces),
+      payload: { outcome, reason, answered_by: answeredBy, recorded_by: args.actorId ?? null, replaces },
+    }),
+  ]);
+  return { ok: true, outcome, written: result.written > 0 };
+}
+
+/** An operator's decision on an answer that said the job should not count. */
+export async function settleDispute(
+  deps: EngineDeps,
+  args: { tenantId: string; leadId: string; input: unknown; actorId?: string | null },
+): Promise<LedgerWrite> {
+  const parsed = parseSettlementInput(args.input);
+  if (!parsed.ok) return { ok: false, outcome: parsed.errors.join('; ') };
+
+  const lead = await deps.store.getLead(args.tenantId, args.leadId);
+  if (!lead) return { ok: false, outcome: 'no lead with that id for this client' };
+
+  const { decision, note, disputeId } = parsed.value;
+  const result = await deps.store.emit(args.tenantId, [
+    baseEvent(lead, {
+      event_type: 'lead_dispute_settled',
+      occurred_at: iso(deps.now()),
+      actor: 'human',
+      event_key: settlementEventKey(lead.correlationId, disputeId),
+      payload: { decision, note, dispute_id: disputeId, settled_by: args.actorId ?? null },
+    }),
+  ]);
+  return { ok: true, outcome: decision, written: result.written > 0 };
+}
+
+/** The pilot terms a fee is worked out under. A new agreement is a new row; none is edited. */
+export async function recordPilotTerms(
+  deps: EngineDeps,
+  args: { tenantId: string; input: unknown; actorId?: string | null },
+): Promise<LedgerWrite> {
+  const parsed = parseTermsInput(args.input);
+  if (!parsed.ok) return { ok: false, outcome: parsed.errors.join('; ') };
+
+  const { baseCents, perJobCents, capCents, disputeWindowDays, replaces } = parsed.value;
+  const result = await deps.store.emit(args.tenantId, [
+    {
+      event_type: 'pilot_terms_recorded',
+      occurred_at: iso(deps.now()),
+      actor: 'human',
+      source_system: 'manual',
+      workflow_id: 'arc_lead_recovery',
+      event_key: termsEventKey(replaces),
+      payload: {
+        base_cents: baseCents,
+        per_job_cents: perJobCents,
+        cap_cents: capCents,
+        dispute_window_days: disputeWindowDays,
+        recorded_by: args.actorId ?? null,
+        replaces,
+      },
+    },
+  ]);
+  return { ok: true, outcome: 'recorded', written: result.written > 0 };
+}
+
+/**
+ * The forwarded call was picked up.
+ *
+ * A count and nothing else: no lead, no run, no number kept. It exists so "calls in, you
+ * answered, missed" can be counted rather than assumed. Keyed on the CallSid, so a
+ * redelivered callback is one call.
+ */
+export async function recordAnsweredCall(deps: EngineDeps, args: { tenantId: string; callSid: string }): Promise<void> {
+  await deps.store.emit(args.tenantId, [
+    {
+      event_type: 'call_answered',
+      occurred_at: iso(deps.now()),
+      actor: 'system',
+      source_system: 'twilio',
+      workflow_id: 'arc_lead_recovery',
+      event_key: callAnsweredEventKey(args.callSid),
+      payload: {},
+    },
+  ]);
 }
 
 /** An operator adding somebody to the suppression list by hand. */

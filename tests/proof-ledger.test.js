@@ -96,13 +96,13 @@ describe('the seven example leads', () => {
     assert.deepEqual(
       Object.fromEntries(PROOF_LEDGER_LEADS.map((lead) => [lead.key, status(lead)])),
       {
-        confirmed: 'counts',
-        booked: 'pending',
-        unconfirmed: 'needs_you',
-        'no-reply': 'no',
-        'wrong-number': 'no',
-        cancelled: 'no',
-        handoff: 'handed',
+        confirmed: 'confirmed',
+        booked: 'booked',
+        unconfirmed: 'needs_owner',
+        'no-reply': 'not_billable',
+        'wrong-number': 'not_billable',
+        cancelled: 'not_billable',
+        handoff: 'handed_off',
       },
     );
   });
@@ -158,7 +158,8 @@ describe('a lead counts only when every link is on record', () => {
   });
 
   test('the whole chain counts', () => {
-    assert.equal(status(whole), 'counts');
+    assert.equal(status(whole), 'confirmed');
+    assert.equal(ledgerVerdict(whole).label, 'counts');
     assert.equal(ledgerVerdict(whole).billed, true);
   });
 
@@ -176,14 +177,19 @@ describe('a lead counts only when every link is on record', () => {
   ]) {
     test(`it stops counting when ${name}`, () => {
       const verdict = ledgerVerdict({ ...whole, ...broken });
-      assert.notEqual(verdict.status, 'counts');
+      assert.notEqual(verdict.label, 'counts');
       assert.equal(verdict.billed, false);
     });
   }
 
-  test('only one status is ever billed', () => {
-    const billed = Object.entries(LEDGER_STATUS).filter(([, s]) => s.billed).map(([key]) => key);
-    assert.deepEqual(billed, ['counts']);
+  test('only a job that counts is ever billed, and it reads as one word', () => {
+    const billed = Object.entries(LEDGER_STATUS).filter(([, s]) => s.billed);
+    assert.deepEqual(billed.map(([key]) => key), ['confirmed', 'billable']);
+    assert.deepEqual([...new Set(billed.map(([, s]) => s.label))], ['counts']);
+  });
+
+  test('the statuses are the ledger’s own, not a second list', () => {
+    assert.match(read('src/portal/demo/proof-ledger.js'), /import \{ LEDGER_STATUS, ledgerStatus \} from '\.\.\/lib\/ledger\.js';/);
   });
 
   test('a booking alone is never billed, and neither is a handoff', () => {
@@ -194,7 +200,7 @@ describe('a lead counts only when every link is on record', () => {
 
   test('a safety handoff wins over everything else on the lead', () => {
     const verdict = ledgerVerdict({ ...whole, handoff: 'the reply sounded unsafe' });
-    assert.equal(verdict.status, 'handed');
+    assert.equal(verdict.status, 'handed_off');
   });
 
   test('the tally is counted from the verdicts', () => {

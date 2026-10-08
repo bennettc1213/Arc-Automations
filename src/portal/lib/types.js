@@ -55,6 +55,27 @@ export const LEAD_CAPTURE_EVENT_TYPES = [
      lead that quietly stopped. */
   'automation_completed',
   'automation_failed',
+
+  /* ── the proof ledger (ARC-MK-210) ──
+     what stands between "it was booked" and "it counts". `lead_booked` already carries the
+     booking (and now the visit time, in `payload.appointment_at`); these four are the rest,
+     and each is a claim nothing above can make. (the pilot terms are the account's, below.) */
+
+  /* the forwarded call was picked up. it has no lead and keeps no number: it exists so
+     "calls in, you answered, missed" can be counted rather than assumed. */
+  'call_answered',
+
+  /* arc asked the owner whether the job happened. a job nobody answered about only counts
+     after the dispute window once this is on record — silence is not consent to a bill
+     the owner was never shown. */
+  'lead_outcome_requested',
+
+  /* a person's answer to that question: it happened, it was quoted, or it should not
+     count and why. appended; a changed mind is a new row and the old one stays. */
+  'lead_outcome_recorded',
+
+  /* an operator's decision on an answer that said the job should not count. */
+  'lead_dispute_settled',
 ];
 
 /* ── estimate recovery ─────────────────────────────────────
@@ -107,6 +128,13 @@ export const INSTALL_EVENT_TYPES = [
    hatch for a workflow that knows something the log does not show. */
 export const TASK_EVENT_TYPES = ['task_opened', 'task_resolved'];
 
+/* ── the account ───────────────────────────────────────────
+   the pilot terms a fee is worked out under (ARC-MK-210). the fee is arithmetic over this
+   log, so the numbers it multiplies are evidence in it too — recorded by a person, with a
+   date. its own group on purpose: a module is "live" when one of its business events is
+   seen, and terms agreed on a call are not a phone line that works. */
+export const ACCOUNT_EVENT_TYPES = ['pilot_terms_recorded'];
+
 /* ── verification ──────────────────────────────────────────
    never shown in a client-facing feed. these are how a module earns the word "healthy". */
 export const VERIFICATION_EVENT_TYPES = [
@@ -133,6 +161,7 @@ export const EVENT_TYPES = [
   ...MEMBERSHIP_EVENT_TYPES,
   ...INSTALL_EVENT_TYPES,
   ...TASK_EVENT_TYPES,
+  ...ACCOUNT_EVENT_TYPES,
   ...VERIFICATION_EVENT_TYPES,
 ];
 
@@ -160,6 +189,7 @@ export const CLIENT_FACING_EVENT_TYPES = [
   ...MEMBERSHIP_EVENT_TYPES,
   ...INSTALL_EVENT_TYPES,
   ...TASK_EVENT_TYPES,
+  ...ACCOUNT_EVENT_TYPES,
 ];
 
 const MODULE_BY_EVENT = new Map();
@@ -167,6 +197,7 @@ for (const [module, types] of Object.entries(MODULE_EVENT_TYPES)) {
   for (const type of types) MODULE_BY_EVENT.set(type, module);
 }
 for (const type of TASK_EVENT_TYPES) MODULE_BY_EVENT.set(type, 'tasks');
+for (const type of ACCOUNT_EVENT_TYPES) MODULE_BY_EVENT.set(type, 'account');
 for (const type of VERIFICATION_EVENT_TYPES) MODULE_BY_EVENT.set(type, 'verification');
 
 /* a task or a verification event can name the module it belongs to, because both are about
@@ -198,6 +229,7 @@ export const MODULE_LABEL = {
   installs: 'install & warranty',
   verification: 'system verification',
   tasks: 'human actions',
+  account: 'account & terms',
   other: 'other',
 };
 

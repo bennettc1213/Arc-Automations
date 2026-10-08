@@ -207,10 +207,10 @@ route section are parked, not deleted.
 `src/portal/demo/proof-ledger.js`, `ProofLedger.jsx`, `tests/proof-ledger.test.js`). Seven
 written example leads for a made-up heating and cooling company (`DEMO_TENANT` is HVAC now), each
 with the same seven lines and a status with its reason. A lead states only what happened;
-`ledgerVerdict` reads the status off it by the homepage's rule (`site.price.counts`), and only
-`counts` is billed. They are examples, not events — no figure reads them, and what real evidence a
-job needs is still ARC-MK-210's to design. Only the arrival and the appointment carry a clock
-time. Since ARC-MK-200 the ledger is the demo's `jobs` screen, not its front page; a workspace
+`ledgerVerdict` turns it into the ledger's facts (`ledgerFacts`) and reads the status with the
+ledger's own rule (ARC-MK-210), the one a real lead goes through; only a status that reads
+`counts` is billed. They are examples, not events — no figure reads them. Only the arrival and the
+appointment carry a clock time. Since ARC-MK-200 the ledger is the demo's `jobs` screen, not its front page; a workspace
 handed `data.proofLedger` that is *not* an owner workspace still opens on it
 (`navGroupsFor(…, { ledgerHome })`). Only `Demo.jsx` hands one, and `NAV_ITEMS` is still thirteen.
 
@@ -222,14 +222,33 @@ the `owner` prop; nobody sets it. The four are a second nav declaration beside `
 a replacement: every original page keeps a route (only `overview` and the old account page, now
 `account/details`, moved), and the ones still offered are listed under account → details. One
 list feeds the jobs screen, the tally and "export my data" (`ownerJobs`): the demo's seven
-examples with their verdicts, or the client's own threads drawn with the same card — and a real
-lead is never `counts`, because the counting rule is still ARC-MK-210's. `ownerMonth` returns a
-figure as null with its reason when it cannot be shown; the fee is always null here (no terms, no
-rule) and there is no fee arithmetic in the portal. Needs-you is derived and has no answer button
-until ARC-MK-220. The account screen reads the client's settings through the `crm` function's
+examples with their verdicts, or the client's own threads drawn with the same card, each carrying
+the verdict the ledger gave it (`thread.ledger`). `ownerMonth` returns a figure as null with its
+reason when it cannot be shown; the fee is the ledger's (`data.ledger.month`), null until terms are
+on record, and `owner.js` words figures without working any out. Needs-you is derived — the
+outcome question is a lead whose status is `needs_owner` — and has no answer button until
+ARC-MK-220. The account screen reads the client's settings through the `crm` function's
 `account-settings` (`_shared/account/`): a field-by-field projection of the *published* Lead
 Recovery configuration and `suppressions`, every address reduced to a hint server-side, for a
 member of that tenant or an operator. It is a read; nothing in the portal edits a setting.
+
+**Whether a job counts is one rule, read off the event log** (ARC-MK-210, `src/portal/lib/ledger.js`,
+`_shared/ledger/model.ts`, `tests/ledger.test.js`; docs/architecture/ARC_PROOF_LEDGER.md). Six links
+in order: a call or form arrived, nobody answered it live, ARC's text went out, the customer replied
+(or booked it themselves), a visit was booked for a time that has passed, and the owner said it
+happened — or was asked and the dispute window passed. The first missing link is the status and its
+reason; a later link over a missing earlier one is `unverified`, shown and never billed. Nine
+statuses, two billed, both reading "counts". `ledgerStatus` takes plain facts, so the demo's examples
+and a real lead cannot disagree; `buildDashboardData` runs it over every lead, and nothing stores a
+status. The new evidence is five event types — `call_answered` (a count: no lead, no number),
+`lead_outcome_requested`, `lead_outcome_recorded`, `lead_dispute_settled`, and
+`pilot_terms_recorded` in its own `account` group so terms never make a line read as live — plus
+`lead_booked.payload.appointment_at`. The fee is `min(cap, base + per job × jobs that became
+billable this month)` in the business's timezone, from terms that are themselves an event; no terms
+is null, never zero, and there is no invoice or payment code. An answer is keyed on the row it
+replaces, so a double tap is one row and a changed mind is a new one. A handoff is never billed,
+silence never counts until something has asked the owner (nothing does before ARC-MK-220), and an
+operator settles a dispute. The `ops` actions that write the evidence exist with no console button.
 
 **There is one customer and lead model, for every route** (`0023`, `_shared/crm/`, `ops`
 `crm-*`, ARC-340; docs/architecture/ARC_CRM_CORE.md). `crm_contacts`, `crm_leads`, pipelines,

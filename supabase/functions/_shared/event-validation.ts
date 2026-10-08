@@ -46,6 +46,19 @@ export const EVENT_TYPES = [
   // the run reached a terminal state — cleanly, or having exhausted its retries.
   'automation_completed',
   'automation_failed',
+  /* ── added by the proof ledger (ARC-MK-210) ──
+     the links between "it was booked" and "it counts" that nothing recorded before. each
+     is something only a person or the phone line can state, which is why none is derived. */
+  // the forwarded call was picked up. a count and nothing else: no lead, no number kept.
+  'call_answered',
+  // arc asked the owner whether the job happened. silence only counts once this is on record.
+  'lead_outcome_requested',
+  // a person's answer: it happened, it was quoted, or it should not count and why.
+  'lead_outcome_recorded',
+  // an operator's decision on an answer that said the job should not count.
+  'lead_dispute_settled',
+  // the pilot terms a fee is worked out under. the fee is arithmetic over the log, so its terms are in it.
+  'pilot_terms_recorded',
   // estimate recovery
   'estimate_created',
   'estimate_followup_sent',

@@ -70,13 +70,13 @@ can produce several of them. `buildThreads` groups by the first;
 
 ## 3. The vocabulary
 
-41 types, grouped by module. The grouping in `types.js` **is** the module
+46 types, grouped by module. The grouping in `types.js` **is** the module
 definition.
 
-### lead capture (13)
+### lead capture (17)
 
 The original five, plus qualification and handoff (0009), plus the six the
-execution layer added (0010).
+execution layer added (0010), plus the four the proof ledger added (ARC-MK-210).
 
 | type | what it claims |
 |---|---|
@@ -89,10 +89,31 @@ execution layer added (0010).
 | `handoff_requested` | automation stopped, a person was put in front of it. `payload.reason`, `reason_code`, `safety`. |
 | `message_delivered` | **the carrier confirmed arrival.** A separate fact from `sms_sent`, arriving later by callback. |
 | `message_failed` | it did not arrive. `status: failure`, `error_class`, `payload.provider_code`. |
-| `lead_booked` | it turned into work. The only conversion claim in the product, and `actor: human` always — never inferred from an enthusiastic reply. |
+| `lead_booked` | it turned into work. The only conversion claim in the product, and `actor: human` always — never inferred from an enthusiastic reply. `payload.appointment_at` is when the visit is (ARC-MK-210): a booking without one cannot be counted. A rescheduled visit is a second row and the latest is read. `payload.booked_by: customer` marks a booking the customer made themselves. |
 | `lead_suppressed` | this contact must not be messaged again. `payload.reason` ∈ `opt_out │ wrong_contact │ …`. |
 | `automation_completed` | the run reached a terminal state cleanly. `payload.stop_reason`. With `payload.started: false` and `stop_reason: not_permitted`, no run began at all: the tenant had no valid configuration to pin one to, or (ARC-120) the module's lifecycle did not allow one — `payload.detail` then begins with the stable denial code (`module_not_active: …`, `requirements_pending: …`). A shadow-mode lead ends with `not_permitted` and a detail beginning `shadow mode — would have …; nothing was sent`: a "would have", never a send. |
 | `automation_failed` | the run exhausted its retries or hit a permanent error. `status: failure`. |
+| `call_answered` | the forwarded call was picked up. A count and nothing else: no `correlation_id`, an empty payload, no number kept. |
+| `lead_outcome_requested` | Arc asked the owner whether the job happened. A job nobody answered about only counts after the dispute window once this is on record. Nothing writes it until ARC-MK-220. |
+| `lead_outcome_recorded` | a person's answer, `actor: human`. `payload.outcome` ∈ `happened │ quoted │ not_counted`; `not_counted` carries `payload.reason` ∈ `spam │ wrong_number │ out_of_area │ customer_cancelled │ did_not_happen │ owner_first │ duplicate`. `payload.answered_by` ∈ `owner │ operator`. Appended: a changed mind is a new row. |
+| `lead_dispute_settled` | an operator's decision on a `not_counted` answer. `payload.decision` ∈ `accepted │ rejected`, `payload.dispute_id` is the answer's id; a rejection carries `payload.note`. |
+
+### the proof ledger (ARC-MK-210)
+
+Whether a job counts is not an event. It is read off the events above by one
+rule, [`src/portal/lib/ledger.js`](src/portal/lib/ledger.js): a call or form
+arrived, nobody answered it live, Arc's text went out, the customer replied (or
+booked it themselves), a visit was booked for a time that has passed, and the
+owner said it happened — or was asked and the dispute window passed. The first
+missing link is the status and its reason; a later link with an earlier one
+missing is `unverified`, shown and never billed. See
+[docs/architecture/ARC_PROOF_LEDGER.md](docs/architecture/ARC_PROOF_LEDGER.md).
+
+### the account (1)
+
+| type | what it claims |
+|---|---|
+| `pilot_terms_recorded` | the terms a fee is worked out under, `actor: human`: `payload.base_cents`, `per_job_cents`, `cap_cents` (or null), `dispute_window_days`. The fee is arithmetic over the log, so its terms are evidence in it. The latest whole row is in force. Its own group so that terms agreed on a call never make a phone line read as live. |
 
 ### estimate recovery (5)
 `estimate_created`, `estimate_followup_sent`, `estimate_reply_received`,
@@ -156,7 +177,16 @@ lr:call_missed:<correlation_id>
 lr:sms:<action idempotency key>:<attempt>
 lr:delivered:<provider message id>
 lr:run_end:<run id>:<stop reason>
+lr:booking:<correlation_id>:booked:<appointment_at>
+lr:call_answered:<CallSid>
+ledger:outcome:<correlation_id>:<id of the answer it replaces, or "first">
+ledger:settled:<correlation_id>:<id of the answer being settled>
+ledger:terms:<id of the terms it replaces, or "first">
 ```
+
+An answer names the row it replaces rather than its own content, so a double
+tap collides, a changed mind is a new row, and two people answering the same
+question at once write one row — the first.
 
 This depends on **migration 0002**: the partial index from 0001 is not usable
 as an `ON CONFLICT` target from PostgREST and every upsert fails against it.

@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { Panel, Pill } from '../../components/ui';
 import { ModuleStat } from '../../components/ModuleUI';
 import { site } from '../../../data/site';
-import { formatCount } from '../../lib/format';
+import { formatCount, formatMoney } from '../../lib/format';
 import { ownerMonth } from '../../lib/owner';
 import './Owner.css';
 
@@ -20,7 +20,7 @@ import './Owner.css';
 const STAGE_TONE = { launch: 'ok', next: 'idle', later: 'neutral', blocked: 'neutral' };
 
 export default function ThisMonth({ data, base }) {
-  const month = ownerMonth(data, { terms: site.price.terms, leaks: site.leaks.items });
+  const month = ownerMonth(data, { leaks: site.leaks.items });
 
   return (
     <div className="ow">
@@ -35,7 +35,7 @@ export default function ThisMonth({ data, base }) {
           <ModuleStat
             key={figure.key}
             label={figure.label}
-            value={figure.available ? formatCount(figure.value) : null}
+            value={figure.available ? (figure.kind === 'money' ? formatMoney(figure.value) : formatCount(figure.value)) : null}
             sub={figure.note}
             available={figure.available}
             unavailable={figure.note}

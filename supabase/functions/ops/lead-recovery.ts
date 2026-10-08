@@ -46,8 +46,11 @@ import { lifecycleFailed, lifecycleOut, statusOut } from './lifecycle.ts';
 import {
   intakeLead,
   markBooked,
+  recordOutcome,
+  recordPilotTerms,
   resolveHandoffFor,
   runDueActions,
+  settleDispute,
   suppressContact,
   takeOverLead,
   type EngineDeps,
@@ -69,6 +72,9 @@ export const LEAD_RECOVERY_ACTIONS = [
   'lead-recovery-take-over',
   'lead-recovery-resolve-handoff',
   'lead-recovery-book',
+  'lead-recovery-record-outcome',
+  'lead-recovery-settle-dispute',
+  'lead-recovery-record-terms',
   'lead-recovery-suppress',
   'lead-recovery-issue-intake-key',
 ];
@@ -677,10 +683,41 @@ export async function handleLeadRecoveryAction(
           outcome: outcome as 'booked',
           valueCents: typeof body.value_cents === 'number' ? body.value_cents : null,
           actor: typeof body.actor === 'string' ? body.actor.slice(0, 80) : null,
+          appointmentAt: typeof body.appointment_at === 'string' ? body.appointment_at : null,
         });
-        if (!result.ok) return bad(result.outcome, 404);
+        if (!result.ok) return bad(result.outcome, result.outcome.startsWith('no lead') ? 404 : 422);
         const logged = await context.audit('lead_recovery.outcome_recorded', 'lead', leadId, { tenant_id: tenantId, outcome });
         return ok({ outcome: result.outcome, logged });
+      }
+
+      // ── the proof ledger's evidence (ARC-MK-210) ──
+      /* each appends one row to `events` and changes nothing else. whether the job then
+         counts is read off the log by the ledger's rule, never set here. */
+      case 'lead-recovery-record-outcome': {
+        const leadId = typeof body.lead_id === 'string' ? body.lead_id : '';
+        if (!leadId) return bad('lead_id is required');
+        const result = await recordOutcome(depsFor(context), { tenantId, leadId, input: body, actorId: context.actorId });
+        if (!result.ok) return bad(result.outcome, result.outcome.startsWith('no lead') ? 404 : 422);
+        const logged = await context.audit('lead_recovery.job_outcome_recorded', 'lead', leadId, { tenant_id: tenantId, outcome: result.outcome });
+        return ok({ outcome: result.outcome, written: result.written, logged });
+      }
+
+      case 'lead-recovery-settle-dispute': {
+        const leadId = typeof body.lead_id === 'string' ? body.lead_id : '';
+        if (!leadId) return bad('lead_id is required');
+        const result = await settleDispute(depsFor(context), { tenantId, leadId, input: body, actorId: context.actorId });
+        if (!result.ok) return bad(result.outcome, result.outcome.startsWith('no lead') ? 404 : 422);
+        const logged = await context.audit('lead_recovery.dispute_settled', 'lead', leadId, { tenant_id: tenantId, decision: result.outcome });
+        return ok({ outcome: result.outcome, written: result.written, logged });
+      }
+
+      case 'lead-recovery-record-terms': {
+        const result = await recordPilotTerms(depsFor(context), { tenantId, input: body, actorId: context.actorId });
+        if (!result.ok) return bad(result.outcome, 422);
+        /* that terms were recorded, never the numbers: the audit trail is a table operators
+           browse, and a client's price is in the event it points at. */
+        const logged = await context.audit('lead_recovery.pilot_terms_recorded', 'tenant', tenantId, { tenant_id: tenantId });
+        return ok({ outcome: result.outcome, written: result.written, logged });
       }
 
       case 'lead-recovery-suppress': {

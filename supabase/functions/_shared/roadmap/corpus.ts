@@ -41,6 +41,7 @@ export const CORPUS_DOCS: CorpusDoc[] = [
   { key: 'communications', path: 'docs/architecture/ARC_COMMUNICATIONS_HUB.md' },
   { key: 'booking', path: 'docs/architecture/ARC_BOOKING.md' },
   { key: 'onboarding', path: 'docs/architecture/ARC_ONBOARDING.md' },
+  { key: 'proof_ledger', path: 'docs/architecture/ARC_PROOF_LEDGER.md' },
   { key: 'n8n-boundary', path: 'docs/architecture/ARC_N8N_EXECUTION_BOUNDARY_ADR.md' },
   { key: 'n8n-audit', path: 'docs/architecture/ARC_N8N_REPOSITORY_AUDIT.md' },
   { key: 'master-roadmap', path: 'ARC_MASTER_ROADMAP_FROM_ARC_200.md' },

@@ -102,6 +102,9 @@ function cents(value) {
 
 const sum = (values) => values.reduce((total, n) => total + n, 0);
 
+/* oldest first, so "the latest answer" is the last one. */
+const byTime = (list = []) => list.slice().sort((a, b) => a.at.localeCompare(b.at));
+
 /* ══ lead capture ═════════════════════════════════════════
    the existing lead threads, with the qualifier's verdict and any human handoff folded
    onto them. the threads themselves are untouched — the leads page reads the same objects
@@ -190,6 +193,15 @@ export function buildLeadCapture(events, threads, tenant, now, days = 30) {
   const suppressed = new Map();
   const runEnded = new Map();
 
+  /* ── the proof ledger's evidence (ARC-MK-210) ──
+     folded on the same way, and only folded: whether a job counts is `ledger.js`'s to
+     decide, from these. an answer is kept as a list because a changed mind is a new row and
+     the earlier one stays on the record. */
+  const outcomeAsked = new Map();
+  const outcomes = new Map();
+  const settlements = new Map();
+  const push = (map, id, value) => map.set(id, [...(map.get(id) ?? []), value]);
+
   for (const event of events) {
     if (event.isCanary || !event.correlationId) continue;
     const id = event.correlationId;
@@ -203,7 +215,28 @@ export function buildLeadCapture(events, threads, tenant, now, days = 30) {
         deliveryFailed.set(id, event);
         break;
       case 'lead_booked':
-        booked.set(id, event);
+        /* the latest by its own time, not by its place in the list: a rescheduled visit is
+           a second row, and the one that stands is the one recorded last. */
+        if (!booked.has(id) || event.occurredAt >= booked.get(id).occurredAt) booked.set(id, event);
+        break;
+      case 'lead_outcome_requested':
+        if (!outcomeAsked.has(id) || event.occurredAt < outcomeAsked.get(id)) outcomeAsked.set(id, event.occurredAt);
+        break;
+      case 'lead_outcome_recorded':
+        push(outcomes, id, {
+          id: event.id,
+          at: event.occurredAt,
+          outcome: event.payload?.outcome ?? null,
+          reason: event.payload?.reason ?? null,
+          answeredBy: event.payload?.answered_by ?? null,
+        });
+        break;
+      case 'lead_dispute_settled':
+        push(settlements, id, {
+          at: event.occurredAt,
+          decision: event.payload?.decision ?? null,
+          disputeId: event.payload?.dispute_id ?? null,
+        });
         break;
       case 'lead_suppressed':
         suppressed.set(id, event);
@@ -287,6 +320,15 @@ export function buildLeadCapture(events, threads, tenant, now, days = 30) {
       booked: booked.has(thread.id),
       bookedAt: booked.get(thread.id)?.occurredAt ?? null,
       bookedValueCents: cents(booked.get(thread.id)?.payload?.value_cents ?? null),
+      /* when the visit is, as the person who booked it said. null on a booking recorded
+         without one — which the ledger shows as a gap rather than guessing a day. */
+      appointmentAt: booked.get(thread.id)?.payload?.appointment_at ?? null,
+      /* 'customer' when they booked it themselves. nothing writes that yet: every booking
+         today is one a person recorded. */
+      bookedBy: booked.get(thread.id)?.payload?.booked_by ?? null,
+      outcomeRequestedAt: outcomeAsked.get(thread.id) ?? null,
+      outcomes: byTime(outcomes.get(thread.id)),
+      settlements: byTime(settlements.get(thread.id)),
       suppressed: suppressed.has(thread.id),
       suppressionReason: suppressed.get(thread.id)?.payload?.reason ?? null,
       automationFailed: runEnded.get(thread.id)?.eventType === 'automation_failed',

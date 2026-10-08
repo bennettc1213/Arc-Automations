@@ -78,7 +78,11 @@
  *   lead-recovery-retry-action      put a permanently failed action back on the queue
  *   lead-recovery-take-over         a person takes a lead; automation stops
  *   lead-recovery-resolve-handoff   close a human escalation
- *   lead-recovery-book              record the outcome of a lead
+ *   lead-recovery-book              record the outcome of a lead; a booking takes the
+ *                                   visit time (`appointment_at`)
+ *   lead-recovery-record-outcome    "did the job happen?", answered (ARC-MK-210)
+ *   lead-recovery-settle-dispute    an operator's decision on a disputed job
+ *   lead-recovery-record-terms      the pilot terms a fee is worked out under
  *   lead-recovery-suppress          add a contact to the do-not-message list
  *   lead-recovery-issue-intake-key  issue or rotate a website form's public key
  *

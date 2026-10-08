@@ -1301,13 +1301,37 @@ export async function resolveLeadHandoff(tenantId, handoffId, resolution) {
   return callOps({ action: 'lead-recovery-resolve-handoff', tenant_id: tenantId, handoff_id: handoffId, resolution });
 }
 
-export async function recordLeadOutcome(tenantId, leadId, outcome, valueCents = null) {
+export async function recordLeadOutcome(tenantId, leadId, outcome, valueCents = null, appointmentAt = null) {
   return callOps({
     action: 'lead-recovery-book',
     tenant_id: tenantId,
     lead_id: leadId,
     outcome,
     value_cents: valueCents,
+    appointment_at: appointmentAt,
+  });
+}
+
+/* ── the proof ledger's evidence (ARC-MK-210) ──
+   each appends one row to the event log. `replaces` is the id of the row being replaced
+   (or nothing, for the first), which is what makes a double press one answer. */
+export async function recordJobOutcome(tenantId, leadId, { outcome, reason = null, answeredBy = 'operator', replaces = null }) {
+  return callOps({ action: 'lead-recovery-record-outcome', tenant_id: tenantId, lead_id: leadId, outcome, reason, answered_by: answeredBy, replaces });
+}
+
+export async function settleJobDispute(tenantId, leadId, { decision, disputeId, note = null }) {
+  return callOps({ action: 'lead-recovery-settle-dispute', tenant_id: tenantId, lead_id: leadId, decision, dispute_id: disputeId, note });
+}
+
+export async function recordPilotTerms(tenantId, { baseCents, perJobCents, capCents = null, disputeWindowDays, replaces = null }) {
+  return callOps({
+    action: 'lead-recovery-record-terms',
+    tenant_id: tenantId,
+    base_cents: baseCents,
+    per_job_cents: perJobCents,
+    cap_cents: capCents,
+    dispute_window_days: disputeWindowDays,
+    replaces,
   });
 }
 
