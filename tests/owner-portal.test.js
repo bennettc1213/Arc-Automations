@@ -120,7 +120,7 @@ describe('who gets the four screens', () => {
 
   test('the workspace reads it off availability, and only the demo asks for it outright', () => {
     assert.match(read('src/portal/components/Workspace.jsx'), /const owner = ownerProp \?\? isLaunchClient\(data\.availability\);/);
-    assert.match(read('src/portal/pages/Demo.jsx'), /\n\s+owner\n/);
+    assert.match(read('src/portal/pages/Demo.jsx'), /\n\s+owner\r?\n/);
     assert.doesNotMatch(read('src/portal/pages/Portal.jsx'), /\bowner\b/);
   });
 });
