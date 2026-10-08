@@ -110,6 +110,14 @@
   gap: 7px;
 }
 
+.pilot__field--wide {
+  grid-column: 1 / -1;
+}
+
+.pilot__field input::placeholder {
+  color: var(--faint);
+}
+
 .pilot__field span {
   color: var(--faint);
   font-size: 11px;
@@ -174,9 +182,15 @@
   color: var(--muted);
 }
 
+.pilot__bring {
+  color: var(--muted);
+  max-width: 60ch;
+  line-height: 1.6;
+}
+
 .pilot__embed {
   width: 100%;
-  height: min(56vh, 560px);
+  height: min(52vh, 560px);
   border: 1px solid var(--line-strong);
   background: var(--bg-2);
 }

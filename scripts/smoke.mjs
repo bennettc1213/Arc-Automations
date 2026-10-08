@@ -223,6 +223,70 @@ for (const viewport of VIEWPORTS) {
     await page.close();
   }
 
+  /* the one path on the public site that takes a visitor's details: press the homepage's
+     main button, answer every question, and reach the calendar — with the post that
+     carries the answers refused, because a capture that fails must not cost the booking.
+     nothing leaves this machine: both the capture and the calendar are answered here. */
+  {
+    const page = await context.newPage();
+    const problems = [];
+    let posted = 0;
+    page.on('pageerror', (error) => problems.push(`uncaught: ${error.message}`));
+    await page.route(/n8n\.cloud/, (route) => {
+      posted += 1;
+      return route.abort('connectionrefused');
+    });
+    await page.route(/cal\.com/, (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<p>calendar</p>' }),
+    );
+
+    try {
+      await page.goto(`${BASE}/`, { waitUntil: 'networkidle', timeout: 30_000 });
+      await page.click('.hero__btn--solid');
+      await page.waitForSelector('.pilot');
+      let questions = 0;
+      while ((await page.locator('.pilot__fields').count()) === 0) {
+        const heading = await page.locator('.pilot__q').innerText();
+        await page.locator('.pilot__opt').first().click();
+        await page.waitForFunction(
+          (was) => document.querySelector('.pilot__q')?.innerText !== was,
+          heading,
+          { timeout: 5_000 },
+        );
+        questions += 1;
+        if (questions > 12) throw new Error('the questions never ended');
+      }
+      const answers = { text: 'Smoke Test', email: 'smoke@example.invalid', tel: '208 555 0100' };
+      for (const input of await page.locator('.pilot__field input').all()) {
+        await input.fill(answers[await input.getAttribute('type')] ?? 'Smoke Test');
+      }
+      const state = await page.evaluate(() => ({
+        scrollWidth: document.querySelector('.pilot').scrollWidth,
+        clientWidth: document.querySelector('.pilot').clientWidth,
+      }));
+      if (state.scrollWidth > state.clientWidth + 1) problems.push('the form scrolls sideways');
+      await page.screenshot({ path: `${SHOTS}/${viewport.name}-count-form.png` });
+      await page.click('.pilot__next');
+      await page.waitForSelector('.pilot__embed iframe', { timeout: 5_000 });
+      await sleep(600);
+      if (questions < 3) problems.push(`only ${questions} questions were asked`);
+      if (posted === 0) problems.push('the answers were never posted');
+      await page.screenshot({ path: `${SHOTS}/${viewport.name}-count-calendar.png` });
+    } catch (error) {
+      problems.push(`missed-call count: ${error.message}`);
+    }
+
+    checked += 1;
+    if (problems.length) {
+      failures.push({ page: `${viewport.name} count-request`, problems });
+      console.log(`  ✖ ${viewport.name.padEnd(7)} count-request`);
+      for (const problem of problems) console.log(`      ${problem}`);
+    } else {
+      console.log(`  ✔ ${viewport.name.padEnd(7)} count-request`);
+    }
+    await page.close();
+  }
+
   await context.close();
 }
 

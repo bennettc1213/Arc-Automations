@@ -1,70 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { site } from '../data/site';
-import { onOpenPilot, pilotContext, routeNote } from '../lib/pilot';
+import { onOpenPilot, pilotContext } from '../lib/pilot';
+import { intakeLines, intakePayload, sendCapture, validateContact } from '../lib/count-intake';
 import { lenisRef } from '../lib/SmoothScroll';
 import TickOnChange from './TickOnChange';
 import PixelGuy from './PixelGuy';
 import './PilotOverlay.css';
 
-const DEFAULT_FIELDS = [
-  { key: 'name', label: 'name', type: 'text', autoComplete: 'name' },
-  { key: 'business', label: 'business', type: 'text', autoComplete: 'organization' },
-  { key: 'email', label: 'email', type: 'email', autoComplete: 'email' },
-  { key: 'phone', label: 'phone', type: 'tel', autoComplete: 'tel' },
-];
-
-function validateContact(contact) {
-  const errors = {};
-  if (!contact.name?.trim()) errors.name = 'need a name';
-  if (!contact.business?.trim()) errors.business = 'need the business';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email || '')) errors.email = 'real email, please';
-  if ((contact.phone || '').replace(/\D/g, '').length < 7) errors.phone = 'real phone, please';
-  if (contact.website && !/^https?:\/\/.+/i.test(contact.website.trim())) {
-    errors.website = 'https://…';
-  }
-  return errors;
-}
-
-function buildMailto(answers, contact, pilotLabel, questions, fields, routeLine) {
-  const body = [
-    `pilot: ${pilotLabel}`,
-    ...(routeLine ? [routeLine] : []),
-    ...questions.map((q) => `${q.key}: ${answers[q.key] || '—'}`),
-    '',
-    ...fields.map((f) => `${f.label}: ${contact[f.key] || ''}`),
-  ].join('\n');
-  return `mailto:${site.email}?subject=${encodeURIComponent(
-    `pilot request — ${pilotLabel}`
-  )}&body=${encodeURIComponent(body)}`;
-}
-
-/* POST the completed intake somewhere durable before the visitor ever reaches
-   the booking step. fire and forget on purpose: a capture that fails must not
-   stand between a contractor and the calendar. `keepalive` so the request still
-   goes out if they close the tab the instant they hit the button.
-   resolves true only on a real 2xx — the caller uses that to decide whether it
-   is allowed to tell the visitor we have their details. */
-function sendCapture(payload) {
-  const url = site.pilot.captureUrl;
-  if (!url) return Promise.resolve(false);
-  return fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-    keepalive: true,
-  })
-    .then((r) => r.ok)
-    .catch(() => false);
-}
-
-function buildEmbedSrc(booking, answers, contact, questions, routeLine) {
-  const notes = [...(routeLine ? [routeLine] : []), ...questions.map((q) => `${q.key}: ${answers[q.key]}`)].join(' | ');
+/* the calendar, with what we already know filled in. the notes are shown to the owner
+   in the booking form, so they carry only what the owner typed. */
+function buildEmbedSrc(booking, contact, lines) {
   if (booking.provider === 'calcom') {
     const u = new URL(booking.embedUrl);
     u.searchParams.set('theme', 'dark');
     u.searchParams.set('name', contact.name);
     u.searchParams.set('email', contact.email);
-    u.searchParams.set('notes', notes);
+    u.searchParams.set('notes', lines.join(' | '));
     return u.toString();
   }
   if (booking.provider === 'ghl') {
@@ -77,6 +28,13 @@ function buildEmbedSrc(booking, answers, contact, questions, routeLine) {
     return u.toString();
   }
   return null;
+}
+
+function buildMailto(label, contact, lines, fields) {
+  const body = [...lines, '', ...fields.map((f) => `${f.label}: ${contact[f.key] || ''}`)].join('\n');
+  return `mailto:${site.email}?subject=${encodeURIComponent(
+    `${label} — ${contact.business || ''}`
+  )}&body=${encodeURIComponent(body)}`;
 }
 
 function PixelX() {
@@ -94,26 +52,28 @@ function PixelX() {
   );
 }
 
-export default function PilotOverlay() {
-  const [open, setOpen] = useState(false);
-  const [pilotKey, setPilotKey] = useState(null);
-  // which arc route the visitor arrived on, if a route button opened this
+/* `initial` is for the tests, which render one screen at a time to read its words;
+   the site mounts this with no props and opens it through the bus. */
+export default function PilotOverlay({ initial = {} }) {
+  const [open, setOpen] = useState(initial.open ?? false);
+  // which arc route the visitor arrived on, if a route button opened this.
+  // a note for us, sent with the request and never shown here.
   const [routeContext, setRouteContext] = useState(() => pilotContext());
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(initial.step ?? 0);
   const [answers, setAnswers] = useState({});
   const [contact, setContact] = useState({});
-  const [errors, setErrors] = useState({});
-  const [booked, setBooked] = useState(false);
+  const [errors, setErrors] = useState(initial.errors ?? {});
+  const [booked, setBooked] = useState(initial.booked ?? false);
   // 'idle' until the POST resolves; 'sent' only on a confirmed 2xx, so the
   // copy never claims a delivery that did not happen.
-  const [capture, setCapture] = useState('idle');
+  const [capture, setCapture] = useState(initial.capture ?? 'idle');
   const panelRef = useRef(null);
   const restoreFocus = useRef(null);
 
-  // preset flow (openPilot('marketing-automation')) or generic intake
-  const preset = pilotKey ? site.pilot.presets?.[pilotKey] : null;
-  const questions = preset ? preset.questions : site.pilot.questions;
-  const fields = preset ? preset.fields : DEFAULT_FIELDS;
+  // one request, one set of questions. the bus may still carry a key from a
+  // parked section; it opens the same form.
+  const { label, questions, fields, copy } = site.pilot;
+  const booking = initial.booking ?? site.pilot.booking;
   const questionCount = questions.length;
   const totalSteps = questionCount + 1; // questions + contact screen
   const bookingStep = totalSteps;
@@ -125,12 +85,11 @@ export default function PilotOverlay() {
     restoreFocus.current?.focus?.();
   }, []);
 
-  // open via the bus, from any "start a pilot" button
+  // open via the bus, from any "get my missed-call count" button
   useEffect(
     () =>
-      onOpenPilot(({ key, ...context } = {}) => {
+      onOpenPilot((context = {}) => {
         restoreFocus.current = document.activeElement;
-        setPilotKey(key ?? null);
         setRouteContext(pilotContext(context));
         setStep(0);
         setAnswers({});
@@ -175,14 +134,12 @@ export default function PilotOverlay() {
 
   if (!open) return null;
 
-  const pilotLabel =
-    preset?.label ?? site.pilot.pilotFor[answers.pain] ?? 'pilot build';
-  const routeLine = routeNote(routeContext);
-  const booking = site.pilot.booking;
+  const lines = intakeLines(questions, answers, contact);
   const embedSrc =
-    booking.provider && booking.embedUrl
-      ? buildEmbedSrc(booking, answers, contact, questions, routeLine)
+    step === bookingStep && booking.provider && booking.embedUrl
+      ? buildEmbedSrc(booking, { name: '', email: '', phone: '', ...contact }, lines)
       : null;
+  const mailto = buildMailto(label, contact, lines, fields);
 
   const pick = (key, value) => {
     setAnswers((a) => ({ ...a, [key]: value }));
@@ -192,22 +149,26 @@ export default function PilotOverlay() {
 
   const submitContact = (e) => {
     e.preventDefault();
-    const errs = validateContact(contact);
+    const errs = validateContact(contact, copy.errors);
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
 
-    sendCapture({
-      pilot: pilotLabel,
-      // a hint for the call, not a decision — null when no route button was used
-      route: routeContext.route,
-      routeSource: routeContext.routeSource,
-      answers,
-      contact,
-      page: window.location.href,
-      submittedAt: new Date().toISOString(),
-    }).then((ok) => setCapture(ok ? 'sent' : 'failed'));
+    sendCapture(
+      site.pilot.captureUrl,
+      intakePayload({
+        label,
+        questions,
+        answers,
+        contact,
+        // a hint for the call, not a decision — null when no route button was used
+        route: routeContext,
+        page: window.location.href,
+        submittedAt: new Date().toISOString(),
+      }),
+    ).then((ok) => setCapture(ok ? 'sent' : 'failed'));
 
-    // advance immediately — the visitor never waits on the network
+    // advance immediately — the visitor never waits on the network, and a post
+    // that fails changes nothing about reaching the calendar
     setStep(bookingStep);
   };
 
@@ -216,7 +177,7 @@ export default function PilotOverlay() {
       className="pilot"
       role="dialog"
       aria-modal="true"
-      aria-label="start a pilot"
+      aria-label={copy.dialog}
       ref={panelRef}
       tabIndex={-1}
     >
@@ -226,18 +187,18 @@ export default function PilotOverlay() {
             <TickOnChange value={step + 1} /> / {String(totalSteps).padStart(2, '0')}
           </span>
         ) : (
-          <span className="pilot__progress mono">{pilotLabel}</span>
+          <span className="pilot__progress mono">{label}</span>
         )}
         {step > 0 && !booked && (
           <button
             className="pilot__back mono"
             onClick={() => setStep((s) => Math.max(0, s - 1))}
-            aria-label="back"
+            aria-label={copy.back}
           >
-            ← back
+            ← {copy.back}
           </button>
         )}
-        <button className="pilot__close" onClick={close} aria-label="close">
+        <button className="pilot__close" onClick={close} aria-label={copy.close}>
           <PixelX />
         </button>
       </header>
@@ -262,14 +223,15 @@ export default function PilotOverlay() {
 
         {step === questionCount && (
           <form className="pilot__step" onSubmit={submitContact} noValidate>
-            <h2 className="pilot__q">where do we send the plan?</h2>
+            <h2 className="pilot__q">{copy.contactTitle}</h2>
             <div className="pilot__fields">
               {fields.map((f) => (
-                <label className="pilot__field" key={f.key}>
+                <label className={`pilot__field ${f.wide ? 'pilot__field--wide' : ''}`} key={f.key}>
                   <span className="mono">{f.label}</span>
                   <input
                     type={f.type}
                     autoComplete={f.autoComplete}
+                    placeholder={f.placeholder}
                     value={contact[f.key] || ''}
                     onChange={(e) =>
                       setContact((c) => ({ ...c, [f.key]: e.target.value }))
@@ -280,62 +242,45 @@ export default function PilotOverlay() {
               ))}
             </div>
             <button className="pilot__next" type="submit">
-              book the call <span aria-hidden="true">→</span>
+              {copy.submit} <span aria-hidden="true">→</span>
             </button>
           </form>
         )}
 
         {step === bookingStep && !booked && (
           <div className="pilot__step pilot__booking">
-            <h2 className="pilot__booknow">BOOK NOW</h2>
+            <h2 className="pilot__booknow">{copy.bookTitle}</h2>
             <p className="pilot__confline mono">
-              {pilotLabel} · 30 min · ben chu
+              {label} · {copy.bookLine}
             </p>
+            <p className="pilot__bring">{copy.bring}</p>
 
             {embedSrc ? (
               <>
                 <div className="pilot__embed">
-                  <iframe
-                    src={embedSrc}
-                    title="book a pilot call"
-                    loading="eager"
-                  />
+                  <iframe src={embedSrc} title={copy.embedTitle} loading="eager" />
                 </div>
-                <p className="pilot__tz mono">
-                  times shown in your timezone — we’re on mountain time
-                </p>
-                <a
-                  className="pilot__fallback mono"
-                  href={buildMailto(answers, contact, pilotLabel, questions, fields, routeLine)}
-                >
-                  calendar not loading? email us instead →
+                <p className="pilot__tz mono">{copy.timezone}</p>
+                <a className="pilot__fallback mono" href={mailto}>
+                  {copy.fallback} →
                 </a>
               </>
             ) : capture === 'sent' ? (
               <div className="pilot__nofall">
                 <PixelGuy size={56} autoHop />
-                <p className="pilot__nofall-copy">
-                  got it — your answers are with us and your phone is in the queue.
-                  you’ll hear from ben today, not next week.
-                </p>
+                <p className="pilot__nofall-copy">{copy.sent}</p>
                 <button className="pilot__next" onClick={close}>
-                  done
+                  {copy.done}
                 </button>
-                <p className="pilot__tz mono">same-day reply, mountain time</p>
+                <p className="pilot__tz mono">{copy.sentNote}</p>
               </div>
             ) : (
               <div className="pilot__nofall">
-                <p className="pilot__nofall-copy">
-                  one tap sends your answers straight to us — trade, volume, and
-                  what’s eating your week, already written out.
-                </p>
-                <a
-                  className="pilot__next"
-                  href={buildMailto(answers, contact, pilotLabel, questions, fields, routeLine)}
-                >
-                  email us the details <span aria-hidden="true">→</span>
+                <p className="pilot__nofall-copy">{copy.unsent}</p>
+                <a className="pilot__next" href={mailto}>
+                  {copy.unsentCta} <span aria-hidden="true">→</span>
                 </a>
-                <p className="pilot__tz mono">we reply same-day, mountain time</p>
+                <p className="pilot__tz mono">{copy.unsentNote}</p>
               </div>
             )}
           </div>
@@ -344,13 +289,10 @@ export default function PilotOverlay() {
         {booked && (
           <div className="pilot__step pilot__done">
             <PixelGuy size={56} autoHop />
-            <h2 className="pilot__q">booked.</h2>
-            <p className="pilot__nofall-copy">
-              calendar invite is on its way. we’ll read your answers before we talk —
-              come with the messy version.
-            </p>
+            <h2 className="pilot__q">{copy.bookedTitle}</h2>
+            <p className="pilot__nofall-copy">{copy.booked}</p>
             <button className="pilot__next" onClick={close}>
-              done
+              {copy.done}
             </button>
           </div>
         )}

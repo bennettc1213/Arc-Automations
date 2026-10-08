@@ -255,8 +255,10 @@ describe('the route-aware call to action', () => {
 
   test('the intake sends the route with the lead, and to the same place as before', () => {
     const overlay = read('src/components/PilotOverlay.jsx');
-    assert.match(overlay, /route: routeContext\.route,\s*\n\s*routeSource: routeContext\.routeSource,/);
-    assert.match(overlay, /const url = site\.pilot\.captureUrl;/);
+    assert.match(overlay, /sendCapture\(\s*site\.pilot\.captureUrl,/);
+    assert.match(overlay, /route: routeContext,/);
+    const intake = read('src/lib/count-intake.js');
+    assert.match(intake, /route: route\?\.route \?\? null,\s*\n\s*routeSource: route\?\.routeSource \?\? null,/);
   });
 
   test('analytics is names and keys on a window event — no vendor, no personal data', async () => {

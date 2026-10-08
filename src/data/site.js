@@ -384,56 +384,92 @@ export const site = {
     quizReset: 'start over',
   },
 
-  // start-a-pilot overlay — intake questions + booking config
+  /* the missed-call count request — what every "get my missed-call count" button opens.
+     one thing is asked for, so there is one set of questions: nothing here offers a
+     choice of services, and nothing asks the owner how arc should be set up. what they
+     use today is a fact for the call; what it means for setup is decided there, by us.
+     each `key` is the name the answer is sent under. */
   pilot: {
+    label: 'missed-call count',
     questions: [
       {
         key: 'trade',
         q: 'what kind of work do you do?',
-        options: ['hvac', 'plumbing', 'roofing', 'restoration', 'other'],
+        options: ['hvac', 'plumbing', 'electrical', 'roofing', 'something else'],
       },
       {
-        key: 'pain',
-        q: 'what’s eating your week?',
+        key: 'weekly_calls',
+        q: 'roughly how many calls come in each week?',
+        options: ['under 20', '20 to 50', '50 to 100', 'over 100', 'not sure'],
+      },
+      {
+        key: 'after_hours',
+        q: 'do calls go unanswered after hours?',
+        options: ['yes, most nights and weekends', 'sometimes', 'no, someone always picks up', 'not sure'],
+      },
+      {
+        key: 'phone_system',
+        q: 'what do your calls come in on?',
         options: [
-          'leads going cold before we call back',
-          'drowning in customer questions',
-          'chasing warranty renewals',
-          'manual scheduling',
-          'not sure yet — want to explore',
+          'a cell phone',
+          'an office line or desk phones',
+          'an internet phone service — ringcentral, openphone, google voice',
+          'an answering service picks up',
+          'not sure',
         ],
       },
       {
-        key: 'volume',
-        q: 'how many calls / leads a week?',
-        options: ['under 20', '20–50', '50–100', '100+'],
+        key: 'call_history',
+        q: 'can you get the last 30 days of call history out of it?',
+        options: ['yes, i can export it', 'i can take screenshots', 'not sure how', 'no'],
+      },
+      {
+        key: 'software',
+        q: 'what do you run the business on today?',
+        options: [
+          'nothing — phone, paper and texts',
+          'spreadsheets',
+          'housecall pro or jobber',
+          'servicetitan',
+          'something else',
+        ],
       },
     ],
-    // pain → which pilot the booking line shows
-    pilotFor: {
-      'leads going cold before we call back': 'speed-to-lead pilot',
-      'drowning in customer questions': 'lead qualification pilot',
-      'chasing warranty renewals': 'warranty tracker pilot',
-      'manual scheduling': 'scheduling pilot',
-      'not sure yet — want to explore': 'discovery call',
-    },
-    // openPilot(key) short-circuits to one of these — no trade/pain/volume intake
-    presets: {
-      'marketing-automation': {
-        label: 'marketing automation pilot',
-        questions: [
-          { key: 'channels', q: 'where does your marketing live right now?', options: ['google ads', 'facebook + instagram', 'organic · seo', 'word of mouth', 'nowhere yet'] },
-          { key: 'goal', q: 'what should it do for you?', options: ['more booked jobs', 'more calls from ads', 'reviews on autopilot', 'repeat + referral business', 'not sure — that’s the point'] },
-          { key: 'material', q: 'what can we work with today?', options: ['real photos of the work', 'a stack of past reviews', 'videos of jobs', 'a logo and a story', 'barely anything — help us start'] },
-        ],
-        fields: [
-          { key: 'name', label: 'name', type: 'text', autoComplete: 'name' },
-          { key: 'business', label: 'business', type: 'text', autoComplete: 'organization' },
-          { key: 'website', label: 'website / url', type: 'url', autoComplete: 'url' },
-          { key: 'email', label: 'email', type: 'email', autoComplete: 'email' },
-          { key: 'phone', label: 'phone', type: 'tel', autoComplete: 'tel' },
-        ],
+    // the last screen: who they are, where they work and how to reach them
+    fields: [
+      { key: 'name', label: 'your name', type: 'text', autoComplete: 'name' },
+      { key: 'business', label: 'company', type: 'text', autoComplete: 'organization' },
+      { key: 'serviceArea', label: 'service area', type: 'text', autoComplete: 'off', placeholder: 'the towns or zip codes you cover', wide: true },
+      { key: 'email', label: 'email', type: 'email', autoComplete: 'email' },
+      { key: 'phone', label: 'phone', type: 'tel', autoComplete: 'tel' },
+    ],
+    copy: {
+      dialog: 'get my missed-call count',
+      back: 'back',
+      close: 'close',
+      contactTitle: 'where do we send your count?',
+      submit: 'send it and pick a time',
+      errors: {
+        name: 'need a name',
+        business: 'need the company',
+        serviceArea: 'where do you work?',
+        email: 'real email, please',
+        phone: 'real phone, please',
       },
+      bookTitle: 'pick a time',
+      bookLine: 'free · on a call with ben',
+      bring: 'bring your last 30 days of call history, an export or screenshots. if you cannot get it out of your phone system, we work that out on the call.',
+      embedTitle: 'pick a time for your missed-call count',
+      timezone: 'times shown in your timezone — we’re on mountain time',
+      fallback: 'calendar not loading? email us instead',
+      sent: 'got it — your answers are with us. you’ll hear from ben today, not next week.',
+      sentNote: 'same-day reply, mountain time',
+      unsent: 'one tap sends your answers straight to us, already written out.',
+      unsentCta: 'email us the details',
+      unsentNote: 'we reply same-day, mountain time',
+      bookedTitle: 'booked.',
+      booked: 'the calendar invite is on its way. bring your call history and we count the calls nobody answered, together.',
+      done: 'done',
     },
     /* every completed intake POSTs here before the booking step — fire and
        forget, and a failure never blocks the visitor from reaching the

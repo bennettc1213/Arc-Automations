@@ -195,7 +195,11 @@ examples, and every pilot number lives in `site.price.terms`, where null prints 
 and never a zero. The test reads the *rendered* page, so a word hardcoded in a component is
 caught too: `ownerCopyProblem` (`src/lib/owner-copy.js`) fails on the machine's words, an
 unsourced statistic or a CRM requirement, and the page may claim no speed that has not been
-measured on a real line. The film in the hero and the past-builds sections are read separately.
+measured on a real line. Every "get my missed-call count" button opens one form
+(ARC-MK-110, `PilotOverlay.jsx`, `site.pilot`, `lib/count-intake.js`,
+`tests/count-intake.test.js`): six taps and a contact screen, no choice of services, and no
+route shown or picked — a route reaches us only as a note in the post. The post is never
+awaited, so a capture that fails cannot keep anyone from the calendar. The film in the hero and the past-builds sections are read separately.
 The service menu (`site.workflows*`, still the key of `service-catalog.js`), the toolkit and the
 route section are parked, not deleted.
 
