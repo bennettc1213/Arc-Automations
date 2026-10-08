@@ -16,6 +16,7 @@ import Estimates from '../pages/dash/Estimates';
 import Reviews from '../pages/dash/Reviews';
 import Memberships from '../pages/dash/Memberships';
 import Installs from '../pages/dash/Installs';
+import ProofLedger from '../pages/dash/ProofLedger';
 import { activeItem, navGroupsFor, navItemsFor } from '../lib/nav';
 import { downloadCsv, threadsToCsv } from '../lib/csv';
 import { PAGE_ID, skipToPage } from '../lib/a11y';
@@ -54,9 +55,13 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
      against. a module the client does not have is filtered out of the rail — but the full
      NAV_ITEMS list is what `activeItem` falls back to, so a pasted url to a page they do not
      have still resolves a title instead of silently rendering the overview's. */
-  const groups = useMemo(() => navGroupsFor(data.availability), [data.availability]);
-  const items = useMemo(() => navItemsFor(data.availability), [data.availability]);
-  const page = activeItem(location.pathname, base);
+  /* a workspace handed a proof ledger opens on it, and the overview moves to `overview`.
+     only the demo is handed one today; a signed-in portal's map is unchanged. */
+  const ledgerHome = Boolean(data.proofLedger);
+  const groups = useMemo(() => navGroupsFor(data.availability, { ledgerHome }), [data.availability, ledgerHome]);
+  const items = useMemo(() => navItemsFor(data.availability, { ledgerHome }), [data.availability, ledgerHome]);
+  const allItems = useMemo(() => navItemsFor(null, { ledgerHome }), [ledgerHome]);
+  const page = activeItem(location.pathname, base, allItems);
 
   const toggleCollapse = useCallback(() => {
     setCollapsed((value) => {
@@ -194,7 +199,8 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
         <main className="ws__page" id={PAGE_ID} tabIndex={-1}>
           {page.blurb && <p className="ws-intro">{page.blurb}</p>}
           <Routes>
-            <Route index element={<Overview {...pageProps} />} />
+            <Route index element={ledgerHome ? <ProofLedger {...pageProps} /> : <Overview {...pageProps} />} />
+            <Route path="overview" element={<Overview {...pageProps} />} />
             <Route path="inbox" element={<Inbox {...pageProps} />} />
             <Route path="leads" element={<Leads {...pageProps} />} />
             <Route path="estimates" element={<Estimates {...pageProps} />} />
@@ -207,7 +213,7 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
             <Route path="reports" element={<Reports {...pageProps} />} />
             <Route path="account" element={<Account {...pageProps} />} />
             <Route path="support" element={<Support {...pageProps} />} />
-            <Route path="*" element={<Overview {...pageProps} />} />
+            <Route path="*" element={ledgerHome ? <ProofLedger {...pageProps} /> : <Overview {...pageProps} />} />
           </Routes>
         </main>
       </div>

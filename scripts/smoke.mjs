@@ -33,7 +33,8 @@ const BASE = `http://localhost:${PORT}${BASE_PATH}`;
 const PAGES = [
   /* the public homepage: the offer, and the page most visitors see first. */
   ['home', '/'],
-  ['overview', '/demo'],
+  ['proof-ledger', '/demo'],
+  ['overview', '/demo/overview'],
   ['inbox', '/demo/inbox'],
   ['leads', '/demo/leads'],
   ['estimates', '/demo/estimates'],

@@ -8,7 +8,7 @@ import { formatDuration, formatMoney, formatPhone, formatStamp } from '../lib/fo
  * ⌘K. one box that searches everything the portal knows about.
  *
  * the useful version of this is not a page jumper — it is "a customer called, what happened
- * to them". so leads are searchable by name, by phone and by loss type, and selecting one
+ * to them". so leads are searchable by name, by phone and by job type, and selecting one
  * lands on the leads table with that thread opened. a palette that only listed the eight
  * page names would be a keyboard shortcut for something the sidebar already does.
  *
@@ -36,7 +36,7 @@ export default function CommandPalette({
   records = [],
   recordsLabel = 'records',
   placeholder = 'search a customer, a phone number, a page…',
-  emptyHint = 'leads are searchable by name, phone, loss type or the tech they went to.',
+  emptyHint = 'leads are searchable by name, phone, job type or the tech they went to.',
 }) {
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);

@@ -36,7 +36,7 @@ export const WORKFLOW_CATALOGUE = {
     name: 'on-call routing',
     kind: 'client',
     blurb:
-      'the lead is pushed to whoever is on call right now, loss type attached, so nobody has to be watching an inbox.',
+      'the lead is pushed to whoever is on call right now, job type attached, so nobody has to be watching an inbox.',
   },
   wf_reply_capture_v1: {
     name: 'reply capture',

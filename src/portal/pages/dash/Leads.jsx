@@ -325,7 +325,7 @@ export default function Leads({ data }) {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="name, phone, loss type or tech"
+              placeholder="name, phone, job type or tech"
               aria-label="filter leads"
               spellCheck="false"
             />

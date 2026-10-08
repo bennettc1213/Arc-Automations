@@ -15,6 +15,33 @@ documented here. Format loosely follows
 - `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
   `PORTAL_CONTEXT.md`).
 
+## [1.36.0] - 2026-10-08
+
+### Added
+
+- **ARC-MK-120: `/demo` opens on a proof ledger.** Seven written example leads for a made-up
+  heating and cooling company — booked and confirmed, booked with the visit still ahead, booked
+  and waiting on the owner's answer, texted with no reply, a wrong number, a customer who
+  cancelled, and a safety handoff. Each shows where it came from, when it arrived, whether the
+  owner answered, ARC's first text (the reviewed wording plus the opt-out line), the reply, the
+  booking or handoff, the owner's confirmation, and its status with the reason in a sentence.
+- A lead's status is read off what happened to it (`ledgerVerdict`, `src/portal/demo/proof-ledger.js`),
+  never typed onto it: remove any link and it stops counting, and only `counts` is ever billed.
+  The rule and the dispute reasons printed on the page are the homepage's own (`site.price`).
+- `tests/proof-ledger.test.js`: the seven and their statuses, every broken link, the rendered
+  page read with `ownerCopyProblem`, no claim of live data and no clock time after the arrival.
+
+### Changed
+
+- The demo company is now **Halstead Heating & Air**: the generated jobs, quotes, plans,
+  equipment, reviews, the demo lead inbox and the film in the homepage hero are all heating and
+  cooling. Array lengths and draw order are unchanged, so the generated figures are the same.
+- In the demo the overview moves to `/demo/overview`; every other page keeps its address. A
+  signed-in portal's map is unchanged (`navGroupsFor(availability, { ledgerHome })`).
+- "loss type" reads "job type" in the lead search, the command palette and the CSV export.
+- The homepage ledger's link reads "see all seven example leads".
+- The smoke pass walks the ledger and the moved overview.
+
 ## [1.35.0] - 2026-10-08
 
 ### Changed

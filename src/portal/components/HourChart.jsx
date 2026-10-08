@@ -4,7 +4,7 @@ import { formatPct } from '../lib/format';
 /**
  * when leads actually arrive, by hour of the client's own day.
  *
- * this is the chart that makes the argument out loud. a restoration company's burst pipe at
+ * this is the chart that makes the argument out loud. a heating company's dead furnace at
  * 2am is the job that pays and the one their competitor sleeps through, and the share of
  * leads landing outside office hours is the single number that says why an automated
  * response is worth paying for. so the out-of-hours bars are the ones drawn in the accent,

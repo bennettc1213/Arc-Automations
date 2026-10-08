@@ -9,7 +9,7 @@ import { isUnread } from '../../../supabase/functions/_shared/communications/mod
 import { addDays, availableSlots, localDate, weekdayOf } from '../../../supabase/functions/_shared/booking/model.ts';
 import { instantFor } from '../../../supabase/functions/_shared/engine/hours.ts';
 
-const TENANT = { id: '8f1c2d34-5a6b-4c7d-8e9f-0a1b2c3d4e5f', name: 'Halstead Restoration', timezone: 'America/New_York' };
+const TENANT = { id: '8f1c2d34-5a6b-4c7d-8e9f-0a1b2c3d4e5f', name: 'Halstead Heating & Air', timezone: 'America/New_York' };
 const OWNER = '0d000000-0000-4000-8000-000000000001';
 const STAFF = '0d000000-0000-4000-8000-000000000002';
 const PIPELINE = '0d000000-0000-4000-8000-0000000000a0';
@@ -32,19 +32,19 @@ const stageOf = (key) => STAGES.find((s) => s.key === key);
 
 /* [name, phone, title, source, stage, owner, priority, hours ago, task: [title, hours from now] | null] */
 const PEOPLE = [
-  ['Maria Delgado', '+16145550112', 'Water in basement after storm', 'web_form', 'new', null, 'urgent', 1, null],
-  ['Tom Reilly', '+16145550147', 'Ceiling stain under bathroom', 'missed_call', 'new', null, 'high', 3, null],
-  ['Priya Nair', '+16145550163', 'Mold smell in crawlspace', 'web_form', 'new', STAFF, 'normal', 7, ['Call back about access', 2]],
-  ['Gene Whitfield', '+16145550188', 'Burst pipe — kitchen', 'missed_call', 'contacted', STAFF, 'urgent', 20, ['Send moisture readings', -3]],
-  ['Alicia Brandt', '+16145550191', 'Smoke damage, back bedroom', 'manual', 'contacted', OWNER, 'high', 30, ['Site visit', 26]],
-  ['Devon Clarke', '+16145550124', 'Insurance claim walkthrough', 'referral', 'qualified', OWNER, 'normal', 52, ['Book adjuster meeting', 50]],
-  ['Rosa Martins', '+16145550135', 'Sump pump failure', 'web_form', 'qualified', null, 'normal', 60, null],
-  ['Kenji Watanabe', '+16145550176', 'Hardwood cupping, living room', 'import', 'estimate_sent', STAFF, 'normal', 96, null],
-  ['Laura Okafor', '+16145550158', 'Roof leak repair + drywall', 'web_form', 'estimate_sent', OWNER, 'high', 120, ['Follow up on estimate', -20]],
-  ['Sam Whitaker', '+16145550199', 'Full basement dry-out', 'missed_call', 'won', OWNER, 'normal', 200, null],
-  ['Hannah Iverson', '+16145550103', 'Attic mold remediation', 'web_form', 'won', STAFF, 'normal', 260, null],
-  ['Victor Pell', '+16145550119', 'Small leak under sink', 'missed_call', 'lost', STAFF, 'low', 300, null],
-  ['Nadia Kerr', '+16145550142', 'Flooded laundry room', 'web_form', 'contacted', null, 'normal', 40, null],
+  ['Maria Delgado', '+16145550112', 'No heat — furnace will not light', 'web_form', 'new', null, 'urgent', 1, null],
+  ['Tom Reilly', '+16145550147', 'Water under the air handler', 'missed_call', 'new', null, 'high', 3, null],
+  ['Priya Nair', '+16145550163', 'Musty smell from the vents', 'web_form', 'new', STAFF, 'normal', 7, ['Call back about access', 2]],
+  ['Gene Whitfield', '+16145550188', 'AC out — upstairs at 88', 'missed_call', 'contacted', STAFF, 'urgent', 20, ['Send the repair quote', -3]],
+  ['Alicia Brandt', '+16145550191', 'Furnace replacement quote', 'manual', 'contacted', OWNER, 'high', 30, ['Site visit', 26]],
+  ['Devon Clarke', '+16145550124', 'Light commercial rooftop unit', 'referral', 'qualified', OWNER, 'normal', 52, ['Book the site walk', 50]],
+  ['Rosa Martins', '+16145550135', 'Heat pump icing over', 'web_form', 'qualified', null, 'normal', 60, null],
+  ['Kenji Watanabe', '+16145550176', 'Mini-split for the garage', 'import', 'estimate_sent', STAFF, 'normal', 96, null],
+  ['Laura Okafor', '+16145550158', 'Full system replacement', 'web_form', 'estimate_sent', OWNER, 'high', 120, ['Follow up on estimate', -20]],
+  ['Sam Whitaker', '+16145550199', 'AC replacement — 3 ton', 'missed_call', 'won', OWNER, 'normal', 200, null],
+  ['Hannah Iverson', '+16145550103', 'Duct sealing, attic runs', 'web_form', 'won', STAFF, 'normal', 260, null],
+  ['Victor Pell', '+16145550119', 'Thermostat swap', 'missed_call', 'lost', STAFF, 'low', 300, null],
+  ['Nadia Kerr', '+16145550142', 'Annual tune-up', 'web_form', 'contacted', null, 'normal', 40, null],
 ];
 
 function build(now) {
@@ -99,25 +99,25 @@ function refuse() {
 /* contact index → [who, hours ago, body, state?]. who: 'lr' lead recovery · 'in' the customer · a user id */
 const TALK = {
   3: [
-    ['lr', 20, 'Sorry we missed your call — this is Halstead Restoration. What can we help with?', 'delivered'],
-    ['in', 19.8, 'Pipe burst under the kitchen sink, water everywhere'],
-    [STAFF, 19.5, 'Shut the main valve if you can reach it. A crew is 25 minutes out.', 'read'],
-    ['in', 19.4, 'Valve is off. Thank you'],
-    [STAFF, 3, 'Moisture readings are in — sending them over this afternoon.', 'delivered'],
+    ['lr', 20, 'Sorry we missed your call — this is Halstead Heating & Air. What can we help with?', 'delivered'],
+    ['in', 19.8, 'AC quit this afternoon, it is 88 upstairs'],
+    [STAFF, 19.5, 'Switch it off at the thermostat so it does not freeze up. A tech is 25 minutes out.', 'read'],
+    ['in', 19.4, 'It is off. Thank you'],
+    [STAFF, 3, 'The part is in — sending the repair quote over this afternoon.', 'delivered'],
   ],
   4: [
     [OWNER, 28, 'Hi Alicia, this is Halstead. Does Thursday at 10 work for the site visit?', 'delivered'],
     ['in', 26, 'Thursday works. Park in the back'],
   ],
   8: [
-    ['in', 121, 'Did you get the photos of the ceiling?'],
+    ['in', 121, 'Did you get the photos of the old unit?'],
     [OWNER, 120, 'Got them. Your estimate is attached to the email I just sent.', 'sent'],
   ],
   6: [
-    ['in', 60, 'Our sump pump failed overnight. Can someone come look?'],
+    ['in', 60, 'Our heat pump iced over overnight. Can someone come look?'],
   ],
   12: [
-    ['lr', 40, 'Thanks for getting in touch with Halstead Restoration. What can we help with?', 'delivered'],
+    ['lr', 40, 'Thanks for getting in touch with Halstead Heating & Air. What can we help with?', 'delivered'],
     ['in', 39, 'STOP'],
   ],
 };
@@ -230,7 +230,7 @@ function appointmentsFor(data, now) {
       title: type.name, service_id: null, location_id: null, status, starts_at: stamp(starts), ends_at: stamp(ends),
       busy_from: stamp(starts), busy_until: stamp(ends + DEMO_RULES.buffer_after_minutes * 60_000), timezone: TENANT.timezone,
       address_line1: null, city: 'Columbus', region: 'OH', postal_code: '43215',
-      customer_note: source === 'booking_page' ? 'Water is still coming in near the stairs.' : null,
+      customer_note: source === 'booking_page' ? 'The unit is in the side yard, gate is unlocked.' : null,
       source, booking_page_id: null, requires_approval: source === 'booking_page', assigned_user_id: assigned, reschedule_count: 0, cancel_reason: null,
       confirmed_at: status === 'requested' ? null : made, closed_at: status === 'completed' ? stamp(ends) : null,
       sync_state: 'local', sync_detail: {}, last_synced_at: null, changed_via: source === 'booking_page' ? 'booking_page' : 'workspace',

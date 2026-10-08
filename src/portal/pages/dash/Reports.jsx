@@ -142,7 +142,7 @@ export default function Reports({ data, onExport }) {
         <Panel title="export">
           <p className="ws-panel__body">
             every loaded lead as a csv: received time in your timezone, customer, phone, source,
-            loss type, response seconds, who it was routed to, whether they replied, and the
+            job type, response seconds, who it was routed to, whether they replied, and the
             failure reason where there was one. it opens in excel and sheets without a fight.
           </p>
 

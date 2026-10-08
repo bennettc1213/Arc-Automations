@@ -203,6 +203,17 @@ awaited, so a capture that fails cannot keep anyone from the calendar. The film 
 The service menu (`site.workflows*`, still the key of `service-catalog.js`), the toolkit and the
 route section are parked, not deleted.
 
+**`/demo` opens on a proof ledger, and a status there is derived, never typed** (ARC-MK-120,
+`src/portal/demo/proof-ledger.js`, `ProofLedger.jsx`, `tests/proof-ledger.test.js`). Seven
+written example leads for a made-up heating and cooling company (`DEMO_TENANT` is HVAC now), each
+with the same seven lines and a status with its reason. A lead states only what happened;
+`ledgerVerdict` reads the status off it by the homepage's rule (`site.price.counts`), and only
+`counts` is billed. They are examples, not events — no figure reads them, and what real evidence a
+job needs is still ARC-MK-210's to design. Only the arrival and the appointment carry a clock
+time. A workspace handed `data.proofLedger` opens on it and its overview moves to `overview`
+(`navGroupsFor(…, { ledgerHome })`); only `Demo.jsx` hands one, so a signed-in portal's map is
+unchanged and `NAV_ITEMS` is still thirteen.
+
 **There is one customer and lead model, for every route** (`0023`, `_shared/crm/`, `ops`
 `crm-*`, ARC-340; docs/architecture/ARC_CRM_CORE.md). `crm_contacts`, `crm_leads`, pipelines,
 notes, tasks, source records and external mappings, plus the business profile, locations,

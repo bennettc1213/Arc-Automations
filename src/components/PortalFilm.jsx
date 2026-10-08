@@ -261,7 +261,7 @@ const LEADS = [
     at: '12:03:46',
     name: 'nate delacruz',
     phone: '(614) 737-9159',
-    job: 'water — water heater failure',
+    job: 'water heater — no hot water',
     tag: 'missed call · scheduling',
     response: '9.9s',
     routed: 'sam okonkwo',
@@ -274,7 +274,7 @@ const LEADS = [
     at: '10:31:59',
     name: 'doug rasmussen',
     phone: '(614) 531-1096',
-    job: 'water — roof leak, ceiling',
+    job: 'leak — water under the air handler',
     tag: 'google message · scheduling',
     response: '1m 19s',
     routed: 'priya raghunathan',
@@ -287,7 +287,7 @@ const LEADS = [
     at: '09:31:56',
     name: 'greg lindqvist',
     phone: '(614) 352-2666',
-    job: 'water — basement seepage',
+    job: 'no heat — furnace will not light',
     tag: 'missed call · emergency',
     response: '6.8s',
     routed: 'dana reyes',
@@ -317,7 +317,7 @@ const LEADS = [
     at: '05:58:59',
     name: 'greg lindqvist',
     phone: '(614) 255-0287',
-    job: 'water — roof leak, ceiling',
+    job: 'leak — water under the air handler',
     tag: 'web form · same day',
     response: '9.1s',
     routed: 'marcus whitfield',
@@ -330,7 +330,7 @@ const LEADS = [
     at: '05:45:03',
     name: 'sheila hobbs',
     phone: '(614) 244-0499',
-    job: 'water — roof leak, ceiling',
+    job: 'leak — water under the air handler',
     tag: 'web form · scheduling',
     response: '29.7s',
     routed: 'marcus whitfield',
@@ -343,7 +343,7 @@ const LEADS = [
     at: '04:43:53',
     name: 'wes delacruz',
     phone: '(614) 847-5826',
-    job: 'water — burst supply line',
+    job: 'no cooling — ac blowing warm air',
     tag: 'missed call · emergency',
     response: '11.4s',
     routed: 'sam okonkwo',
@@ -357,7 +357,7 @@ const LEADS = [
     at: '23:58:02',
     name: 'duane ferraro',
     phone: '(614) 206-6908',
-    job: 'water — dishwasher overflow',
+    job: 'thermostat — blank screen',
     tag: 'web form · electrical hazard',
     response: '1m 08s',
     routed: 'priya raghunathan',
@@ -452,7 +452,7 @@ function Rail({ active, live, leadsRef }) {
       </div>
 
       <div className="pf-rail__tenant">
-        <span className="pf-rail__tenant-name">Halstead Restoration</span>
+        <span className="pf-rail__tenant-name">Halstead Heating &amp; Air</span>
         <span className="pf-rail__tenant-sub">client portal</span>
       </div>
 
@@ -749,7 +749,7 @@ function LeadCapture({ open, chip, still, panelRef, rowRef, chipRef }) {
         <div className="pf-toolbar">
           <span className="pf-search">
             <Icon name="search" size={10} />
-            name, phone, loss type or tech
+            name, phone, job type or tech
           </span>
           <div className="pf-chips">
             {OUTCOMES.map((key) => (

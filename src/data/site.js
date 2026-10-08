@@ -153,7 +153,7 @@ export const site = {
         reason: 'anything that sounds unsafe goes straight to a person.',
       },
     ],
-    demo: 'open the demo portal →',
+    demo: 'see all seven example leads →',
   },
 
   projects: [

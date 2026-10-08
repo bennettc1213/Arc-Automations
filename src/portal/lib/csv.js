@@ -9,7 +9,7 @@ import { DateTime } from 'luxon';
 import { formatPhone } from './format';
 
 /* excel and sheets both treat a leading =, +, - or @ in a cell as the start of a formula.
-   a loss type that begins with a dash is enough to turn an export into a spreadsheet that
+   a job type that begins with a dash is enough to turn an export into a spreadsheet that
    executes something, so those cells are prefixed with a quote. */
 function escapeCell(value) {
   if (value === null || value === undefined) return '';
@@ -38,7 +38,7 @@ export function threadsToCsv(threads, timezone) {
       { label: 'name', value: (t) => t.name },
       { label: 'phone', value: (t) => formatPhone(t.phone) },
       { label: 'source', value: (t) => t.sourceLabel },
-      { label: 'loss type', value: (t) => t.lossType },
+      { label: 'job type', value: (t) => t.lossType },
       {
         label: 'response seconds',
         value: (t) => (t.latencyMs === null ? '' : (t.latencyMs / 1000).toFixed(1)),

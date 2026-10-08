@@ -14,7 +14,7 @@ import { DateTime } from 'luxon';
 
 export const DEMO_TENANT = {
   id: '8f1c2d34-5a6b-4c7d-8e9f-0a1b2c3d4e5f',
-  name: 'Halstead Restoration',
+  name: 'Halstead Heating & Air',
   slug: 'halstead',
   timezone: 'America/New_York',
   status: 'active',
@@ -44,14 +44,14 @@ const FORM_LAST_NAMES = [
 ];
 
 const LOSS_TYPES = [
-  'water — burst supply line',
-  'water — basement seepage',
-  'water — water heater failure',
-  'fire — kitchen, smoke damage',
-  'mold — crawlspace',
-  'sewage — backup, main line',
-  'water — roof leak, ceiling',
-  'water — dishwasher overflow',
+  'no cooling — ac blowing warm air',
+  'no heat — furnace will not light',
+  'water heater — no hot water',
+  'gas — smell near the furnace',
+  'airflow — weak upstairs',
+  'flooding — condensate line backed up',
+  'leak — water under the air handler',
+  'thermostat — blank screen',
 ];
 
 /* mulberry32: small, fast, seedable. */
@@ -129,7 +129,7 @@ function activeIncident(at, now, zone) {
    thirty before it, ordinary variance lands negative about half the time, and it rebuilds
    nightly, so "about half the time" means a prospect eventually opens it on a bad day.
    so the volume carries a deliberate, gentle upward drift across the ninety days.
-   this is not a hockey stick and must not become one — a restoration contractor knows
+   this is not a hockey stick and must not become one — an hvac owner knows
    what their own volume looks like, and a demo showing 4x growth in a quarter reads as
    fabricated faster than a declining one reads as failing. the lift below works out to
    roughly a fifth more volume in the trailing month than the month before it, which is
@@ -151,8 +151,8 @@ function trendFactor(dayOffset, historyDays) {
 }
 
 /* weekdays carry more form traffic; weekends still produce emergencies, which is the
-   nature of the category — and for restoration specifically the weekend is not quiet, it
-   is when a pipe bursts in an empty building. the weekend floor is 3 rather than 2 for a
+   nature of the category — and for heating and cooling specifically the weekend is not quiet,
+   it is when the furnace quits with the office closed. the weekend floor is 3 rather than 2 for a
    concrete reason: at 2/day, roughly half of which are missed calls, the missed-call
    text-back workflow genuinely goes 26+ hours without firing on a saturday and the
    automations page badges it `quiet`. that badge is correct behaviour reporting a
@@ -166,7 +166,7 @@ function leadsForDay(day, rng, trend = 1) {
 }
 
 /* bimodal: a business-hours bulge for form fills, plus a genuine overnight tail, because a
-   burst pipe at 2am is the job that pays and the one their competitor sleeps through. */
+   dead furnace at 2am is the job that pays and the one their competitor sleeps through. */
 function hourForLead(rng) {
   if (rng.chance(0.26)) return rng.int(0, 6);
   if (rng.chance(0.15)) return rng.int(19, 23);
@@ -269,7 +269,7 @@ function generateLeadThread(rng, at, now, zone, fromMissedCall) {
       latencyMs: smsFailed ? null : latencyMs,
       payload: smsFailed
         ? { to: phone, error: 'twilio: 63038 campaign not registered' }
-        : { to: phone, body: 'thanks for reaching halstead restoration — a tech is being notified now.' },
+        : { to: phone, body: 'thanks for reaching halstead heating & air — a tech is being notified now.' },
     }),
   );
 
@@ -347,8 +347,8 @@ function generateCanaryPair(rng, at, now, zone) {
 /* ══ the lifecycle modules ════════════════════════════════
  *
  * everything below generates the same shape of evidence the live pipeline does, for a
- * restoration contractor that also sells maintenance agreements and replaces the equipment
- * a loss destroyed. the numbers are chosen to be a plausible ninety days for a shop of this
+ * heating and cooling company that also sells maintenance agreements and installs the
+ * equipment it quotes. the numbers are chosen to be a plausible ninety days for a shop of this
  * size, not to be flattering: about a third of estimates never get a decision, a couple of
  * members cancel, and one review request was withheld for a reason it should not have been.
  *
@@ -358,27 +358,27 @@ function generateCanaryPair(rng, at, now, zone) {
  */
 
 const WORK_TYPES = [
-  'water mitigation & structural drying',
-  'contents pack-out and storage',
-  'drywall and paint rebuild',
-  'flooring replacement — LVP',
-  'mold remediation — crawlspace',
-  'smoke and odour treatment',
-  'roof tarp and deck repair',
-  'sewage cleanup and sanitising',
-  'cabinet and countertop rebuild',
+  'ac replacement — 3 ton',
+  'furnace replacement — 80k btu',
+  'heat pump install',
+  'ductwork repair and sealing',
+  'mini-split — two zones',
+  'evaporator coil replacement',
+  'water heater replacement',
+  'whole-home air cleaner',
+  'thermostat and zoning upgrade',
 ];
 
 const OBJECTIONS = [
-  'insurance is only covering part of this, can you look at the scope again',
+  'the financing only covers part of this, can you look at the options again',
   'that is a lot more than the other quote we got',
-  'we need to wait until the adjuster has been out',
+  'we want to get through this season before we decide',
 ];
 
 const QUESTIONS = [
-  'how soon could you start if we said yes today',
-  'does that price include the contents storage',
-  'is the drying equipment rental in that number or separate',
+  'how soon could you install if we said yes today',
+  'does that price include hauling away the old unit',
+  'is the permit in that number or separate',
 ];
 
 const INTERESTED = [
@@ -388,29 +388,29 @@ const INTERESTED = [
 ];
 
 const PLANS = [
-  'priority response — residential',
-  'priority response — commercial',
-  'annual drainage & sump maintenance',
+  'comfort club — residential',
+  'comfort club — commercial',
+  'annual tune-up — heating & cooling',
 ];
 
 const EQUIPMENT = [
   { manufacturer: 'Rheem', category: 'water heater — 50gal gas', prefix: 'RH' },
   { manufacturer: 'Bradford White', category: 'water heater — 40gal electric', prefix: 'BW' },
-  { manufacturer: 'Zoeller', category: 'sump pump — 1/2hp', prefix: 'ZL' },
-  { manufacturer: 'Liberty Pumps', category: 'sewage ejector', prefix: 'LB' },
-  { manufacturer: 'Santa Fe', category: 'crawlspace dehumidifier', prefix: 'SF' },
+  { manufacturer: 'Carrier', category: 'air conditioner — 3 ton', prefix: 'CA' },
+  { manufacturer: 'Trane', category: 'gas furnace — 80k btu', prefix: 'TR' },
+  { manufacturer: 'Lennox', category: 'heat pump — 2.5 ton', prefix: 'LX' },
   { manufacturer: 'Aprilaire', category: 'whole-home air scrubber', prefix: 'AP' },
 ];
 
 const REVIEW_TEXTS = [
-  { rating: 5, text: 'Called at 11pm with water coming through the ceiling. Someone answered, and a crew was here before 1am. Cannot fault them.' },
-  { rating: 5, text: 'Dana and her team were careful with our things and explained every step. The house was dry in four days.' },
-  { rating: 5, text: 'Fast, tidy, and they dealt with the insurance paperwork directly which saved us a week.' },
-  { rating: 4, text: 'Good work overall. Took a couple of calls to pin down the final invoice but the drying was done properly.' },
+  { rating: 5, text: 'Furnace quit at 11pm in January. Someone answered, and a tech was here before 1am. Cannot fault them.' },
+  { rating: 5, text: 'Dana and her team were careful with the house and explained every step. The new system was in by the afternoon.' },
+  { rating: 5, text: 'Fast, tidy, and they handled the permit and the rebate paperwork directly which saved us a week.' },
+  { rating: 4, text: 'Good work overall. Took a couple of calls to pin down the final invoice but the install was done properly.' },
   { rating: 5, text: 'Second time we have used them. Same crew, same standard.' },
-  { rating: 4, text: 'Did what they said they would. Would have liked a bit more warning about the equipment noise.' },
+  { rating: 4, text: 'Did what they said they would. Would have liked a bit more warning that the power would be off.' },
   { rating: 2, text: 'The work was fine but nobody told us they were coming back on the Saturday and we had to rearrange our day.' },
-  { rating: 1, text: 'Three days without an update and the dehumidifiers were left running in an empty room. Had to chase twice.' },
+  { rating: 1, text: 'Three days without an update and the old unit was left sitting in the driveway. Had to chase twice.' },
 ];
 
 function customerName(rng) {
@@ -436,8 +436,8 @@ function generateEstimates(rng, now, historyDays) {
     const customer = customerName(rng);
     const phone = `+1614${rng.int(2000000, 9999999)}`;
     const workType = rng.pick(WORK_TYPES);
-    /* restoration quotes are bimodal: a mitigation-only job is a few thousand, a mitigation
-       plus rebuild is five figures. a single uniform range would produce a book of
+    /* hvac quotes are bimodal: a repair or a single piece of equipment is a few thousand, a
+       full system is five figures. a single uniform range would produce a book of
        identical-looking mid-size quotes, which is not what an estimate list looks like. */
     const amountCents = rng.chance(0.62)
       ? rng.int(180_000, 890_000)
@@ -729,7 +729,7 @@ function generateReviews(rng, now, historyDays) {
           platform: rng.chance(0.82) ? 'google' : 'facebook',
           text: sample.text,
           draft_response: sensitive
-            ? `${customer.split(' ')[0]}, you are right and I am sorry — a job is not finished until you know what is happening on it. I have the schedule and the equipment log for your address in front of me and I would like to walk through it with you and put the Saturday right. — Marcus, Halstead Restoration`
+            ? `${customer.split(' ')[0]}, you are right and I am sorry — a job is not finished until you know what is happening on it. I have the schedule and the job notes for your address in front of me and I would like to walk through it with you and put the Saturday right. — Marcus, Halstead Heating & Air`
             : `Thank you — I will pass this on to ${tech.split(' ')[0]} and the crew. The ${workType.split(' —')[0]} on a job like yours is the part that decides whether the repair holds, so it means a lot that it showed.`,
         },
       }),
@@ -881,7 +881,7 @@ function generateMemberships(rng, now, historyDays) {
           payload: {
             entity_id: id,
             due_date: dueAt.toISODate(),
-            visit_type: plan.includes('drainage') ? 'sump and drain check' : 'annual system inspection',
+            visit_type: plan.includes('tune-up') ? 'seasonal tune-up' : 'annual system inspection',
           },
         }),
       );
@@ -1115,11 +1115,11 @@ function generateQualification(rng, events, now) {
     if (at < liveFrom) continue;
 
     const lossType = lead.payload?.loss_type ?? '';
-    /* the safety flag is read off the loss the caller described, the way the qualifier
+    /* the safety flag is read off the problem the caller described, the way the qualifier
        reads it off what they typed or said. */
     const flags = [];
-    if (lossType.startsWith('fire')) flags.push('fire', 'smoke');
-    if (lossType.startsWith('sewage')) flags.push('flood_safety');
+    if (lossType.startsWith('gas')) flags.push('gas');
+    if (lossType.startsWith('flooding')) flags.push('flood_safety');
     if (rng.chance(0.03)) flags.push('distressed');
     if (rng.chance(0.015)) flags.push('electrical');
 
@@ -1145,11 +1145,11 @@ function generateQualification(rng, events, now) {
           customer_status: rng.chance(0.19) ? 'existing customer' : 'new customer',
           urgency: emergency ? 'emergency' : rng.pick(['same day', 'this week', 'scheduling']),
           scope: rng.pick([
-            'one room, visible standing water',
-            'basement, approx 600 sq ft',
-            'kitchen and adjoining hallway',
-            'whole lower floor',
-            'crawlspace only',
+            'one room not cooling',
+            'whole house, no airflow',
+            'upstairs only',
+            'outdoor unit not running',
+            'furnace keeps shutting off',
           ]),
           capacity_ok: capacity,
           preferred_time: rng.pick(['as soon as possible', 'this afternoon', 'tomorrow morning', 'weekday mornings']),

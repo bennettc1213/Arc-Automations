@@ -139,24 +139,52 @@ export const NAV_ITEMS = NAV_GROUPS.flatMap((group) =>
   group.items.map((item) => ({ ...item, group: group.label })),
 );
 
+/* ARC-MK-120: the proof ledger. not in `NAV_GROUPS`, because no client's portal has one
+   yet — it is the demo's front page, over seven written examples. where a workspace is
+   given a ledger it takes the front door and the overview moves one step in; every other
+   page keeps its address. */
+export const LEDGER_ITEM = {
+  to: '',
+  end: true,
+  icon: 'check',
+  label: 'proof ledger',
+  title: 'proof ledger',
+  blurb: 'seven example leads, and why each one counts or does not',
+};
+
+function withLedgerHome(groups) {
+  return groups.map((group, index) => {
+    const items = group.items.map((item) =>
+      item.to === '' ? { ...item, to: 'overview', end: false } : item,
+    );
+    return index === 0 ? { ...group, items: [LEDGER_ITEM, ...items] } : { ...group, items };
+  });
+}
+
 /* the rail this client actually gets.
  *
  * "unavailable" is the only state that hides a page. a module that is declared but has
  * never produced an event stays in the nav on purpose — the page it leads to says it is
- * awaiting connection, which is a thing the client should be able to find and ask about. */
-export function navGroupsFor(availability) {
-  if (!availability) return NAV_GROUPS;
+ * awaiting connection, which is a thing the client should be able to find and ask about.
+ *
+ * with no availability the whole map comes back, which is what `activeItem` resolves a
+ * pasted url against. */
+export function navGroupsFor(availability, { ledgerHome = false } = {}) {
+  const groups = ledgerHome ? withLedgerHome(NAV_GROUPS) : NAV_GROUPS;
+  if (!availability) return groups;
 
-  return NAV_GROUPS.map((group) => ({
-    ...group,
-    items: group.items.filter(
-      (item) => !item.module || availability[item.module]?.state !== 'unavailable',
-    ),
-  })).filter((group) => group.items.length > 0);
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => !item.module || availability[item.module]?.state !== 'unavailable',
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
 }
 
-export function navItemsFor(availability) {
-  return navGroupsFor(availability).flatMap((group) =>
+export function navItemsFor(availability, options) {
+  return navGroupsFor(availability, options).flatMap((group) =>
     group.items.map((item) => ({ ...item, group: group.label })),
   );
 }
