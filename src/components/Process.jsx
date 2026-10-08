@@ -7,12 +7,14 @@ export default function Process() {
   const [open, setOpen] = useState(0);
 
   return (
-    <section className="process wrap" id="process" aria-label="how we work">
-      <p className="eyebrow">07 — how we work with contractors</p>
-      <h2 className="section-title process__title">no mystery, no retainer theater.</h2>
+    <section className="process wrap" id="process" aria-labelledby="process-title">
+      <p className="eyebrow">{site.process.eyebrow}</p>
+      <h2 className="section-title process__title" id="process-title">
+        {site.process.title}
+      </h2>
 
       <div className="process__list">
-        {site.process.map((item, i) => {
+        {site.process.steps.map((item, i) => {
           const isOpen = open === i;
           return (
             <div className={`acc ${isOpen ? 'is-open' : ''}`} key={item.q}>
@@ -28,9 +30,6 @@ export default function Process() {
                   <i />
                 </span>
               </button>
-              {/* deliberately outside the accordion: a price you have to click
-                  to find is the same as no price. */}
-              {item.price && <p className="acc__price">{item.price}</p>}
               <AnimatePresence initial={false}>
                 {isOpen && (
                   <motion.div

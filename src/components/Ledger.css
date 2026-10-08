@@ -1,0 +1,120 @@
+.ledger {
+  padding-block: clamp(60px, 9vh, 110px);
+}
+
+.ledger__title {
+  margin-block: 18px 20px;
+  max-width: 18ch;
+}
+
+.ledger__lead {
+  color: var(--muted);
+  max-width: 58ch;
+  line-height: 1.6;
+  font-size: clamp(1rem, 1.4vw, 1.15rem);
+}
+
+.ledger__note {
+  display: inline-block;
+  margin-block: clamp(26px, 4vh, 40px) 14px;
+  padding: 6px 10px;
+  border: 1px dashed var(--line-strong);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ledger__rows {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.lrow {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: clamp(18px, 2vw, 26px);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-2);
+  min-width: 0;
+}
+
+.lrow__who {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--faint);
+}
+
+/* a timeline: each step hangs off one rule, in the order it happened */
+.lrow__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-left: 16px;
+  border-left: 1px solid var(--line-strong);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.lrow__steps li {
+  position: relative;
+}
+
+.lrow__steps li::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 0.6em;
+  width: 7px;
+  height: 7px;
+  background: var(--faint);
+}
+
+.lrow__verdict {
+  /* verdicts line up along the bottom, however many steps came before */
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.lrow__verdict strong {
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+/* the verdict is the words; the colour only repeats them */
+.lrow--counts .lrow__verdict strong {
+  color: var(--accent);
+}
+
+.lrow--counts .lrow__steps li::before {
+  background: var(--accent);
+}
+
+.ledger__demo {
+  display: inline-block;
+  margin-top: 26px;
+  padding-block: 8px;
+  color: var(--muted);
+  border-bottom: 1px solid transparent;
+  transition: color 0.25s, border-color 0.25s;
+}
+
+.ledger__demo:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .ledger__rows {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

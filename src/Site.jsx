@@ -6,12 +6,12 @@ import Nav from './components/Nav';
 import Hero from './components/Hero';
 import Marquee from './components/Marquee';
 import Projects from './components/Projects';
-import Workflows from './components/Workflows';
-import YourRoute from './components/YourRoute';
+import Leaks from './components/Leaks';
+import Ledger from './components/Ledger';
 import PilotOverlay from './components/PilotOverlay';
 import WorkGrid from './components/WorkGrid';
-import Toolkit from './components/Toolkit';
 import Process from './components/Process';
+import Price from './components/Price';
 import Footer from './components/Footer';
 import SlideVeil from './portal/components/SlideVeil';
 import { shouldSkipEntrance } from './portal/lib/entrance';
@@ -50,15 +50,19 @@ export default function Site() {
       <WarmGrid />
       <Nav />
       <main id="top">
+        {/* the offer first, in the order an owner asks about it: what, proof, how,
+            how much. the menu of services, the three-route picker and the toolkit
+            are parked — their components and data are kept, they just do not render
+            here. past builds stay, below everything an owner came to read. */}
         <Hero />
         <Marquee items={site.marqueeA} />
-        <Workflows />
-        <YourRoute />
+        <Leaks />
+        <Ledger />
+        <Process />
+        <Price />
         <Marquee items={site.marqueeB} separator="·" reverse className="marquee--big" />
         <Projects />
         <WorkGrid />
-        <Toolkit />
-        <Process />
       </main>
       <Footer />
       <PilotOverlay />

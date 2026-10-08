@@ -1,47 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
 import { gsap } from '../lib/gsap';
-import { useAnimate, useReducedMotion } from '../lib/hooks';
+import { useReducedMotion } from '../lib/hooks';
 import { openPilot } from '../lib/pilot';
 import { scrollToId } from '../lib/SmoothScroll';
 import { site } from '../data/site';
 import { PixelRoamer } from './PixelGuy';
 import PortalFilm from './PortalFilm';
 import './Hero.css';
-
-function Cycler({ items }) {
-  const reduced = useReducedMotion();
-  const ref = useRef(null);
-  /* no margin: the word is one line of the headline, and there is no reason to
-     keep swapping it while the reader is six sections down. it held its timer
-     open for the life of the tab before this. */
-  const active = useAnimate(ref, '0px');
-  const [i, setI] = useState(0);
-
-  useEffect(() => {
-    if (!active) return undefined;
-    const t = setTimeout(() => setI((n) => (n + 1) % items.length), items[i].hold);
-    return () => clearTimeout(t);
-  }, [active, i, items]);
-
-  return (
-    <span className="cycler" ref={ref}>
-      <AnimatePresence mode="popLayout" initial={false}>
-        <motion.span
-          key={items[i].word}
-          className="cycler__word"
-          initial={reduced ? { opacity: 0 } : { y: '105%' }}
-          animate={reduced ? { opacity: 1 } : { y: 0 }}
-          exit={reduced ? { opacity: 0 } : { y: '-105%' }}
-          transition={{ duration: 0.55, ease: [0.76, 0, 0.24, 1] }}
-        >
-          {items[i].word}
-        </motion.span>
-      </AnimatePresence>
-    </span>
-  );
-}
 
 export default function Hero() {
   const rootRef = useRef(null);
@@ -92,30 +58,33 @@ export default function Hero() {
         <div className="hero__copy">
           <p className="hero__eyebrow mono">{site.hero.eyebrow}</p>
 
+          {/* the problem in the page's own colour, what arc does about it in the
+              accent. the headline holds still: a word that keeps swapping is a
+              sentence nobody can finish reading. */}
           <h1 className="hero__title">
             {site.hero.lines.map((line) => (
               <span className="hero__reveal" key={line}>
                 <span>{line}</span>
               </span>
             ))}
-            <span className="hero__reveal hero__reveal--accent">
-              <span>
-                <Cycler items={site.hero.cycle} />
+            {site.hero.accent.map((line) => (
+              <span className="hero__reveal hero__reveal--accent" key={line}>
+                <span>{line}</span>
               </span>
-            </span>
+            ))}
           </h1>
 
           <div className="hero__foot">
             <p className="hero__sub">{site.hero.sub}</p>
             <div className="hero__row">
+              <button className="hero__btn hero__btn--solid" onClick={() => openPilot()}>
+                {site.cta.primary} →
+              </button>
               <button
                 className="hero__btn hero__btn--ghost"
-                onClick={() => scrollToId('work')}
+                onClick={() => scrollToId('ledger')}
               >
-                see the work ↓
-              </button>
-              <button className="hero__btn hero__btn--solid" onClick={openPilot}>
-                start a pilot →
+                {site.cta.secondary} ↓
               </button>
             </div>
           </div>
@@ -124,7 +93,7 @@ export default function Hero() {
         <div className="hero__stage">
           <PortalFilm />
           <Link className="hero__stage-cap mono" to="/demo">
-            the client portal, live — open the demo →
+            {site.hero.stageCaption}
           </Link>
         </div>
       </div>

@@ -114,7 +114,7 @@ export default function Projects() {
   return (
     <section className="projects" id="work" ref={rootRef} aria-label="featured builds">
       <header className="projects__head wrap">
-        <p className="eyebrow">02 — featured builds</p>
+        <p className="eyebrow">06 — past builds</p>
         <h2 className="section-title">
           five things we shipped.
           <br />

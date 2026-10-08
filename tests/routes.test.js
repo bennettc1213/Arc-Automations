@@ -1,4 +1,8 @@
-/* ARC-330 — the three routes: the vocabulary, the suggestion, and the homepage section.
+/* ARC-330 — the three routes: the vocabulary, the suggestion, and the section that asks.
+ *
+ * Since ARC-MK-100 the section is parked: it is not on the public homepage, because a cold
+ * visitor is no longer asked to choose a route. The model, the component and these tests
+ * are kept — onboarding uses the model, and the section can come back as it was.
  *
  * The model is tested as data. The section is rendered to static markup the way
  * `roadmap-ui.test.js` renders its panel — esbuild (already here, under Vite) compiles the
@@ -307,20 +311,16 @@ async function loadSection() {
 const { render } = await loadSection();
 const count = (html, re) => [...html.matchAll(re)].length;
 
-describe('the homepage section', () => {
+describe('the route section', () => {
   const html = render({});
 
-  test('is on the public homepage, after what we build, and in the nav', () => {
-    const impact = siteImpact([
-      'src/components/YourRoute.jsx',
-      'src/components/YourRoute.css',
-      'src/lib/track.js',
-      'supabase/functions/_shared/routes/model.ts',
-    ]);
-    for (const v of impact.visible) assert.ok(v.routes.some((r) => r.path === '/' && r.access === 'public'), v.file);
-    assert.equal(impact.visible.length, 4);
-    assert.match(read('src/Site.jsx'), /<Workflows \/>\s*\n\s*<YourRoute \/>/);
-    assert.match(read('src/components/Nav.jsx'), /\{ id: 'route', label: 'your route' \}/);
+  test('is parked: off the public homepage and out of the nav, with the model still in use', () => {
+    assert.doesNotMatch(read('src/Site.jsx'), /YourRoute/);
+    assert.ok(!site.nav.links.some((l) => l.id === 'route'), 'no link to a section that is not there');
+    const impact = siteImpact(['src/components/YourRoute.jsx', 'supabase/functions/_shared/routes/model.ts']);
+    assert.deepEqual(impact.visible.map((v) => v.file), ['supabase/functions/_shared/routes/model.ts']);
+    /* the intake still carries a route note when it is handed one, so the model is on '/' */
+    assert.ok(impact.visible[0].routes.some((r) => r.path === '/' && r.access === 'public'));
   });
 
   test('is a labelled region with one heading', () => {
@@ -443,23 +443,12 @@ describe('the homepage section', () => {
 });
 
 describe('the rest of the homepage', () => {
-  test('the sections after the new one are renumbered, and none is numbered twice', () => {
-    const eyebrows = [
-      ['src/components/Projects.jsx', '02'],
-      ['src/components/Workflows.jsx', '03'],
-      ['src/components/WorkGrid.jsx', '05'],
-      ['src/components/Toolkit.jsx', '06'],
-      ['src/components/Process.jsx', '07'],
-      ['src/components/Footer.jsx', '08'],
-    ];
-    for (const [file, number] of eyebrows) {
-      assert.match(read(file), new RegExp(`<p className="eyebrow">${number} — `), file);
+  test('no step of how it works assumes a CRM the contractor already owns', () => {
+    assert.equal(site.process.steps.length, 4);
+    for (const step of site.process.steps) {
+      assert.equal(routeCopyProblem(step.q), null, step.q);
+      assert.equal(routeCopyProblem(step.a), null, step.q);
+      assert.doesNotMatch(step.a, /\bcrm\b/i, step.q);
     }
-    assert.match(site.routes.eyebrow, /^04 — /);
-  });
-
-  test('the pilot step no longer assumes a CRM the contractor already owns', () => {
-    const pilot = site.process.find((p) => p.q === 'one pilot, one week');
-    assert.match(pilot.a, /wired to your crm, or to ours if you don’t have one/);
   });
 });

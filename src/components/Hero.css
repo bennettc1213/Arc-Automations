@@ -26,6 +26,10 @@
   max-width: clamp(1560px, 100vw, 2200px);
   margin-inline: auto;
   width: 100%;
+  /* the glow behind the film reaches 8% past the card on each side, which on a
+     phone is past the edge of the screen: a few pixels of sideways scroll with
+     nothing in them. clip, not hidden, so the hero does not become a scroller. */
+  overflow-x: clip;
 }
 
 /* his floor line — the quiet strip between nav and headline */
@@ -112,20 +116,6 @@
   color: var(--accent);
 }
 
-.cycler {
-  position: relative; /* contain popLayout's absolutely-positioned exiting word */
-  display: inline-block;
-  overflow: hidden;
-  vertical-align: bottom;
-  padding-bottom: 0.06em;
-  margin-bottom: -0.06em;
-}
-
-.cycler__word {
-  display: inline-block;
-  will-change: transform;
-}
-
 .hero__foot {
   display: flex;
   justify-content: space-between;
@@ -143,9 +133,11 @@
 
 .hero__row {
   display: flex;
+  flex-wrap: wrap; /* two full sentences for labels: on a phone they stack */
   align-items: center;
   gap: 14px;
   flex: none;
+  max-width: 100%;
 }
 
 .hero__btn {
@@ -216,14 +208,14 @@
     container-type: inline-size;
   }
 
-  /* sized so the longest line fills the column and no more. "we don't just"
-     measures 5.762em in Space Grotesk at weight 600 with this letter-spacing —
-     read off the font file's advance widths, not estimated — so 16cqw puts it
-     at 92% of the column, before kerning takes it a little narrower still.
-     the floor and ceiling are the full-width headline's own. there is no
-     `overflow-wrap: anywhere` any more: that is what split "don't" and
-     "templates." mid-letter. if a line ever does overflow now, it wraps at a
-     space, which reads as a line break rather than as damage. */
+  /* sized so the longest line fills the column and no more. the size was set for
+     "we don't just", 5.762em in Space Grotesk at weight 600 with this
+     letter-spacing, which 16cqw puts at 92% of the column. the headline's lines
+     are now "missed calls" and shorter, each kept to two words in site.js so
+     none is wider than that one was. the floor and ceiling are the full-width
+     headline's own. there is no `overflow-wrap: anywhere`: if a line ever does
+     overflow, it wraps at a space, which reads as a line break rather than as
+     damage. */
   .hero__title {
     font-size: clamp(3.1rem, 16cqw, 9.8rem);
   }
@@ -232,11 +224,6 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 22px;
-  }
-
-  .hero__row {
-    flex-wrap: wrap;
-    row-gap: 12px;
   }
 
   /* he keeps to the copy column — the window card is opaque, and a pixel guy

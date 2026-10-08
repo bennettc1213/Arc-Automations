@@ -19,41 +19,142 @@ export const site = {
      row level security, never the obscurity of the address. */
   opsEmail: 'bennettch1213@gmail.com',
 
-  hero: {
-    eyebrow: 'arc automations — ai systems for home-services contractors',
-    lines: ["we don't just", 'wire up'],
-    // last word cycles; `hold` is how long each stays on screen (ms)
-    cycle: [
-      { word: 'zaps.', hold: 1800 },
-      { word: 'demos.', hold: 1800 },
-      { word: 'templates.', hold: 1800 },
-      { word: 'workflows.', hold: 3400 },
+  /* the offer, in the owner's words. one company, one phone line, missed calls texted
+     back, every step shown. nothing here promises a speed or a result we have not
+     measured on a real phone line, and nothing names the machinery.
+     tests/site-offer.test.js reads the rendered page and fails on the words an owner
+     should never have to learn. */
+  cta: {
+    primary: 'get my missed-call count',
+    secondary: 'see the proof ledger',
+  },
+
+  nav: {
+    links: [
+      { id: 'leaks', label: 'where jobs slip' },
+      { id: 'ledger', label: 'proof ledger' },
+      { id: 'process', label: 'how it works' },
+      { id: 'price', label: 'price' },
+      { id: 'work', label: 'past work' },
     ],
-    sub: 'production automation for hvac, plumbing, roofing & restoration crews — built on n8n, claude code, and gohighlevel. leads answered in seconds, not voicemail.',
+    portal: 'portal',
+    // the bar has room for three words, not five
+    cta: 'missed-call count',
+  },
+
+  hero: {
+    eyebrow: 'arc automations — for hvac shops with 2 to 10 trucks',
+    // one short line each: the headline is sized so its longest line fills the column
+    lines: ['missed calls', 'become', 'missed jobs.'],
+    accent: ['arc texts', 'them back.'],
+    sub: 'for small hvac companies that cannot answer every call. arc texts the caller back, books the job or hands it to you, and shows you every step. a small monthly base, plus a fee only for jobs we can prove we brought back. the missed-call count is free.',
+    stageCaption: 'the owner portal, on example data — open the demo →',
   },
 
   marqueeA: [
-    'n8n',
-    'claude code',
-    'gohighlevel',
-    'rag',
-    'react three fiber',
-    'webhooks',
-    'lead automation',
-    'missed-call textback',
-    'ai voice + sms',
-    'review engines',
+    'missed call',
+    'text back',
+    'customer replied',
+    'booked job',
+    'handed to you',
+    'needs you',
+    'proof',
+    'not billable yet',
   ],
 
   marqueeB: [
-    'speed-to-lead',
-    'booked jobs',
-    '24/7 intake',
-    'error-handled',
-    'production only',
-    'no templates',
-    'built by hand',
+    'one company',
+    'one phone line',
+    'every step shown',
+    'only proven jobs count',
+    'stop means stop',
+    'a person takes over when it matters',
   ],
+
+  /* the four places a job slips away, as a staged map. `stage` is a claim about today:
+     launch | next | later | blocked. only the first is offered, and even that one says
+     "opening with one pilot", not "live" — move a stage only when the thing behind it
+     works from start to finish. */
+  leaks: {
+    eyebrow: '02 — where jobs slip away',
+    title: 'jobs slip away in four places.',
+    lead: 'we start with one: the call you missed. the other three come one at a time, and none is switched on until it works from start to finish.',
+    items: [
+      {
+        key: 'missed-calls',
+        stage: 'launch',
+        name: 'the call you missed',
+        what: 'a call nobody picks up gets a text back. arc asks what is wrong and where, then books the job or hands it to you.',
+        status: 'first — opening with one hvac pilot',
+      },
+      {
+        key: 'quiet-estimates',
+        stage: 'next',
+        name: 'the estimate that went quiet',
+        what: 'you quote a job and hear nothing. a short follow-up that stops the moment the customer answers.',
+        status: 'next — not built yet',
+      },
+      {
+        key: 'missing-reviews',
+        stage: 'later',
+        name: 'the review you never got',
+        what: 'one request after a finished job, and one reminder at most.',
+        status: 'later — not built yet',
+      },
+      {
+        key: 'past-customers',
+        stage: 'blocked',
+        name: 'the customer who never came back',
+        what: 'tune-up reminders to past customers. we text nobody until we can prove they agreed to it.',
+        status: 'blocked — waiting on consent records',
+      },
+    ],
+  },
+
+  /* the proof ledger, shown as three made-up leads and labelled as made up. no clock
+     times on the steps: how fast the text goes out is a number we publish after it has
+     been measured on a real line, not before. */
+  ledger: {
+    eyebrow: '03 — the proof ledger',
+    title: 'every job comes with its proof.',
+    lead: 'each lead is one line you can open: when the call came in, what arc sent, what the customer said, what was booked, and why it counts or does not.',
+    exampleNote: 'example leads — not real customers',
+    leads: [
+      {
+        key: 'counts',
+        who: 'missed call · tuesday evening',
+        steps: [
+          'call came in. nobody answered.',
+          'arc texted back.',
+          'customer replied: “ac is blowing warm air.”',
+          'booked for wednesday morning.',
+          'you confirmed the visit happened.',
+        ],
+        verdict: 'counts',
+        reason: 'every step is on record.',
+      },
+      {
+        key: 'no-reply',
+        who: 'missed call · saturday',
+        steps: ['call came in. nobody answered.', 'arc texted back.', 'no reply.'],
+        verdict: 'does not count',
+        reason: 'the customer never answered. shown, never billed.',
+      },
+      {
+        key: 'handed-off',
+        who: 'missed call · monday night',
+        steps: [
+          'call came in. nobody answered.',
+          'arc texted back.',
+          'customer replied: “i smell gas.”',
+          'arc stopped texting and alerted you.',
+        ],
+        verdict: 'handed to you',
+        reason: 'anything that sounds unsafe goes straight to a person.',
+      },
+    ],
+    demo: 'open the demo portal →',
+  },
 
   projects: [
     {
@@ -123,8 +224,9 @@ export const site = {
     { title: 'missed-call text-back', year: '2026', kind: 'automation', url: null, urlLabel: 'design build · in production soon', media: 'missed-call-canvas.png', mediaSpec: 'full-res n8n canvas screenshot' },
   ],
 
-  /* every chip renders; `core: true` gets the accent style so the tools a contractor
-     cares about stand out from the rest of the stack. */
+  /* parked: the toolkit section no longer renders on the homepage — a list of tool
+     names is the machine, and the page now sells the result. the data and the
+     component (Toolkit.jsx) are kept. `core: true` gets the accent style. */
   toolkit: [
     { label: 'n8n', core: true },
     { label: 'claude code', core: true },
@@ -146,11 +248,11 @@ export const site = {
     { label: 'vite' },
   ],
 
-  /* the workflows — every tab is an offering, and there are three of them on purpose.
-     an eleven-item menu from a solo operator reads as an agency that will take any job,
-     which is the exact opposite of the "one narrow offer, already in production" position
-     the rest of this site is built on. the other eight are shelved below rather than
-     deleted: each one comes back the day there is a case study behind it. */
+  /* parked: neither list below renders on the homepage any more. the offer is one
+     thing — missed calls texted back — and a menu of twelve services said the opposite.
+     they are kept, with their ids, because portal/lib/service-catalog.js keys the
+     console's service checklists on them, and because each can come back the day there
+     is a case study behind it. */
   workflows: [
     {
       id: 'speed-to-lead',
@@ -178,9 +280,7 @@ export const site = {
     },
   ],
 
-  /* everything else we build. hidden behind a toggle under the three tabs above,
-     not deleted: the three lead because they are the narrow, provable offer, and
-     these are one click away for anyone who wants the rest of the menu. */
+  /* parked with the three above: the nine extra services. */
   workflowsMore: [
     {
       id: 'warranty-tracker',
@@ -256,11 +356,11 @@ export const site = {
     },
   ],
 
-  /* your route — the section's own words. what each route *is* (names, who it
-     is for, the comparison, the five questions) is not here: that is product
-     vocabulary shared with onboarding, in supabase/functions/_shared/routes/model.ts.
-     `status` is here because it is a claim about today and will change: only
-     say "in production" for what is. */
+  /* parked: the "your route" section and its five questions left the public homepage —
+     a cold visitor is no longer asked to choose a route. the model
+     (supabase/functions/_shared/routes/model.ts), operator onboarding and the
+     component (YourRoute.jsx) are kept; these are that component's own words.
+     `status` is a claim about today: only say "in production" for what is. */
   routes: {
     eyebrow: '04 — your route',
     title: 'start from where you are.',
@@ -353,35 +453,65 @@ export const site = {
     },
   },
 
-  process: [
-    {
-      q: 'we find the leak',
-      a: 'one afternoon with your numbers: where calls go to voicemail, where forms sit unread, where reviews never get asked for. most shops are losing jobs in the first five minutes — we find exactly where.',
-    },
-    {
-      q: 'one pilot, one week',
-      a: 'a single flow, live in production — usually speed-to-lead. wired to your crm, or to ours if you don’t have one, tested against real leads, measured against your old response time. small enough to trust, real enough to matter.',
-      price: 'flat $1,500 to build it — then $500/mo if it earns its keep. no retainer until the pilot is live and you have seen the numbers.',
-    },
-    {
-      q: 'it plugs into what you already run',
-      a: 'no rip-and-replace. gohighlevel, jobber, servicetitan, a google sheet your office manager loves — the automation wraps around whatever is answering the phones today.',
-    },
-    {
-      q: 'you see every number',
-      a: 'response time, booked rate, missed calls recovered. a dashboard, not a vibe. if the system stops earning its keep, you’ll know before we tell you.',
-    },
-    {
-      q: 'it fails loud, not silent',
-      a: 'every workflow ships with error branches, retries, and alerts. a 2am failure pages us — not you, and never the customer. silent breakage is the one thing we don’t ship.',
-    },
-  ],
-
-  footer: {
-    heading: 'your leads are waiting.',
-    sub: 'most contractors respond in hours. yours will respond in seconds.',
-    cta: 'start a pilot',
+  process: {
+    eyebrow: '04 — how it works',
+    title: 'four steps. one phone line.',
+    steps: [
+      {
+        q: 'we count your missed calls, free',
+        a: 'send us the last 30 days of call history from your phone system — an export or screenshots. we count the calls nobody answered and show you the number. no charge.',
+      },
+      {
+        q: 'we set it up with you on a call',
+        a: 'your hours, your service area, what counts as an emergency, and who gets the alert. then your unanswered calls are forwarded to arc. every company runs the same system; only the settings are yours.',
+      },
+      {
+        q: 'a missed call gets a text back',
+        a: 'arc asks what is wrong and where, then books the job or hands it to you. it stops the moment the customer says stop, and a person takes over when something sounds unsafe. every text is written and reviewed ahead of time — nothing is made up on the spot.',
+      },
+      {
+        q: 'you see every step, and say what happened',
+        a: 'after a booked visit you answer one question: did the job happen? a job counts only when the whole chain is on record. anything we cannot prove is shown and never billed.',
+      },
+    ],
   },
 
-  ticker: ['arc automations', 'open for pilot builds', 'speed-to-lead < 60s', 'built by hand, not a template'],
+  /* the pilot terms. `terms` is the ONE place a number lives: set it here and the price
+     section prints it. null means "not agreed yet" and prints the row's `unset` words —
+     never a zero, and never a number nobody has agreed to. */
+  price: {
+    eyebrow: '05 — what it costs',
+    title: 'you pay for jobs we can prove.',
+    terms: {
+      monthlyBase: null, // dollars a month
+      perRecoveredJob: null, // dollars for each proven recovered job
+      monthlyCap: null, // dollars, the most a month can cost
+    },
+    rows: [
+      { label: 'the missed-call count', value: 'free' },
+      { label: 'monthly base', term: 'monthlyBase', suffix: ' a month', unset: 'small — agreed before you start' },
+      { label: 'each job we bring back', term: 'perRecoveredJob', suffix: ' a job', unset: 'a fixed fee — agreed before you start' },
+      { label: 'the most a month can cost', term: 'monthlyCap', suffix: '', unset: 'capped — agreed before you start' },
+      { label: 'the pilot', value: 'one company, one phone line, 30 to 60 days' },
+    ],
+    counts: 'a job counts when the call, the text, the reply, the booking and the visit are all on record.',
+    disputeLead: 'you can dispute a job for any of these:',
+    disputeReasons: [
+      'spam',
+      'wrong number',
+      'out of your area',
+      'customer cancelled',
+      'job did not happen',
+      'you got there first',
+      'duplicate',
+    ],
+  },
+
+  footer: {
+    eyebrow: '08 — start',
+    heading: 'how many calls did you miss last month?',
+    sub: 'send us your last 30 days of call history. we count the calls nobody answered. the count is free.',
+  },
+
+  ticker: ['arc automations', 'first hvac pilot opening', 'missed calls texted back', 'every step shown', 'free missed-call count'],
 };

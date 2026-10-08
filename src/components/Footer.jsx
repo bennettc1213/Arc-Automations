@@ -31,12 +31,12 @@ export default function Footer() {
   return (
     <footer className="footer" id="contact">
       <div className="footer__main wrap">
-        <p className="eyebrow">08 — start</p>
+        <p className="eyebrow">{site.footer.eyebrow}</p>
         <PixelGuy size={64} className="footer__guy" />
         <h2 className="footer__heading">{site.footer.heading}</h2>
         <p className="footer__sub">{site.footer.sub}</p>
-        <button className="footer__cta" onClick={openPilot}>
-          {site.footer.cta} <span aria-hidden="true">→</span>
+        <button className="footer__cta" onClick={() => openPilot()}>
+          {site.cta.primary} <span aria-hidden="true">→</span>
         </button>
       </div>
 

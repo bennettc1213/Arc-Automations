@@ -7,6 +7,37 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+
+- **ARC-MK-100: the public homepage is rewritten around one offer** — missed calls texted back,
+  with the proof shown. On the `arc-mk-100` branch until approved; not on `main`.
+  - Hero: "missed calls become missed jobs. arc texts them back." The subhead says who it is
+    for, what it costs and when you pay. Main button "get my missed-call count", second button
+    "see the proof ledger". The headline no longer cycles a word.
+  - **Where jobs slip away**: the four leaks as a staged map, each with its status in words —
+    missed calls (first, opening with one pilot), quiet estimates (next), missing reviews
+    (later), past customers (blocked on consent records). Nothing is shown as live.
+  - **The proof ledger**: three example leads, labelled as examples, each ending in "counts",
+    "does not count" or "handed to you" and the reason.
+  - **How it works** is four steps, and **what it costs** is its own section. Every pilot number
+    lives in `site.price.terms`; a term not yet agreed prints its words, never a zero.
+  - Footer, ticker, marquees and nav rewritten in owner words. The nav's links are in `site.js`.
+  - `tests/site-offer.test.js` renders the homepage and fails on owner-facing jargon
+    (`src/lib/owner-copy.js`), an unsourced statistic, a CRM made a requirement, an unmeasured
+    speed claim, a leak shown as live, or a price row printing a zero.
+  - The homepage is now in `npm run smoke`.
+
+### Removed
+
+- From the public homepage only: the three-route section and its five questions, the menu of
+  three offers and nine extra services, and the toolkit. Their components, copy and the route
+  model are kept as parked data; operator onboarding is unchanged.
+
+### Fixed
+
+- The glow behind the hero film made the homepage scroll sideways by a few pixels on a phone.
+- The hero's two buttons ran off a phone screen once their labels were full sentences.
+
 ### Added
 
 - `ARC_ROADMAP.md`: a one-page view of the whole build sequence, with each step's status

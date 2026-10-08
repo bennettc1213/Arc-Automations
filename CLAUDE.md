@@ -176,8 +176,9 @@ else of it, and the OAuth return page strips `code`/`state` before the Supabase 
 **A company takes one of three routes into ARC, and the words for them live in one file**
 (`_shared/routes/model.ts`, `YourRoute.jsx`, ARC-330): `native` (no CRM — ARC provides it),
 `hybrid` (keep some tools, ARC fills the gaps), `connected` (keep the stack, ARC is the layer on
-top). The model is portal-safe, imports nothing and stores nothing; the homepage's `Your Route`
-section, the pilot intake's route note and later onboarding read the same keys. `suggestRoute`
+top). The model is portal-safe, imports nothing and stores nothing; the `Your Route`
+section, the pilot intake's route note and later onboarding read the same keys. Since ARC-MK-100
+the section is parked — kept and tested, but not on the public homepage. `suggestRoute`
 only suggests, and only when all five questions are answered — a route is confirmed in
 authenticated onboarding; the route an operator records is `business_profiles.route` (0023). Customer-facing route copy never names n8n
 or makes a CRM a requirement (`routeCopyProblem`). The section is read by a business owner, so
@@ -185,6 +186,18 @@ it shows one answer at a time: three choices in the owner's words (`situation`),
 (three points at most), and the comparison and the questions folded away. Section chrome and each route's "today"
 status are `site.routes`; `lib/track.js` is the site's analytics hook, a window event with no
 listener and no vendor.
+
+**The public homepage sells one thing, in an owner's words** (ARC-MK-100, `src/Site.jsx`,
+`Leaks` / `Ledger` / `Price`, `tests/site-offer.test.js`). Missed calls texted back, with the
+proof shown: the four leaks are a staged map (`site.leaks`, each `stage` a claim about today —
+only move one when the thing behind it works end to end), the ledger's leads are labelled
+examples, and every pilot number lives in `site.price.terms`, where null prints the row's words
+and never a zero. The test reads the *rendered* page, so a word hardcoded in a component is
+caught too: `ownerCopyProblem` (`src/lib/owner-copy.js`) fails on the machine's words, an
+unsourced statistic or a CRM requirement, and the page may claim no speed that has not been
+measured on a real line. The film in the hero and the past-builds sections are read separately.
+The service menu (`site.workflows*`, still the key of `service-catalog.js`), the toolkit and the
+route section are parked, not deleted.
 
 **There is one customer and lead model, for every route** (`0023`, `_shared/crm/`, `ops`
 `crm-*`, ARC-340; docs/architecture/ARC_CRM_CORE.md). `crm_contacts`, `crm_leads`, pipelines,

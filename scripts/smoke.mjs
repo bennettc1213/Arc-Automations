@@ -31,6 +31,8 @@ const BASE = `http://localhost:${PORT}${BASE_PATH}`;
 
 /* every page the workspace can render, at the route the demo serves it from. */
 const PAGES = [
+  /* the public homepage: the offer, and the page most visitors see first. */
+  ['home', '/'],
   ['overview', '/demo'],
   ['inbox', '/demo/inbox'],
   ['leads', '/demo/leads'],

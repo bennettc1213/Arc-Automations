@@ -12,7 +12,7 @@ export default function WorkGrid() {
 
   return (
     <section className="workgrid wrap" id="index" aria-label="work index">
-      <p className="eyebrow">05 — the index</p>
+      <p className="eyebrow">07 — the index</p>
       <h2 className="section-title workgrid__title">everything shipped.</h2>
 
       <div className="workgrid__rows">

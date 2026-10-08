@@ -6,14 +6,7 @@ import PixelGuy from './PixelGuy';
 import GlowButton from './GlowButton';
 import './Nav.css';
 
-const LINKS = [
-  { id: 'workflows', label: 'workflows' },
-  { id: 'route', label: 'your route' },
-  { id: 'work', label: 'work' },
-  { id: 'index', label: 'index' },
-  { id: 'toolkit', label: 'toolkit' },
-  { id: 'process', label: 'process' },
-];
+const LINKS = site.nav.links;
 
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false);
@@ -85,12 +78,12 @@ export default function Nav() {
               behind the login before asking anyone to prove they belong there,
               and routes on to the dashboard or the form from its own page. */}
           <GlowButton to="/portal" variant="ghost">
-            portal
+            {site.nav.portal}
           </GlowButton>
 
-          <GlowButton variant="primary" onClick={openPilot}>
+          <GlowButton variant="primary" onClick={() => openPilot()}>
             <span className="glowbtn__dot" aria-hidden="true" />
-            start a pilot
+            {site.nav.cta}
           </GlowButton>
         </div>
       </div>
