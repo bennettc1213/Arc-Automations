@@ -7,10 +7,20 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- `ARC_ROADMAP.md`: a one-page view of the whole build sequence, with each step's status
+  checked against the commits and migrations, the gates code alone does not close, and the
+  owner's own tasks. It summarises the canonical and master roadmap files and replaces neither.
+- `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
+  `PORTAL_CONTEXT.md`).
+
+## [1.34.0] - 2026-10-08
+
 ### Changed
 
 - **ARC-MK-100: the public homepage is rewritten around one offer** — missed calls texted back,
-  with the proof shown. On the `arc-mk-100` branch until approved; not on `main`.
+  with the proof shown.
   - Hero: "missed calls become missed jobs. arc texts them back." The subhead says who it is
     for, what it costs and when you pay. Main button "get my missed-call count", second button
     "see the proof ledger". The headline no longer cycles a word.
@@ -37,14 +47,6 @@ documented here. Format loosely follows
 
 - The glow behind the hero film made the homepage scroll sideways by a few pixels on a phone.
 - The hero's two buttons ran off a phone screen once their labels were full sentences.
-
-### Added
-
-- `ARC_ROADMAP.md`: a one-page view of the whole build sequence, with each step's status
-  checked against the commits and migrations, the gates code alone does not close, and the
-  owner's own tasks. It summarises the canonical and master roadmap files and replaces neither.
-- `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
-  `PORTAL_CONTEXT.md`).
 
 ## [1.33.0] - 2026-10-07
 
