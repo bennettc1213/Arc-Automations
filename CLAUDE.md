@@ -210,9 +210,26 @@ with the same seven lines and a status with its reason. A lead states only what 
 `ledgerVerdict` reads the status off it by the homepage's rule (`site.price.counts`), and only
 `counts` is billed. They are examples, not events — no figure reads them, and what real evidence a
 job needs is still ARC-MK-210's to design. Only the arrival and the appointment carry a clock
-time. A workspace handed `data.proofLedger` opens on it and its overview moves to `overview`
-(`navGroupsFor(…, { ledgerHome })`); only `Demo.jsx` hands one, so a signed-in portal's map is
-unchanged and `NAV_ITEMS` is still thirteen.
+time. Since ARC-MK-200 the ledger is the demo's `jobs` screen, not its front page; a workspace
+handed `data.proofLedger` that is *not* an owner workspace still opens on it
+(`navGroupsFor(…, { ledgerHome })`). Only `Demo.jsx` hands one, and `NAV_ITEMS` is still thirteen.
+
+**A launch client sees four screens, and which client that is is derived** (ARC-MK-200,
+`lib/owner.js`, `OWNER_NAV_GROUPS` in `lib/nav.js`, `ThisMonth` / `Jobs` / `NeedsYou` /
+`OwnerAccount`, `OwnerTabs`, `tests/owner-portal.test.js`). `isLaunchClient` reads it off
+availability — lead capture and every other module `unavailable` — and `/demo` asks for it with
+the `owner` prop; nobody sets it. The four are a second nav declaration beside `NAV_GROUPS`, never
+a replacement: every original page keeps a route (only `overview` and the old account page, now
+`account/details`, moved), and the ones still offered are listed under account → details. One
+list feeds the jobs screen, the tally and "export my data" (`ownerJobs`): the demo's seven
+examples with their verdicts, or the client's own threads drawn with the same card — and a real
+lead is never `counts`, because the counting rule is still ARC-MK-210's. `ownerMonth` returns a
+figure as null with its reason when it cannot be shown; the fee is always null here (no terms, no
+rule) and there is no fee arithmetic in the portal. Needs-you is derived and has no answer button
+until ARC-MK-220. The account screen reads the client's settings through the `crm` function's
+`account-settings` (`_shared/account/`): a field-by-field projection of the *published* Lead
+Recovery configuration and `suppressions`, every address reduced to a hint server-side, for a
+member of that tenant or an operator. It is a read; nothing in the portal edits a setting.
 
 **There is one customer and lead model, for every route** (`0023`, `_shared/crm/`, `ops`
 `crm-*`, ARC-340; docs/architecture/ARC_CRM_CORE.md). `crm_contacts`, `crm_leads`, pipelines,

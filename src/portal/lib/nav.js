@@ -161,6 +161,81 @@ function withLedgerHome(groups) {
   });
 }
 
+/* ARC-MK-200: the owner portal's four screens.
+ *
+ * a second declaration beside `NAV_GROUPS`, not a replacement for it: a launch client (and
+ * the demo) gets these four, every other client keeps the map above, and no page is removed
+ * from either. each screen is named for the question an owner asks, in the order they ask.
+ * `short` is the word under the glyph in the phone's tab bar. */
+export const OWNER_NAV_GROUPS = [
+  {
+    label: 'your account',
+    items: [
+      {
+        to: '',
+        end: true,
+        icon: 'overview',
+        label: 'this month',
+        short: 'month',
+        title: 'this month',
+        blurb: 'is arc working: jobs brought back, what is waiting on you, and what you owe',
+      },
+      {
+        to: 'jobs',
+        icon: 'check',
+        label: 'jobs',
+        short: 'jobs',
+        title: 'jobs',
+        blurb: 'every lead, step by step, and why it counts or does not',
+      },
+      {
+        to: 'needs-you',
+        icon: 'bell',
+        label: 'needs you',
+        short: 'needs you',
+        title: 'needs you',
+        blurb: 'what only you can answer: outcomes, handoffs and the odd lead',
+      },
+      {
+        to: 'account',
+        end: true,
+        icon: 'account',
+        label: 'account',
+        short: 'account',
+        title: 'account',
+        blurb: 'what arc is allowed to do, who it tells, and your data',
+      },
+    ],
+  },
+];
+
+export const OWNER_NAV_ITEMS = OWNER_NAV_GROUPS.flatMap((group) =>
+  group.items.map((item) => ({ ...item, group: group.label })),
+);
+
+/* where a page of the full workspace lives once the four screens have the front door. only
+   two move: the overview gives up the index, and the old account page steps under the new
+   one. every other page keeps its address, so a bookmark still lands where it was meant to. */
+const OWNER_MOVED = { '': 'overview', account: 'account/details' };
+
+/* the pages an owner can still reach, listed on the account screen under "details". the
+   lead inbox and the four not-yet-sold services are left out of the list — their routes
+   still resolve, they are just not offered. */
+const OWNER_DETAIL_PATHS = ['', 'leads', 'activity', 'automations', 'reliability', 'reports', 'account'];
+
+export const OWNER_DETAIL_ITEMS = OWNER_DETAIL_PATHS.map((path) => {
+  const item = NAV_ITEMS.find((entry) => entry.to === path);
+  return { ...item, to: OWNER_MOVED[path] ?? path, end: false };
+});
+
+/* every page a path can resolve to in an owner workspace: the four, then the whole original
+   map at its owner address. what `activeItem` reads, so a pasted link to a hidden page still
+   gets its own title rather than borrowing "this month". */
+export const OWNER_ALL_ITEMS = [
+  ...OWNER_NAV_ITEMS,
+  ...NAV_ITEMS.map((item) => ({ ...item, to: OWNER_MOVED[item.to] ?? item.to, end: false })),
+];
+
 /* the rail this client actually gets.
  *
  * "unavailable" is the only state that hides a page. a module that is declared but has

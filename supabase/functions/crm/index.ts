@@ -23,6 +23,10 @@
  * by this function, and nothing here tells the customer — a confirmation is a message, and a
  * message is ARC-370's.
  *
+ * ARC-MK-200 adds one read beside the table, `account-settings`: the client's own published
+ * hours, service area, out-of-hours rule, alert recipients and do-not-contact list, as a
+ * projection with every address reduced to a hint (`_shared/account/`). It writes nothing.
+ *
  * Nothing here starts an automation or writes `events`.
  *
  * Deploy:  supabase functions deploy crm
@@ -36,6 +40,11 @@ import { supabaseIntakeStore } from '../_shared/intake/supabase-intake-store.ts'
 import { supabaseBookingStore } from '../_shared/booking/supabase-booking-store.ts';
 import { conversationDeps } from '../_shared/communications/wiring.ts';
 import { resolveRuntimeEnvironment } from '../_shared/connections/runtime-env.ts';
+import { supabaseConfigStore } from '../_shared/config/supabase-config-store.ts';
+import { ACCOUNT_ERROR_STATUS, readAccountSettings, supabaseStopList } from '../_shared/account/service.ts';
+
+/** the owner portal's one read that is not a workspace action. */
+const ACCOUNT_ACTION = 'account-settings';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -89,8 +98,8 @@ Deno.serve(async (request) => {
   }
 
   const action = String(body.action ?? '');
-  if (action === 'capabilities') return json({ ok: true, actions: WORKSPACE_ACTIONS }, 200);
-  if (!WORKSPACE_ACTIONS.includes(action)) return json({ error: 'unknown action' }, 400);
+  if (action === 'capabilities') return json({ ok: true, actions: [...WORKSPACE_ACTIONS, ACCOUNT_ACTION] }, 200);
+  if (action !== ACCOUNT_ACTION && !WORKSPACE_ACTIONS.includes(action)) return json({ error: 'unknown action' }, 400);
   if (typeof body.tenant_id !== 'string' || !UUID.test(body.tenant_id)) {
     return json({ error: 'tenant_id is required', code: 'invalid' }, 422);
   }
@@ -106,6 +115,17 @@ Deno.serve(async (request) => {
   /* not a member: the same answer whether or not the tenant exists. */
   const actor = clientActor(userId, body.tenant_id, membership);
   if (!actor) return json({ error: 'this account does not belong to that client', code: 'forbidden' }, 403);
+
+  if (action === ACCOUNT_ACTION) {
+    try {
+      const outcome = await readAccountSettings({ config: supabaseConfigStore(db), stopList: supabaseStopList(db) }, actor, body.tenant_id);
+      if (!outcome.ok) return json({ error: outcome.message, code: outcome.code }, ACCOUNT_ERROR_STATUS[outcome.code] ?? 409);
+      return json({ ok: true, settings: outcome.result }, 200);
+    } catch (failure) {
+      console.error('crm action account-settings failed', failure);
+      return json({ error: 'the settings could not be read' }, 500);
+    }
+  }
 
   try {
     const result = await handleWorkspaceAction(action, {

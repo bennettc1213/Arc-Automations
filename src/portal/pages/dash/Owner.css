@@ -1,0 +1,353 @@
+/* ARC-MK-200 — the owner portal's four screens. read on a phone in a truck: one column,
+   nothing that scrolls sideways, and every control big enough for a thumb. wider screens
+   only get more room, never more columns of data. */
+
+.ow {
+  display: grid;
+  gap: var(--gap);
+  min-width: 0;
+  max-width: 880px;
+}
+
+.ow-example {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--line-strong);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ow-sub {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 0 0 12px;
+  max-width: 62ch;
+}
+
+.ow-sub:last-child {
+  margin-bottom: 0;
+}
+
+/* the three figures. stacked on a phone so each number gets the full width and its reason
+   underneath; side by side once there is room for three. */
+.ow-figures {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.ow-figures .ws-stat {
+  background: var(--surface);
+  border: 0;
+  min-height: 0;
+}
+
+@media (min-width: 720px) {
+  .ow-figures {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.ow-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+@media (min-width: 720px) {
+  .ow-actions {
+    grid-template-columns: repeat(2, max-content);
+  }
+}
+
+/* thumb-sized: 48px tall, the label centred. */
+.ow-tap {
+  min-height: 48px;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.ow-proven {
+  margin: 0 0 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.ow-proven div {
+  background: var(--surface);
+  padding: 12px 14px;
+  display: grid;
+  gap: 2px;
+}
+
+.ow-proven dt {
+  order: 2;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ow-proven dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  color: var(--text);
+}
+
+@media (min-width: 720px) {
+  .ow-proven {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* one card per leak. */
+.ow-leaks,
+.ow-needs,
+.ow-rows,
+.ow-details {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.ow-leak {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  padding: 14px;
+}
+
+.ow-leak.is-running {
+  border-left-color: var(--ok);
+}
+
+.ow-leak__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ow-leak h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.ow-leak p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* needs you */
+.ow-need {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.ow-need--outcome {
+  border-left-color: var(--warn);
+}
+
+.ow-need--handoff {
+  border-left-color: var(--fail);
+}
+
+.ow-need__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ow-need__age {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.ow-need__title {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.ow-need__detail,
+.ow-need__reason {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* account */
+.ow-hours {
+  margin: 0 0 14px;
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.ow-hours div {
+  background: var(--surface);
+  padding: 10px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.ow-hours dt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ow-hours dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.ow-hours .is-closed dd {
+  color: var(--faint);
+}
+
+.ow-rule {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+.ow-rule b {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.ow-chips {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.ow-rows {
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+
+.ow-rows li {
+  background: var(--surface);
+  padding: 10px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.ow-rows li span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ow-details a {
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  justify-content: stretch;
+  border: 1px solid var(--line);
+  padding: 10px 14px;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.ow-details a:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ow-details small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* the phone's tab bar: the four screens, always one thumb away. hidden where the rail is
+   on screen, because two navigations side by side is one too many. */
+.ow-tabs {
+  display: none;
+}
+
+@media (max-width: 1000px) {
+  .ow-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    border-top: 1px solid var(--line-strong);
+    background: var(--bg-2);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .ow-tabs a {
+    min-height: 56px;
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    position: relative;
+  }
+
+  .ow-tabs a.is-active {
+    color: var(--accent);
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+
+  .ow-tabs__count {
+    position: absolute;
+    top: 6px;
+    left: calc(50% + 8px);
+    min-width: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+    color: #0a0a0b;
+    background: var(--warn);
+  }
+
+  /* room for the bar, so the last panel is not read through it. */
+  .ws--owner .ws__page {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+}

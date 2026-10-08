@@ -45,6 +45,8 @@ export function crmApi(door, tenantId) {
     door,
     readOnly: false,
     workspace: async () => (await run('crm-workspace')).workspace,
+    /* ARC-MK-200 — the client's own published settings and stop list, as a projection. a read. */
+    accountSettings: async () => (await run('account-settings')).settings,
     leadView: async (leadId) => (await run('crm-lead-view', { lead_id: leadId })).view,
     contactView: async (contactId) => (await run('crm-contact-view', { contact_id: contactId })).view,
     updateLead: async (leadId, lead) => (await run('crm-lead-update', { lead_id: leadId, lead })).lead,

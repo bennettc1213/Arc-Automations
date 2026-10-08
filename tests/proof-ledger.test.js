@@ -1,5 +1,5 @@
-/* ARC-MK-120 — `/demo` opens on a proof ledger: seven example leads, each showing why it
- * counts or does not.
+/* ARC-MK-120 — the proof ledger: seven example leads, each showing why it counts or does not.
+ * (Since ARC-MK-200 it is the demo's `jobs` screen; `tests/owner-portal.test.js` covers that.)
  *
  * Three promises, each tested by name:
  *   - a status is read off what happened to the lead, never typed onto it;

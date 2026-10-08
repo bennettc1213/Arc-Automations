@@ -33,7 +33,10 @@ const BASE = `http://localhost:${PORT}${BASE_PATH}`;
 const PAGES = [
   /* the public homepage: the offer, and the page most visitors see first. */
   ['home', '/'],
-  ['proof-ledger', '/demo'],
+  /* the owner portal's four screens (ARC-MK-200), which the demo opens on. */
+  ['this-month', '/demo'],
+  ['jobs', '/demo/jobs'],
+  ['needs-you', '/demo/needs-you'],
   ['overview', '/demo/overview'],
   ['inbox', '/demo/inbox'],
   ['leads', '/demo/leads'],
@@ -46,6 +49,7 @@ const PAGES = [
   ['reliability', '/demo/reliability'],
   ['reports', '/demo/reports'],
   ['account', '/demo/account'],
+  ['account-details', '/demo/account/details'],
   ['support', '/demo/support'],
   /* the two public doors, so the entrance animation and the marketing hero are covered by
      the same pass. */

@@ -17,7 +17,21 @@ import Reviews from '../pages/dash/Reviews';
 import Memberships from '../pages/dash/Memberships';
 import Installs from '../pages/dash/Installs';
 import ProofLedger from '../pages/dash/ProofLedger';
-import { activeItem, navGroupsFor, navItemsFor } from '../lib/nav';
+import ThisMonth from '../pages/dash/ThisMonth';
+import Jobs from '../pages/dash/Jobs';
+import NeedsYou from '../pages/dash/NeedsYou';
+import OwnerAccount from '../pages/dash/OwnerAccount';
+import OwnerTabs from './OwnerTabs';
+import {
+  OWNER_ALL_ITEMS,
+  OWNER_DETAIL_ITEMS,
+  OWNER_NAV_GROUPS,
+  OWNER_NAV_ITEMS,
+  activeItem,
+  navGroupsFor,
+  navItemsFor,
+} from '../lib/nav';
+import { isLaunchClient, ownerNeeds } from '../lib/owner';
 import { downloadCsv, threadsToCsv } from '../lib/csv';
 import { PAGE_ID, skipToPage } from '../lib/a11y';
 import '../workspace.css';
@@ -45,7 +59,7 @@ function readCollapsed() {
   }
 }
 
-export default function Workspace({ data, base, email, onSignOut, banner, live = true }) {
+export default function Workspace({ data, base, email, onSignOut, banner, live = true, owner: ownerProp }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -58,9 +72,26 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
   /* a workspace handed a proof ledger opens on it, and the overview moves to `overview`.
      only the demo is handed one today; a signed-in portal's map is unchanged. */
   const ledgerHome = Boolean(data.proofLedger);
-  const groups = useMemo(() => navGroupsFor(data.availability, { ledgerHome }), [data.availability, ledgerHome]);
-  const items = useMemo(() => navItemsFor(data.availability, { ledgerHome }), [data.availability, ledgerHome]);
-  const allItems = useMemo(() => navItemsFor(null, { ledgerHome }), [ledgerHome]);
+
+  /* ARC-MK-200: a launch client — lead capture and nothing else — gets the four owner
+     screens instead of the full map. that is read off availability, never set; the demo asks
+     for it outright, because the demo runs every module and is still the launch offer's
+     sales page. every other page keeps a route below, reached from account → details. */
+  const owner = ownerProp ?? isLaunchClient(data.availability);
+
+  const groups = useMemo(
+    () => (owner ? OWNER_NAV_GROUPS : navGroupsFor(data.availability, { ledgerHome })),
+    [owner, data.availability, ledgerHome],
+  );
+  /* what the palette can find: for an owner, the four screens and then the details pages. */
+  const items = useMemo(
+    () =>
+      owner
+        ? [...OWNER_NAV_ITEMS, ...OWNER_DETAIL_ITEMS.map((item) => ({ ...item, group: 'details' }))]
+        : navItemsFor(data.availability, { ledgerHome }),
+    [owner, data.availability, ledgerHome],
+  );
+  const allItems = useMemo(() => (owner ? OWNER_ALL_ITEMS : navItemsFor(null, { ledgerHome })), [owner, ledgerHome]);
   const page = activeItem(location.pathname, base, allItems);
 
   const toggleCollapse = useCallback(() => {
@@ -142,6 +173,8 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
      makes somebody click. leads keeps its volume count because that page is the evidence
      archive rather than a queue. */
   const counts = useMemo(() => {
+    /* the owner's rail carries one counter: how many things are waiting on them. */
+    if (owner) return { 'needs-you': ownerNeeds(data).total || null };
     const byModule = data.attention?.byModule ?? {};
     return {
       leads: data.threadTotal,
@@ -151,12 +184,12 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
       installs: byModule.installs || null,
       reliability: data.incidents.filter((incident) => incident.open).length || null,
     };
-  }, [data]);
+  }, [data, owner]);
 
   const pageProps = { data, base, live, onExport: exportLeads };
 
   return (
-    <div className={`portal ws${railCollapsed ? ' ws--tight' : ''}${drawerOpen ? ' ws--open' : ''}`}>
+    <div className={`portal ws${railCollapsed ? ' ws--tight' : ''}${drawerOpen ? ' ws--open' : ''}${owner ? ' ws--owner' : ''}`}>
       {/* first in the tab order: past the rail and the top bar, straight to the page. */}
       <a className="ws-skip" href={`#${PAGE_ID}`} onClick={skipToPage}>
         skip to the page
@@ -198,6 +231,30 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
 
         <main className="ws__page" id={PAGE_ID} tabIndex={-1}>
           {page.blurb && <p className="ws-intro">{page.blurb}</p>}
+          {owner ? (
+            /* the four screens, then every page of the full workspace at the address it
+               always had. two moved to make room: the overview and the original account page. */
+            <Routes>
+              <Route index element={<ThisMonth {...pageProps} />} />
+              <Route path="jobs" element={<Jobs {...pageProps} />} />
+              <Route path="needs-you" element={<NeedsYou {...pageProps} />} />
+              <Route path="account" element={<OwnerAccount {...pageProps} />} />
+              <Route path="account/details" element={<Account {...pageProps} />} />
+              <Route path="overview" element={<Overview {...pageProps} />} />
+              <Route path="inbox" element={<Inbox {...pageProps} />} />
+              <Route path="leads" element={<Leads {...pageProps} />} />
+              <Route path="estimates" element={<Estimates {...pageProps} />} />
+              <Route path="reviews" element={<Reviews {...pageProps} />} />
+              <Route path="memberships" element={<Memberships {...pageProps} />} />
+              <Route path="installs" element={<Installs {...pageProps} />} />
+              <Route path="activity" element={<Activity {...pageProps} />} />
+              <Route path="automations" element={<Automations {...pageProps} />} />
+              <Route path="reliability" element={<Reliability {...pageProps} />} />
+              <Route path="reports" element={<Reports {...pageProps} />} />
+              <Route path="support" element={<Support {...pageProps} />} />
+              <Route path="*" element={<ThisMonth {...pageProps} />} />
+            </Routes>
+          ) : (
           <Routes>
             <Route index element={ledgerHome ? <ProofLedger {...pageProps} /> : <Overview {...pageProps} />} />
             <Route path="overview" element={<Overview {...pageProps} />} />
@@ -215,8 +272,11 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
             <Route path="support" element={<Support {...pageProps} />} />
             <Route path="*" element={ledgerHome ? <ProofLedger {...pageProps} /> : <Overview {...pageProps} />} />
           </Routes>
+          )}
         </main>
       </div>
+
+      {owner && <OwnerTabs base={base} items={OWNER_NAV_ITEMS} counts={counts} />}
 
       <CommandPalette
         open={paletteOpen}

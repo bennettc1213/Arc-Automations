@@ -15,6 +15,34 @@ documented here. Format loosely follows
 - `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
   `PORTAL_CONTEXT.md`).
 
+## [1.37.0] - 2026-10-08
+
+### Added
+
+- **ARC-MK-200: the four-screen owner portal.** A launch client — lead capture and no other
+  service — and `/demo` now get four screens instead of thirteen: **this month** (jobs brought
+  back, waiting on you, fee owed, what provably happened, one card per leak), **jobs** (each
+  lead's seven lines and why it counts or does not), **needs you** (outcome questions, handoffs,
+  odd leads) and **account** (hours, service area, who is told, stop list, export my data, reach
+  a person). Who gets them is read off module availability (`isLaunchClient`), never set.
+- On a phone the four screens are a bottom tab bar, with the number waiting on needs you.
+- `account-settings` on the `crm` function (`_shared/account/`): a signed-in client can read
+  their own published hours, service area, out-of-hours rule, alert recipients and
+  do-not-contact list. A projection built field by field, with every phone number and mailbox
+  reduced to a hint before it leaves the server. Read-only. **Not deployed yet.**
+- "Export my data": the jobs screen as a CSV, from the account screen.
+
+### Changed
+
+- `/demo` opens on **this month**; the proof ledger is its **jobs** screen (`/demo/jobs`).
+- No page was removed. Every original page keeps a route; the overview is at `overview` and the
+  original account page at `account/details`, both listed under account → details with lead
+  capture, activity, automations, reliability and reports. The lead inbox and the four services
+  not yet sold are not offered to a launch client, and their routes still resolve.
+- A signed-in launch client's jobs are never marked as counting and "jobs brought back" and
+  "fee owed" print a dash with the reason: the counting rules are `ARC-MK-210`'s, and no pilot
+  terms are entered. Answering an outcome question from the portal waits for `ARC-MK-220`.
+
 ## [1.36.0] - 2026-10-08
 
 ### Added

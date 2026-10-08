@@ -22,14 +22,17 @@ import './ProofLedger.css';
 const HELD_GLYPH = { true: '■', false: '□', null: '·' };
 const HELD_WORD = { true: 'on record', false: 'missing', null: 'does not apply' };
 
-function Lead({ lead, index, total }) {
+/* one lead's card: the seven lines, then its status and the reason. exported because the
+   jobs screen (ARC-MK-200) draws a client's own leads with the same card — `noun` is the
+   only thing that differs, so an example can never be mistaken for a real lead. */
+export function LedgerCard({ lead, index, total, noun = 'example' }) {
   const { verdict, record } = lead;
   const headingId = `pl-lead-${lead.key}`;
 
   return (
     <article className={`pl-lead pl-lead--${verdict.tone}`} aria-labelledby={headingId}>
       <header className="pl-lead__head">
-        <p className="pl-lead__n">example {index + 1} of {total}</p>
+        <p className="pl-lead__n">{noun} {index + 1} of {total}</p>
         <h3 className="pl-lead__title" id={headingId}>
           {lead.title}
         </h3>
@@ -101,7 +104,7 @@ export default function ProofLedger({ data, base }) {
 
       <div className="pl-leads">
         {ledger.leads.map((lead, index) => (
-          <Lead lead={lead} index={index} total={tally.total} key={lead.key} />
+          <LedgerCard lead={lead} index={index} total={tally.total} key={lead.key} />
         ))}
       </div>
 
