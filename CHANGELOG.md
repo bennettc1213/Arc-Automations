@@ -15,6 +15,47 @@ documented here. Format loosely follows
 - `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
   `PORTAL_CONTEXT.md`).
 
+## [1.38.0] - 2026-10-08
+
+### Added
+
+- **ARC-MK-210: the proof ledger's counting rule.** Whether a job counts is now one rule read
+  off the event log (`src/portal/lib/ledger.js`): a call or form arrived, nobody answered it
+  live, the text went out, the customer replied, a visit was booked for a time that has passed,
+  and the owner said it happened — or was asked and the dispute window passed. The first
+  missing link is the status and its reason. A later link over a missing earlier one reads
+  "cannot be proven" and is never billed. Design and decisions:
+  `docs/architecture/ARC_PROOF_LEDGER.md`.
+- Five event types: `call_answered` (a count, with no lead and no number), `lead_outcome_requested`,
+  `lead_outcome_recorded`, `lead_dispute_settled` and `pilot_terms_recorded`. A booking now
+  carries its visit time (`lead_booked.payload.appointment_at`), and a rescheduled visit is a
+  second row.
+- The fee owed: monthly base plus each job that became billable this month, held at the cap,
+  in the business's own timezone. Its terms are recorded as an event per client, so no price
+  is in this repository. With no terms on record it is a dash and the reason, never a zero.
+- Operator actions that write the evidence (`lead-recovery-record-outcome`,
+  `lead-recovery-settle-dispute`, `lead-recovery-record-terms`), and `lead-recovery-book` takes
+  the visit time. An answer is keyed on the row it replaces: a double tap is one row and a
+  changed mind is a new one. There is no console button for them yet.
+- `tests/ledger.test.js`: every status, each link removed in turn, ordering, reschedules,
+  repeat answers, silence, disputes, the cap, month boundaries, tenant isolation and the
+  engine's writes.
+
+### Changed
+
+- The owner portal's jobs screen shows each real lead's status from the rule instead of "not
+  switched on yet". "Jobs brought back" and "fee owed" on this month are the ledger's figures,
+  and needs you lists a visit whose time has passed and that nobody has answered about.
+- The demo's seven examples go through the same rule as a real lead. What an owner reads there
+  is unchanged.
+- An answered call is recorded as a count by the phone webhook. It still creates no lead and
+  sends nothing.
+
+### Fixed
+
+- The test that the browser and the ingest boundary agree on every event type compared the
+  browser's list with itself. It now reads the boundary's.
+
 ## [1.37.0] - 2026-10-08
 
 ### Added
