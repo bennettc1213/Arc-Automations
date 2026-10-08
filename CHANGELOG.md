@@ -15,6 +15,42 @@ documented here. Format loosely follows
 - `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
   `PORTAL_CONTEXT.md`).
 
+## [1.39.0] - 2026-10-08
+
+### Added
+
+- **ARC-MK-220: the owner answers on the needs-you screen.** Each visit whose time has passed
+  has six answers, one tap each: sold or the job happened; quoted, not sold yet; did not
+  happen; not a real job; customer cancelled; duplicate or already handled. The first two
+  count. Any other answer is a dispute, not billed until an operator settles it, and the
+  screen says so before the tap. An answer from the last day can be changed from the same
+  screen; the earlier one stays on the record.
+- The `ledger` edge function (`_shared/ledger/service.ts`), the portal's first client write.
+  Who is answering comes from the verified sign-in and `tenant_members`: a request cannot claim
+  a client, a role or who answered. Another client's lead is not found. A repeat answer is one
+  row, and a different answer over somebody else's, or over one an operator settled, is
+  refused. It appends one event and changes nothing else. **Not deployed yet.**
+- Asking: showing the question to a signed-in member records `lead_outcome_requested`, once
+  per lead, and only with pilot terms on record and the visit time passed. That is what starts
+  the dispute window, and the screen prints the date the job counts by itself.
+- A proof ledger panel on the console's client page: what counts, what is disputed, what is
+  waiting on the owner, the month's count and fee, drawn from the same data the client sees.
+  An operator can settle a dispute (a rejection needs a note), record an answer the owner gave
+  some other way, and record the pilot terms.
+- The dispute pattern: how many good leads an owner answered about and disputed, by how each
+  ended. The console flags a client when most of several were disputed. It changes no status.
+- `tests/owner-answers.test.js`: the six answers, who may answer, repeat and conflicting
+  answers, tenant isolation, asking, and both rendered screens.
+
+### Changed
+
+- `/demo`'s needs-you screen shows the six answers on its example question. A tap says what it
+  would do on a real account and saves nothing.
+- The console's outcome and dispute actions accept a lead by the reference its events share,
+  as well as by row id.
+- A signed-in account whose answer cannot be recorded is told so and given the mailbox. The
+  standing "email your answer" panel is gone from accounts that can answer.
+
 ## [1.38.0] - 2026-10-08
 
 ### Added
