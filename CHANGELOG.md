@@ -15,6 +15,29 @@ documented here. Format loosely follows
 - `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
   `PORTAL_CONTEXT.md`).
 
+## [1.35.0] - 2026-10-08
+
+### Changed
+
+- **ARC-MK-110: the overlay behind "get my missed-call count" is a missed-call count request.**
+  - Six one-tap questions — trade, calls a week, whether calls go unanswered after hours, what
+    the calls come in on, whether the last 30 days of call history can be exported or
+    screenshotted, and what the business runs on today (or nothing) — then name, company,
+    service area, email and phone.
+  - The booking screen says what to bring: 30 days of call history.
+  - The post that carries the answers is started and never waited on, and any failure resolves
+    quietly, so a capture that fails cannot keep anyone from the calendar (`src/lib/count-intake.js`).
+  - A route is never shown to the owner: it is sent as a note for the call and is no longer
+    written into the calendar's notes or the email fallback.
+  - `tests/count-intake.test.js` renders every screen and holds it to the owner-copy check;
+    `npm run smoke` walks the form in a real browser with the post refused.
+
+### Removed
+
+- The overlay's "what's eating your week" question, its pilot-per-answer mapping and the
+  marketing preset (`site.pilot.pilotFor`, `site.pilot.presets`). A key left on the bus by a
+  parked section opens the same form.
+
 ## [1.34.0] - 2026-10-08
 
 ### Changed
