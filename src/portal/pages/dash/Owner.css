@@ -196,6 +196,67 @@
   color: var(--muted);
 }
 
+/* the answer buttons (ARC-MK-220): one column on a phone, so each is a full-width thumb
+   target and none sits beside another to be hit by mistake. */
+.ow-answer {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.ow-answer__ask {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.ow-answer__choices {
+  display: grid;
+  gap: 8px;
+}
+
+.ow-answer__choices .ws-btn {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.ow-answer__note,
+.ow-answer__done,
+.ow-answer__error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.ow-answer__done {
+  font-size: 15px;
+  color: var(--text);
+}
+
+.ow-answer__error {
+  color: var(--fail);
+}
+
+.ow-answer__change > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.ow-answer__change > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ow-answer__change[open] > summary {
+  margin-bottom: 10px;
+}
+
+@media (min-width: 720px) {
+  .ow-answer__choices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* account */
 .ow-hours {
   margin: 0 0 14px;

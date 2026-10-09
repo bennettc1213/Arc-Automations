@@ -226,8 +226,8 @@ examples with their verdicts, or the client's own threads drawn with the same ca
 the verdict the ledger gave it (`thread.ledger`). `ownerMonth` returns a figure as null with its
 reason when it cannot be shown; the fee is the ledger's (`data.ledger.month`), null until terms are
 on record, and `owner.js` words figures without working any out. Needs-you is derived — the
-outcome question is a lead whose status is `needs_owner` — and has no answer button until
-ARC-MK-220. The account screen reads the client's settings through the `crm` function's
+outcome question is a lead whose status is `needs_owner` — and is answered there (ARC-MK-220,
+below). The account screen reads the client's settings through the `crm` function's
 `account-settings` (`_shared/account/`): a field-by-field projection of the *published* Lead
 Recovery configuration and `suppressions`, every address reduced to a hint server-side, for a
 member of that tenant or an operator. It is a read; nothing in the portal edits a setting.
@@ -247,8 +247,22 @@ status. The new evidence is five event types — `call_answered` (a count: no le
 billable this month)` in the business's timezone, from terms that are themselves an event; no terms
 is null, never zero, and there is no invoice or payment code. An answer is keyed on the row it
 replaces, so a double tap is one row and a changed mind is a new one. A handoff is never billed,
-silence never counts until something has asked the owner (nothing does before ARC-MK-220), and an
-operator settles a dispute. The `ops` actions that write the evidence exist with no console button.
+silence never counts until something has asked the owner, and an operator settles a dispute.
+
+**The owner answers on one screen, and the write takes who they are from the sign-in** (ARC-MK-220,
+`_shared/ledger/service.ts`, the `ledger` function, `NeedsYou.jsx`, `LedgerPanel.jsx`,
+`tests/owner-answers.test.js`; ARC_PROOF_LEDGER.md §9). The portal's first client write. Six taps
+(`OWNER_ANSWERS`) that are only the three outcomes and seven reasons regrouped; `answerOutcome` reads
+membership from `tenant_members`, finds the lead by tenant and reference together, and appends through
+the engine's own `recordOutcome` — a body cannot claim a tenant, a role or `answered_by`. The caller
+names the answer it replaces: a double tap is one row, a changed mind a second, and a different answer
+over somebody else's is refused, as is one an operator already settled. Asking is showing the question
+to a signed-in member (`markAsked` → `lead_outcome_requested`, once per lead), refused until terms are
+on record and the visit has passed, so the window cannot open early. The screen decides nothing: it
+sends a tap and reloads. The console's client page shows the same ledger (`LedgerPanel`, from the
+client's own dashboard object) with settle, record-for-the-owner and record-terms, and
+`disputePattern` — a prompt for a conversation, never an input to the rule. Answering by text is
+designed and not built; nothing texts or emails an owner a question.
 
 **There is one customer and lead model, for every route** (`0023`, `_shared/crm/`, `ops`
 `crm-*`, ARC-340; docs/architecture/ARC_CRM_CORE.md). `crm_contacts`, `crm_leads`, pipelines,

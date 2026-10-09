@@ -295,6 +295,9 @@ supabase functions deploy twilio      --no-verify-jwt   # the HMAC is the gate
 supabase functions deploy lead-intake --no-verify-jwt   # the intake key is the gate
 supabase functions deploy dispatch    --no-verify-jwt   # a shared secret, or an admin JWT
 
+# the owner's answers (ARC-MK-220) — JWT verification ON. appends evidence to `events`, sends nothing.
+supabase functions deploy ledger
+
 # native lead capture (0024) — hosted forms and API intake into the CRM. sends nothing.
 supabase functions deploy native-intake --no-verify-jwt # the form key, the origin and the endpoint token are the gates
 

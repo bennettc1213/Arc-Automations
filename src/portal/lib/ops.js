@@ -1315,12 +1315,16 @@ export async function recordLeadOutcome(tenantId, leadId, outcome, valueCents = 
 /* ── the proof ledger's evidence (ARC-MK-210) ──
    each appends one row to the event log. `replaces` is the id of the row being replaced
    (or nothing, for the first), which is what makes a double press one answer. */
-export async function recordJobOutcome(tenantId, leadId, { outcome, reason = null, answeredBy = 'operator', replaces = null }) {
-  return callOps({ action: 'lead-recovery-record-outcome', tenant_id: tenantId, lead_id: leadId, outcome, reason, answered_by: answeredBy, replaces });
+/* `lead` is the engine's row id, or `{ correlationId }` — the reference a lead's events share,
+   which is all a panel drawn from the event log knows it by. */
+const leadRef = (lead) => (typeof lead === 'string' ? { lead_id: lead } : { correlation_id: lead?.correlationId });
+
+export async function recordJobOutcome(tenantId, lead, { outcome, reason = null, answeredBy = 'operator', replaces = null }) {
+  return callOps({ action: 'lead-recovery-record-outcome', tenant_id: tenantId, ...leadRef(lead), outcome, reason, answered_by: answeredBy, replaces });
 }
 
-export async function settleJobDispute(tenantId, leadId, { decision, disputeId, note = null }) {
-  return callOps({ action: 'lead-recovery-settle-dispute', tenant_id: tenantId, lead_id: leadId, decision, dispute_id: disputeId, note });
+export async function settleJobDispute(tenantId, lead, { decision, disputeId, note = null }) {
+  return callOps({ action: 'lead-recovery-settle-dispute', tenant_id: tenantId, ...leadRef(lead), decision, dispute_id: disputeId, note });
 }
 
 export async function recordPilotTerms(tenantId, { baseCents, perJobCents, capCents = null, disputeWindowDays, replaces = null }) {

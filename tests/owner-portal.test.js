@@ -535,11 +535,12 @@ describe('the four screens, rendered', () => {
     assert.doesNotMatch(html, /not switched on/);
   });
 
-  test('needs you shows the question and how to answer it, with no button that does nothing', () => {
+  test('needs you shows the question and its six answers, and the handoff has none', () => {
     const html = render('NeedsYou', demo);
     assert.match(html, /did the job happen\?/);
-    assert.match(html, /answering from this screen is not switched on yet/);
-    assert.doesNotMatch(html, /<button/);
+    /* ARC-MK-220: the question is answered on this screen. one question in the demo, six taps. */
+    assert.equal([...html.matchAll(/<button/g)].length, 6);
+    assert.doesNotMatch(html, /not switched on/);
     assert.match(render('NeedsYou', live), /did the job happen\?/);
     assert.match(render('NeedsYou', { ...live, data: liveData(chain('lead-1', { reply: false })) }), /nothing needs you/);
   });

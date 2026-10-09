@@ -31,6 +31,11 @@
  * (`pilot_terms_recorded`): base + per job × jobs that became billable this month, held at
  * the cap. no terms, no fee — null with the reason, never a zero. there is no invoice and no
  * payment anywhere in this file.
+ *
+ * ARC-MK-220 added nothing to the rule. each verdict now also carries when its answer was
+ * given, by whom, how an operator settled it and when silence would start to count — what
+ * the owner's answer screen and the console's ledger panel show — and `disputePattern` words
+ * how often an owner disputes a good lead.
  */
 
 import { DateTime } from 'luxon';
@@ -255,6 +260,7 @@ export function factsFromLead(lead, { now, terms = null, duplicate = false } = {
         outcome: last.outcome,
         reason: last.reason ?? null,
         at: last.at,
+        by: last.answeredBy ?? null,
         beforeVisit: visitAt === null || answerAt < visitAt,
         late: windowEnd !== null && answerAt > windowEnd,
       }
@@ -341,6 +347,7 @@ export function buildLedger(leads = [], events = [], { now = DateTime.now(), tim
   let billedThisMonth = 0;
   let lateDisputes = 0;
   let ownerSaidNo = 0;
+  const disputes = { answered: 0, open: 0, accepted: 0, rejected: 0, late: 0 };
 
   for (const lead of leads) {
     const facts = factsFromLead(lead, { now: nowMs, terms, duplicate: duplicates.has(lead.id) });
@@ -355,12 +362,42 @@ export function buildLedger(leads = [], events = [], { now = DateTime.now(), tim
       lateDispute: result.lateDispute,
       appointmentAt: facts.appointmentAt,
       visit: facts.visit,
-      answer: facts.answer ? { id: facts.answer.id, outcome: facts.answer.outcome, reason: facts.answer.reason, beforeVisit: facts.answer.beforeVisit } : null,
+      answer: facts.answer
+        ? {
+            id: facts.answer.id,
+            outcome: facts.answer.outcome,
+            reason: facts.answer.reason,
+            beforeVisit: facts.answer.beforeVisit,
+            at: facts.answer.at,
+            by: facts.answer.by,
+          }
+        : null,
+      /* an operator's decision on that answer, or null while it is open. */
+      settlement: facts.settlement,
       asked: facts.asked,
+      /* when silence starts to count: only once the owner was asked under terms on record. */
+      windowEndsAt: facts.asked ? facts.billableAt.silence : null,
     });
     totals[result.status] += 1;
     if (result.lateDispute) lateDisputes += 1;
     if (facts.answer?.outcome === 'not_counted') ownerSaidNo += 1;
+
+    /* the answers that were about a job the record shows whole — every earlier link held,
+       and the visit time had passed. a "should not count" among these is a dispute of a
+       good lead; one about a lead that never counted anyway is not. */
+    const saidNo = facts.answer?.outcome === 'not_counted' && !facts.answer.beforeVisit;
+    if (result.status === 'confirmed') disputes.answered += 1;
+    else if (result.status === 'disputed') {
+      disputes.answered += 1;
+      disputes.open += 1;
+    } else if (saidNo && facts.visit === 'passed' && result.status === 'billable') {
+      disputes.answered += 1;
+      if (facts.settlement === 'rejected') disputes.rejected += 1;
+      else disputes.late += 1;
+    } else if (saidNo && facts.visit === 'passed' && result.status === 'not_billable' && facts.settlement === 'accepted') {
+      disputes.answered += 1;
+      disputes.accepted += 1;
+    }
 
     if (result.billed && result.billableAt) {
       const at = DateTime.fromISO(result.billableAt, { zone: 'utc' });
@@ -393,5 +430,29 @@ export function buildLedger(leads = [], events = [], { now = DateTime.now(), tim
        those came in after the window. a pattern here is a conversation, not a rule. */
     ownerSaidNo,
     lateDisputes,
+    /* ARC-MK-220: of the good leads this owner answered about, how many they disputed and
+       how each ended. `said_no` is all four endings together. */
+    disputes: { ...disputes, saidNo: disputes.open + disputes.accepted + disputes.rejected + disputes.late },
+  };
+}
+
+/**
+ * whether an owner's disputes are worth a conversation. not a rule and never a verdict: it
+ * changes no status and bills nothing. it only says, to an operator, that most of the good
+ * leads this owner answered about were disputed — which is either a problem with the leads
+ * or a problem with the answers, and a person has to find out which.
+ */
+export const DISPUTE_PATTERN_MIN = 3;
+
+export function disputePattern(disputes) {
+  if (!disputes || disputes.answered === 0) return { flagged: false, share: null, reason: 'no owner answers on record yet' };
+  const share = disputes.saidNo / disputes.answered;
+  const flagged = disputes.saidNo >= DISPUTE_PATTERN_MIN && share >= 0.5;
+  return {
+    flagged,
+    share,
+    reason: flagged
+      ? `${disputes.saidNo} of the ${disputes.answered} good leads this owner answered about were disputed. worth a conversation.`
+      : `${disputes.saidNo} of ${disputes.answered} good leads answered about were disputed.`,
   };
 }

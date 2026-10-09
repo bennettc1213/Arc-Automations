@@ -23,6 +23,7 @@ import ConnectionForm from '../../components/ConnectionForm';
 import ServicesPanel from '../../components/ServicesPanel';
 import BuildPanel from '../../components/BuildPanel';
 import LeadRecoveryPanel from '../../components/LeadRecoveryPanel';
+import LedgerPanel from '../../components/LedgerPanel';
 import TenantModulesPanel from '../../components/ModuleSelection';
 import PurgeClientPanel from '../../components/PurgeClientPanel';
 import ReportDialog from '../../components/ReportDialog';
@@ -422,6 +423,11 @@ function ClientBody({ client, base, reload, reloadBuilds, probe, runProbe }) {
           hidden for an archived client — nothing should be activatable on a tenant that has
           been deboarded, and the panel is entirely controls. */}
       {!archived && <LeadRecoveryPanel client={client} />}
+
+      {/* what counts for this client, what their owner disputed and what is waiting on them
+          (ARC-MK-220). drawn from the same dashboard object the client sees, so the two cannot
+          disagree. shown for a past client too, read-only: their ledger is still their record. */}
+      <LedgerPanel data={data} tenant={tenant} reload={reload} readOnly={archived} />
 
       <div className="ws-stats">
         <StatCard

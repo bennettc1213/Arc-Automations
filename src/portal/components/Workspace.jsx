@@ -59,7 +59,7 @@ function readCollapsed() {
   }
 }
 
-export default function Workspace({ data, base, email, onSignOut, banner, live = true, owner: ownerProp }) {
+export default function Workspace({ data, base, email, onSignOut, banner, live = true, owner: ownerProp, onReload }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -186,6 +186,7 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
     };
   }, [data, owner]);
 
+  /* `onReload` (ARC-MK-220) is handed only to the one screen that writes: needs you. */
   const pageProps = { data, base, live, onExport: exportLeads };
 
   return (
@@ -237,7 +238,7 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
             <Routes>
               <Route index element={<ThisMonth {...pageProps} />} />
               <Route path="jobs" element={<Jobs {...pageProps} />} />
-              <Route path="needs-you" element={<NeedsYou {...pageProps} />} />
+              <Route path="needs-you" element={<NeedsYou {...pageProps} onChanged={onReload} />} />
               <Route path="account" element={<OwnerAccount {...pageProps} />} />
               <Route path="account/details" element={<Account {...pageProps} />} />
               <Route path="overview" element={<Overview {...pageProps} />} />

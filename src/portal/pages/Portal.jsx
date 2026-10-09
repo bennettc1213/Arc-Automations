@@ -29,6 +29,17 @@ export default function Portal() {
     navigate('/login');
   }, [navigate]);
 
+  /* read the event log again after an answer was written to it (ARC-MK-220). the page they are on
+     stays up: a reload that fails leaves the data as it was, and the next one tries again. */
+  const reload = useCallback(async () => {
+    try {
+      const result = await getDashboardForUser();
+      if (result.signedIn && result.data) setState({ kind: 'ready', data: result.data, email: result.email });
+    } catch {
+      /* what is on screen is still true as of when it was read, and the answer is on record. */
+    }
+  }, []);
+
   useEffect(() => {
     /* dev-only preview of the signed-in view, reached with ?preview=1.
        import.meta.env.DEV is replaced with a literal false at build time, so the whole
@@ -89,7 +100,7 @@ export default function Portal() {
   }
 
   if (state.kind === 'ready') {
-    return <Workspace data={state.data} base={BASE} email={state.email} onSignOut={signOut} />;
+    return <Workspace data={state.data} base={BASE} email={state.email} onSignOut={signOut} onReload={reload} />;
   }
 
   if (state.kind === 'no-tenant') {

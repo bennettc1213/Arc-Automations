@@ -175,6 +175,19 @@ function newIntakeKey(): string {
   return `arcw_${out}${Date.now().toString(36)}`;
 }
 
+/**
+ * The lead a ledger write is about. The console's ledger panel is drawn from the event log,
+ * which knows a lead by the reference its events share, not by the engine's row id — so
+ * either is accepted, and both are looked up inside this client.
+ */
+// deno-lint-ignore no-explicit-any
+async function ledgerLeadId(db: any, tenantId: string, body: Record<string, unknown>): Promise<string> {
+  if (typeof body.lead_id === 'string' && body.lead_id) return body.lead_id;
+  if (typeof body.correlation_id !== 'string' || !body.correlation_id) return '';
+  const lead = await supabaseStore(db).getLeadByCorrelation(tenantId, body.correlation_id);
+  return lead?.id ?? '';
+}
+
 export async function handleLeadRecoveryAction(
   action: string,
   context: LeadRecoveryContext,
@@ -694,8 +707,8 @@ export async function handleLeadRecoveryAction(
       /* each appends one row to `events` and changes nothing else. whether the job then
          counts is read off the log by the ledger's rule, never set here. */
       case 'lead-recovery-record-outcome': {
-        const leadId = typeof body.lead_id === 'string' ? body.lead_id : '';
-        if (!leadId) return bad('lead_id is required');
+        const leadId = await ledgerLeadId(db, tenantId, body);
+        if (!leadId) return bad('lead_id or correlation_id is required, and must be a lead of this client', 404);
         const result = await recordOutcome(depsFor(context), { tenantId, leadId, input: body, actorId: context.actorId });
         if (!result.ok) return bad(result.outcome, result.outcome.startsWith('no lead') ? 404 : 422);
         const logged = await context.audit('lead_recovery.job_outcome_recorded', 'lead', leadId, { tenant_id: tenantId, outcome: result.outcome });
@@ -703,8 +716,8 @@ export async function handleLeadRecoveryAction(
       }
 
       case 'lead-recovery-settle-dispute': {
-        const leadId = typeof body.lead_id === 'string' ? body.lead_id : '';
-        if (!leadId) return bad('lead_id is required');
+        const leadId = await ledgerLeadId(db, tenantId, body);
+        if (!leadId) return bad('lead_id or correlation_id is required, and must be a lead of this client', 404);
         const result = await settleDispute(depsFor(context), { tenantId, leadId, input: body, actorId: context.actorId });
         if (!result.ok) return bad(result.outcome, result.outcome.startsWith('no lead') ? 404 : 422);
         const logged = await context.audit('lead_recovery.dispute_settled', 'lead', leadId, { tenant_id: tenantId, decision: result.outcome });

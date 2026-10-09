@@ -37,6 +37,7 @@ import {
 } from '../classifier.ts';
 import { eventKey } from '../event-writer.ts';
 import {
+  askedEventKey,
   bookingEventKey,
   callAnsweredEventKey,
   outcomeEventKey,
@@ -2438,6 +2439,33 @@ export async function recordOutcome(
     }),
   ]);
   return { ok: true, outcome, written: result.written > 0 };
+}
+
+/**
+ * ARC asked the owner whether the job happened (ARC-MK-220).
+ *
+ * The dispute window runs from this row, so it is written once per lead and only by something
+ * that really put the question in front of the owner. `shownTo` is the signed-in person it was
+ * shown to. Whether asking was allowed yet — a visit booked and past, terms on record — is the
+ * caller's to check (`_shared/ledger/service.ts`); this only appends, and changes no state.
+ */
+export async function requestOutcome(
+  deps: EngineDeps,
+  args: { tenantId: string; leadId: string; via: string; shownTo?: string | null },
+): Promise<LedgerWrite> {
+  const lead = await deps.store.getLead(args.tenantId, args.leadId);
+  if (!lead) return { ok: false, outcome: 'no lead with that id for this client' };
+  if (lead.bookingOutcome !== 'booked') return { ok: false, outcome: 'this lead has no booked visit to ask about' };
+
+  const result = await deps.store.emit(args.tenantId, [
+    baseEvent(lead, {
+      event_type: 'lead_outcome_requested',
+      occurred_at: iso(deps.now()),
+      event_key: askedEventKey(lead.correlationId),
+      payload: { asked_via: args.via, shown_to: args.shownTo ?? null },
+    }),
+  ]);
+  return { ok: true, outcome: 'asked', written: result.written > 0 };
 }
 
 /** An operator's decision on an answer that said the job should not count. */

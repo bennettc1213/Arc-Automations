@@ -171,7 +171,8 @@ export function buildDashboardData(tenant, events = [], now = DateTime.now(), al
     activity: buildActivity(events, ACTIVITY_LIMIT),
     /* metrics only. the rows live in `threads` above. */
     leadCapture: { metrics: leadCapture.metrics, recordTotal: leadCapture.leads.length },
-    /* the ledger's totals, month and terms. each lead's own verdict rides on its thread. */
+    /* the ledger's totals, month, terms and dispute counts. each lead's own verdict rides on
+       its thread. */
     ledger: {
       terms: ledger.terms,
       totals: ledger.totals,
@@ -179,6 +180,7 @@ export function buildDashboardData(tenant, events = [], now = DateTime.now(), al
       callsAnswered: ledger.callsAnswered,
       ownerSaidNo: ledger.ownerSaidNo,
       lateDisputes: ledger.lateDisputes,
+      disputes: ledger.disputes,
     },
     estimates: capped(estimates),
     reviews: capped(reviews),

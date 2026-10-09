@@ -191,6 +191,12 @@ export function ownerNeeds(data) {
         reason: lead.ledger.reason,
         openedAt: lead.ledger.appointmentAt,
         to: 'jobs',
+        /* what the answer buttons send: the lead, and the answer being replaced (none). */
+        lead: lead.id,
+        replaces: null,
+        asked: Boolean(lead.ledger.asked),
+        /* when it counts by itself if nobody answers. null until arc has asked under terms. */
+        countsAt: lead.ledger.windowEndsAt ? formatStamp(lead.ledger.windowEndsAt, timezone) : null,
       }));
     items = questions.concat((data?.attention?.items ?? []).map((item) => ({
       key: item.key,
@@ -209,7 +215,42 @@ export function ownerNeeds(data) {
     groups: NEED_KINDS.map((kind) => ({ ...kind, items: items.filter((item) => item.kind === kind.key) })).filter(
       (group) => group.items.length > 0,
     ),
+    /* not waiting on anyone, so not in the total: what the owner said in the last day, where
+       a wrong tap can still be put right. */
+    answered: data?.proofLedger ? [] : ownerAnswered(data),
   };
+}
+
+/* how long an answer stays on the needs-you screen to be changed. after that it is still on
+   the jobs screen, and changing it is a conversation. */
+export const CHANGE_WINDOW_HOURS = 24;
+
+const SAID = { happened: 'the job happened', quoted: 'the visit happened, and the quote is open' };
+
+/**
+ * the owner's own answers from the last day that nobody has settled. read off each lead's
+ * verdict and the time the data was built for — nothing remembers that a tap happened.
+ */
+export function ownerAnswered(data) {
+  const timezone = data?.tenant?.timezone ?? 'UTC';
+  const now = Date.parse(data?.generatedFor ?? '') || Date.now();
+  return (data?.threads ?? [])
+    .filter((lead) => {
+      const answer = lead.ledger?.answer;
+      if (!answer?.id || answer.by !== 'owner' || lead.ledger.settlement) return false;
+      const age = now - Date.parse(answer.at);
+      return age >= 0 && age <= CHANGE_WINDOW_HOURS * 60 * 60 * 1000;
+    })
+    .map((lead) => ({
+      key: `answered-${lead.id}`,
+      title: lead.ledger.appointmentAt ? `the visit booked for ${formatStamp(lead.ledger.appointmentAt, timezone)}` : (lead.name ?? 'a booked visit'),
+      detail: lead.name ?? (lead.phone ? maskPhone(lead.phone) : null),
+      said: SAID[lead.ledger.answer.outcome] ?? `it should not count — ${disputeReasonWords(lead.ledger.answer.reason)}`,
+      status: lead.ledger.label,
+      reason: lead.ledger.reason,
+      lead: lead.id,
+      replaces: lead.ledger.answer.id,
+    }));
 }
 
 /* ── this month ─────────────────────────────────────────── */

@@ -39,6 +39,34 @@ export function disputeReasonLabel(key: unknown): string {
   return DISPUTE_REASONS.find((reason) => reason.key === key)?.label ?? 'no reason given';
 }
 
+/**
+ * ARC-MK-220 — the six things an owner can tap, in the owner's words.
+ *
+ * They are the three outcomes and the seven reasons above, grouped the way a person answers
+ * on a phone: nothing new is stored. An answer with one reason implies it; one with several
+ * asks which. `counts` is what the page tells the owner before the tap, and is only words —
+ * whether the job counts is still read off the log by the ledger's rule.
+ */
+export const OWNER_ANSWERS = Object.freeze([
+  { key: 'happened', label: 'sold, or the job happened', outcome: 'happened', reasons: [], counts: true },
+  { key: 'quoted', label: 'quoted, not sold yet', outcome: 'quoted', reasons: [], counts: true },
+  { key: 'did_not_happen', label: 'did not happen', outcome: 'not_counted', reasons: ['did_not_happen'], counts: false },
+  { key: 'not_real', label: 'not a real job', outcome: 'not_counted', reasons: ['spam', 'wrong_number', 'out_of_area'], counts: false },
+  { key: 'customer_cancelled', label: 'customer cancelled', outcome: 'not_counted', reasons: ['customer_cancelled'], counts: false },
+  { key: 'already_handled', label: 'duplicate, or already handled', outcome: 'not_counted', reasons: ['duplicate', 'owner_first'], counts: false },
+] as const);
+
+export const OWNER_ANSWER_KEYS: readonly string[] = OWNER_ANSWERS.map((answer) => answer.key);
+
+/** the tap an outcome and reason on record came from. null when it is not one of the six. */
+export function ownerAnswerFor(outcome: unknown, reason: unknown) {
+  return (
+    OWNER_ANSWERS.find(
+      (answer) => answer.outcome === outcome && (answer.reasons.length === 0 || (answer.reasons as readonly string[]).includes(String(reason))),
+    ) ?? null
+  );
+}
+
 /** who recorded an answer. an operator records one only because the owner told them. */
 export const ANSWERED_BY = ['owner', 'operator'] as const;
 
@@ -99,6 +127,39 @@ export function parseOutcomeInput(input: unknown): Parsed<OutcomeInput> {
   if (errors.length > 0) return { ok: false, errors };
   return { ok: true, value: { outcome: outcome as LedgerOutcome, reason, answeredBy: answeredBy as 'owner', replaces } };
 }
+
+/**
+ * One tap from the owner's own screen: `{ answer, reason?, replaces? }`.
+ *
+ * It comes out as the same `OutcomeInput` an operator's entry does, with `answeredBy` fixed
+ * at `owner` — a body cannot claim to be anyone, and cannot name an outcome that is not one
+ * of the six.
+ */
+export function parseOwnerAnswer(input: unknown): Parsed<OutcomeInput> {
+  const errors: string[] = [];
+  if (!isObject(input)) return { ok: false, errors: ['an answer is required'] };
+
+  const choice = OWNER_ANSWERS.find((answer) => answer.key === input.answer);
+  if (!choice) return { ok: false, errors: [`answer must be one of ${OWNER_ANSWER_KEYS.join(', ')}`] };
+
+  const reasons = choice.reasons as readonly string[];
+  let reason: string | null = null;
+  if (reasons.length === 1) reason = reasons[0];
+  else if (reasons.length > 1) {
+    if (typeof input.reason !== 'string' || !reasons.includes(input.reason)) errors.push(`this answer needs one of: ${reasons.join(', ')}`);
+    else reason = input.reason;
+  }
+  if (reasons.length <= 1 && input.reason !== undefined && input.reason !== null && input.reason !== '' && input.reason !== reason) {
+    errors.push('that reason does not belong to this answer');
+  }
+
+  const replaces = parseReplaces(input.replaces, errors);
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, value: { outcome: choice.outcome, reason, answeredBy: 'owner', replaces } };
+}
+
+/** how the owner was asked. today only the portal asks; a text is a later step. */
+export const ASKED_VIA = ['portal'] as const;
 
 export interface SettlementInput {
   decision: (typeof SETTLEMENT_DECISIONS)[number];
@@ -174,7 +235,9 @@ export function termsFromPayload(payload: unknown): PilotTerms | null {
 /* ── idempotency ──────────────────────────────────────────── */
 
 export const outcomeEventKey = (correlationId: string, replaces: string) => `ledger:outcome:${correlationId}:${replaces}`;
-export const settlementEventKey = (correlationId: string, disputeId: string) => `ledger:settled:${correlationId}:${disputeId}`;
+/** one asking per lead: the window opens once, however many times the question is shown. */
+export const askedEventKey = (correlationId: string) => `ledger:asked:${correlationId}`;
+export const settlementEventKey =(correlationId: string, disputeId: string) => `ledger:settled:${correlationId}:${disputeId}`;
 export const termsEventKey = (replaces: string) => `ledger:terms:${replaces}`;
 /** keyed on the visit time, so a rescheduled visit is a new row and the same one is not. */
 export const bookingEventKey = (correlationId: string, appointmentAt: string | null) =>

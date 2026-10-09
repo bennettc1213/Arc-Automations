@@ -86,6 +86,17 @@ export function crmApi(door, tenantId) {
   };
 }
 
+/* ARC-MK-220 — the owner's own answers, through the `ledger` function. the portal's first
+   write: `answer` is one tap for one booked visit, `asked` says the questions were shown.
+   who is answering, and for which client, is the server's to read off the sign-in. */
+export function ledgerApi(tenantId) {
+  const run = (action, rest = {}) => call('ledger', { action, tenant_id: tenantId, ...rest });
+  return {
+    answer: (lead, { answer, reason = null, replaces = null }) => run('outcome-answer', { lead, answer, reason, replaces }),
+    asked: (leads) => run('outcome-asked', { leads }),
+  };
+}
+
 /** is this error "the backend for this page is not there yet", as opposed to a refusal. */
 export function isNotDeployed(error) {
   return error?.status === 404 || error?.status === 501 || error?.payload?.error === 'unknown action';
