@@ -1,740 +1,443 @@
-# ARC / n8n Integration — Canonical Implementation Handoff
+# ARC Roadmap — Missed-Job Recovery First
 
-**Roadmap revision date:** October 1, 2026  
+**Roadmap revision date:** October 8, 2026  
 **Project:** ARC / Arc Automations  
 **Owner:** Bennett Church  
-**Last reported application version:** `1.26.0`  
-**Primary niche:** HVAC first; plumbing second  
-**Current reported implementation state:** `ARC-120` is live on `main` (pushed and deployed). `ARC-110`, `ARC-130`, `ARC-200`, `ARC-210`, `ARC-220` and `ARC-230` are complete in the repository (commit `d7d32d8`, "Add ARC platform backend") but not yet pushed to `main` — held pending Bennett's explicit push authorization. `ARC-240` (shared n8n core workflows and error handler) is in progress in the working tree, uncommitted.  
-**Immediate next implementation prompt:** Finish and commit the `ARC-240` work in progress, then push commit `d7d32d8` plus the `ARC-240` commit to `main` when Bennett authorizes it, before starting `ARC-300`.  
-**New future product phase:** ARC Performance Intelligence and Continuous Improvement
+**Last reported application version:** `1.39.0`  
+**Primary niche:** small HVAC companies, 2 to 10 trucks  
+**Direction:** simple automations first. One company, one phone line, missed calls texted back, every step shown in a proof ledger.  
+**Immediate next implementation prompt:** `ARC-GO-310` — Close the Readiness Gaps
+
+This revision replaces the October 1 roadmap. The platform work it described is finished and
+stays in place. What changes is the order of everything after it: the CRM track and the other
+complex work are paused, and the remaining steps have new, shorter prompt IDs. The old
+revision is in git history, and the full cards for the old steps are still in the
+`ARC_MASTER_ROADMAP_*` files at the repository root.
 
 ---
 
-# 0. Mandatory instructions for the next assistant
+## 1. Current position
 
-When Bennett supplies this handoff in a new chat:
+- **Built and on `main`:** the whole platform (`ARC-000` to `ARC-390`). See section 9.
+- **Paused:** the rest of the CRM track, performance intelligence, CRM connectors and the n8n
+  bridge. See section 8.
+- **Shipped from section 3:** `ARC-MK-100` (`1.34.0`), `ARC-MK-110` (`1.35.0`) and `ARC-MK-120`
+  (`1.36.0`): the site offer, the missed-call count request and the proof ledger demo. The site
+  as it was before is kept on the branch `archive/site-before-arc-mk-100`.
+- **Mapped:** `ARC-GO-300`, the Lead Recovery readiness map
+  (`docs/architecture/ARC_LEAD_RECOVERY_READINESS.md`). The safety core is sound; thirteen gaps
+  stand between the code and a real phone, and the four decisions they needed are made.
+- **Not started:** the rest of section 3.
+- **The gap that matters:** the Lead Recovery engine is built and tested but has never texted a
+  real phone, and the site and portal explain the machine instead of the result.
 
-1. Read this file completely before responding.
-2. Do not restart niche selection, product research, or the ARC/n8n architecture discussion.
-3. Treat ARC-110 through ARC-230 as **complete in the repository** (ARC-120 pushed to `main`; ARC-110, ARC-130, ARC-200, ARC-210, ARC-220 and ARC-230 committed locally in `d7d32d8` but not yet pushed) and ARC-240 as **in progress, uncommitted**, while verifying actual repository evidence (`git log origin/main..HEAD`, the migration sequence, the shared modules) before beginning dependent implementation work.
-4. Confirm that the immediate next implementation prompt is:
+The goal has not changed, only the path to it:
 
-   Finish and commit `ARC-240 — Shared n8n Core Workflows and Error Handler`, then push the pending commits to `main` when Bennett authorizes it, before starting `ARC-300 — ARC Ops Tenant Creation and Module Selection`.
+> One HVAC company forwards its missed calls to ARC. ARC texts back safely, captures the job,
+> books it or hands it to the owner, shows every step in a ledger, and bills only for jobs that
+> can be proven.
 
-5. Do not replace, delay, or merge ARC-240 or ARC-300 with the new optimization work.
-6. Do not implement ARC Performance Intelligence yet. It belongs after `ARC-LR-450` and before `ARC-QA-500`.
-7. Preserve the architectural rule:
-
-   > **A client is configuration, not an n8n workflow.**
-
-8. Preserve all ARC-015/ARC-015B configuration-snapshot pinning, immutable version history, and live safety protections.
-9. Recommendations must never silently edit, publish, activate, reactivate, or roll back client configuration.
-10. A historical version is immutable. Restoring one must create a new draft and, after authorization and validation, a new published version.
-11. No current implementation prompt may commit, push, deploy, or contact real customers unless Bennett explicitly authorizes that operation.
-12. Repository state is authoritative. Always run `git status --short`, read the relevant architecture documents, and verify prerequisite tests before editing.
-
----
-
-# 1. Exact current execution position
-
-The verified sequence, checked against `git log origin/main..HEAD`, the migration files under `supabase/migrations/`, and the shared modules under `supabase/functions/_shared/`, is:
-
-1. `ARC-000` — complete, pushed
-2. `ARC-010` — complete, pushed
-3. `ARC-015` — completed except for the defect later isolated as ARC-015B, pushed
-4. `ARC-015B` — complete, pushed
-5. `ARC-100` — complete, pushed
-6. `ARC-120` — complete, pushed (migration `0015_tenant_module_lifecycle.sql` is live on `main`)
-7. `ARC-110` — complete in the repository (migration `0014_versioned_configuration.sql`, `_shared/config/`), committed locally in `d7d32d8`, **not yet pushed**
-8. `ARC-130` — complete in the repository (migration `0016_provider_connections.sql`, `_shared/connections/`), committed locally in `d7d32d8`, **not yet pushed**
-9. `ARC-200` — complete in the repository (migration `0017_durable_scheduler.sql`, `_shared/scheduler/`), committed locally in `d7d32d8`, **not yet pushed**
-10. `ARC-210` — complete in the repository (`_shared/runner/`), committed locally in `d7d32d8`, **not yet pushed**
-11. `ARC-220` — complete in the repository (migration `0018_runner_bridge.sql`, `_shared/n8n-runner/`, `runner-bridge` function; refuses production until the ADR §26 licensing gate closes), committed locally in `d7d32d8`, **not yet pushed**
-12. `ARC-230` — complete in the repository (migration `0019_workflow_manifest.sql`, `n8n/manifest.json`), committed locally in `d7d32d8`, **not yet pushed**
-13. `ARC-240` — **in progress**, uncommitted (migration `0020_runner_failure_reports.sql`, `_shared/n8n-runner/exports.ts` and `failures.ts`, `n8n/workflows/`, ADR §18 amendments)
-
-Note the out-of-order landing: `ARC-120` reached `main` before `ARC-110` did. `ARC-110` was reported "complete locally" for several days before it was actually committed — that gap, plus this file not being revised in step with the repository, is why an operator asking the roadmap assistant "where are we" was told `ARC-110` when the repository had already moved past it. Keep this file current every time repository state changes; the roadmap assistant answers only from what is written here, never from the code directly.
-
-`d7d32d8`'s own commit message records why ARC-110–230 have not been pushed: "Nothing reaches the database or Supabase until the `supabase db push` and function deploys in DEPLOYMENT.md. This stays under [Unreleased] until the hosted Vault checklist passes." That checklist is `docs/architecture/ARC_PROVIDER_CONNECTIONS_AND_OAUTH.md` §15. Do not push it or deploy it without Bennett's explicit authorization.
-
-Before resuming work on ARC-240 or pushing the pending commits, verify from the repository — not from this summary — that ARC-110 through ARC-230 actually provide:
-
-- Tenant-wide and tenant-module configuration versions, drafts, immutable published versions, operator publication, optimistic concurrency, rollback through a new version, deterministic effective-configuration resolution
-- ARC-100 registry validation, field permissions, and registry-driven change-impact analysis
-- Legacy Lead Recovery configuration migration
-- Generalized version provenance connected to ARC-015 snapshots, runs, and actions
-- Tenant module lifecycle, just-in-time authorization, and health overlay (ARC-120)
-- Vault-only provider credentials, capability-scoped resolution, and connection readiness (ARC-130)
-- The durable scheduler, claim/settle contract, and retry/dead-letter behavior (ARC-200)
-- The runner contract and `FakeTestRunner` (ARC-210)
-- The n8n bridge's production refusal gate and signed envelope handling (ARC-220)
-- Workflow manifest registration, assignment, and sync-drift detection (ARC-230)
-- No regression of live consent, suppression, reply, safety, takeover, or send-once protections
-
-Do not infer missing implementation details from this handoff. Verify them in code, migrations, tests, and current architecture documents.
+ARC is sold as a productized service with a simple portal, not as self-serve software. Every
+client runs the same system and differs only in configuration. Setup still includes a call, for
+trust and phone forwarding, never for custom engineering.
 
 ---
 
-# 2. ARC-120 (delivered) and the actual immediate next task
+## 2. Immediate next step
 
-`ARC-120` is complete and live on `main` (migration `0015_tenant_module_lifecycle.sql`, `_shared/lifecycle/`). The list below is kept as a record of its delivered scope, not as a pending task.
+`ARC-GO-310` — close the readiness gaps. `ARC-GO-300` is done: the map is
+`docs/architecture/ARC_LEAD_RECOVERY_READINESS.md`, and its section 4 is this step's scope. The four
+decisions in its section 5 are made: the business keeps its number and forwards unanswered
+calls to ARC, the owner confirms a visit time on the needs-you screen, the follow-up waits for
+opening hours, and email is refused as an alert channel until it exists. Phase 2 is built:
+`ARC-MK-200` (the four-screen owner portal) shipped in `1.37.0`, `ARC-MK-210` (the counting
+rule) in `1.38.0` and `ARC-MK-220` (the owner's answers and disputes, `ARC_PROOF_LEDGER.md`
+section 9) in `1.39.0`. Its edge functions are not deployed yet: `ledger` is new, and `ingest`,
+`ops` and `twilio` need redeploying. That is a hosted action and waits for authorisation.
 
-The actual immediate next task is finishing and committing `ARC-240`, then pushing the pending `d7d32d8` commit and the ARC-240 commit to `main` when Bennett authorizes it, before starting `ARC-300 — ARC Ops Tenant Creation and Module Selection`.
-
-ARC-120 implemented the lifecycle and authorization layer for tenant modules, including the repository-approved equivalents of:
-
-- Module selection
-- Configuration readiness
-- Connection readiness
-- Testing state
-- Shadow mode
-- Activation
-- Pause and resume
-- Health overlay
-- Transition history
-- Just-in-time authorization before module execution
-- Change-impact handling that determines when a configuration change requires retesting, shadow mode, operator review, or reactivation
-
-ARC-120 consumes ARC-100 change-impact classifications and ARC-110 configuration versions. It does not implement the future performance-diagnosis engine.
-
-The new optimization roadmap does not interrupt or replace ARC-240 or ARC-300.
+`ARC-MK-130` (sales assets and pilot terms) is drafted: the kit is in `sales/`, kept out of
+this public repository. Its pilot numbers are proposed, not agreed. Once Bennett agrees them
+they go in `site.price.terms`, which prints words until they are set.
 
 ---
 
-# 3. Canonical ARC / n8n architecture
+## 3. Implementation sequence
 
-ARC remains the control plane and operational system of record.
+Fifteen steps in four phases. Phases 1 and 2 make ARC understandable. Phase 3 makes the first
+automation real. Phase 4 adds the next automations one at a time.
 
-```mermaid
-flowchart TD
-    U["Client or ARC operator"] --> A["ARC onboarding and settings"]
-    A --> D["Supabase configuration and state"]
-    D --> W["ARC durable worker"]
-    W --> R{"AutomationRunner"}
-    R --> N["Shared n8n workflow"]
-    R --> C["ARC connector gateway"]
-    N --> C
-    C --> P["Twilio, CRM, calendar, email"]
-    P --> D
-```
+| ID | Step | Kind | Status |
+|---|---|---|---|
+| **Phase 1 — a clear offer** | | | |
+| `ARC-MK-100` | Public site offer rewrite | Site | Done (`1.34.0`) |
+| `ARC-MK-110` | Missed-call count intake | Site | Done (`1.35.0`) |
+| `ARC-MK-120` | Proof ledger demo | Site | Done (`1.36.0`) |
+| `ARC-MK-130` | Sales assets and pilot terms | Documents | Drafted, numbers to agree |
+| **Phase 2 — the owner portal** | | | |
+| `ARC-MK-200` | Four-screen owner portal | Portal | Done (`1.37.0`) |
+| `ARC-MK-210` | Proof ledger events and counting rules | Backend, design first | Done (`1.38.0`) |
+| `ARC-MK-220` | Owner outcome answers and disputes | Portal and backend | Done (`1.39.0`) |
+| **Phase 3 — missed-call text-back, live** | | | |
+| `ARC-GO-300` | Lead Recovery readiness map | Read-only | Done |
+| `ARC-GO-310` | Close the readiness gaps | Backend | Next |
+| `ARC-GO-320` | Safety test pass | Tests | To do |
+| `ARC-GO-330` | Live backend and real telephony | Hosted, each action authorised | To do |
+| `ARC-GO-340` | First HVAC pilot | Pilot | To do |
+| **Phase 4 — the next automations** | | | |
+| `ARC-AUTO-400` | Quiet estimate follow-up | Automation | After the pilot |
+| `ARC-AUTO-410` | Review requests | Automation | After `ARC-AUTO-400` |
+| `ARC-AUTO-420` | Come-back reminders | Automation | Blocked on consent records |
 
-## ARC owns
+Order inside a phase is the order to build in. Phase 2 can start while Phase 1 is in review.
+Phase 3's hosted steps (`ARC-GO-330` onward) wait for Phase 2, because a pilot needs the
+ledger and the owner's answers. Phase 4 does not start until the pilot has run.
 
-- Tenant identity and permissions
-- Module selection
-- Configuration schemas and versions
-- Drafts and publication
-- Operational state
-- Durable scheduled actions
-- Consent, suppression, and opt-outs
-- Customer replies and human takeover
-- Safety decisions
-- Provider credentials
-- Connector capabilities
-- Audit history and event evidence
-- Reporting and health
-- Workflow-version assignments
-- Future performance investigations and recommendations
+Three working rules for every step:
 
-## n8n may own
-
-- Reusable module-level orchestration
-- Approved stateless transformations
-- Approved API-operation sequences
-- Shared sub-workflows
-- Returning signed execution results to ARC
-
-## n8n must not own
-
-- Tenant configuration
-- Client permissions
-- The only copy of scheduled actions
-- Critical operational state
-- Customer OAuth tokens
-- Consent or suppression truth
-- Per-client workflow copies
-- The client-facing workflow editor
-- Performance conclusions or recommendation authorization
-
-## Execution implementations
-
-ARC should eventually support:
-
-- `DirectArcWorker`
-- `N8nRunner`
-- `FakeTestRunner`
-
-Portal behavior and tenant configuration must not depend on which runner is used.
+1. A step that changes the public site is built on a branch and reaches `main` only after
+   Bennett approves it. Pushing `main` is the deploy.
+2. A step marked "design first" stops for approval after the design, before any code.
+3. No step applies a migration, deploys a function, or contacts a real customer without
+   explicit authorisation for that action.
 
 ---
 
-# 4. Revised canonical implementation sequence
+## 4. Phase 1 — a clear offer
 
-The roadmap is now:
+The five-second test for the whole phase: a stranger reading only the top of the homepage can
+say what ARC does, what it costs, and when they pay.
 
-1. `ARC-000 — Repository Architecture Audit and Gap Map` — complete
-2. `ARC-010 — ARC–n8n Execution Boundary ADR` — complete
-3. `ARC-015 — Lead Recovery Safety and Configuration Pinning` — complete except for the extracted repair
-4. `ARC-015B — Production Configuration Snapshot Pinning Repair` — reported complete
-5. `ARC-100 — Module and Connector Registry Foundation` — complete
-6. `ARC-110 — Versioned Tenant Configuration Engine` — complete in the repository, committed locally in `d7d32d8`, not yet pushed to `main`
-7. `ARC-120 — Tenant Module Lifecycle and Activation State Machine` — complete, live on `main`
-8. `ARC-130 — Secure Provider Connection and OAuth Framework` — complete in the repository, committed locally in `d7d32d8`, not yet pushed to `main`
-9. `ARC-200 — Durable Actions, Runs, and Scheduling Engine` — complete in the repository, committed locally in `d7d32d8`, not yet pushed to `main`
-10. `ARC-210 — AutomationRunner Interface and Fake Test Runner` — complete in the repository, committed locally in `d7d32d8`, not yet pushed to `main`
-11. `ARC-220 — Secure n8n Runner Bridge` — complete in the repository, committed locally in `d7d32d8`, not yet pushed to `main`
-12. `ARC-230 — n8n Workflow Manifest, Versioning, and Synchronization` — complete in the repository, committed locally in `d7d32d8`, not yet pushed to `main`
-13. `ARC-240 — Shared n8n Core Workflows and Error Handler` — **next**, in progress and uncommitted
-14. `ARC-300 — ARC Ops Tenant Creation and Module Selection`
-15. `ARC-310 — Schema-Driven Client Workflow Settings UI`
-16. `ARC-320 — Connections, Readiness, Testing, and Activation UI`
-17. `ARC-330 — Company Route Model (native / hybrid / connected)` — complete in the repository per current `CLAUDE.md`; this file's sequence had not yet been revised to list it
-18. `ARC-340 — Portal and Console UX Clarity Pass` — complete in the repository (2026-10-02). The same identifier also names `Universal CRM Core and Business Profile Foundation` in the root master roadmap (`ARC_MASTER_ROADMAP_EXPANDED_NATIVE_CRM_FROM_ARC_200.md`); that prompt is complete in the repository too (`0023_crm_core.sql`, `docs/architecture/ARC_CRM_CORE.md`). Both are closed under `ARC-340`.
-19. `ARC-LR-400` through `ARC-LR-450` — complete Lead Recovery production behavior, integrations, proof, and health monitoring
-20. `ARC-OPT-460 — Version-Aware Outcome Attribution and Anomaly Detection`
-21. `ARC-OPT-470 — Evidence-Based Performance Diagnosis and Recommendation Engine`
-22. `ARC-OPT-480 — Client Recommendations, Reminders, and Guided Configuration Experiments`
-23. `ARC-QA-500 — Security, RLS, Contract, and Idempotency Test Suite`
-24. `ARC-QA-510 — Synthetic End-to-End and Failure-Scenario Validation`
-25. `ARC-OPS-520 — Deployment, Monitoring, and Incident Readiness`
-26. `ARC-PILOT-530 — First HVAC Design-Partner Pilot`
+### ARC-MK-100 — Public Site Offer Rewrite
 
-The identifiers `ARC-OPT-460`, `ARC-OPT-470`, and `ARC-OPT-480` do not conflict with the current roadmap and are canonical unless the repository contains a newer authoritative numbering decision. `ARC-340` was added by an earlier revision as the UX clarity pass. It does collide with the root master roadmap, which uses `ARC-340` for the universal CRM core; both prompts were built and are complete, so the identifier is closed and neither meaning is pending.
+**Goal.** A small HVAC owner understands the homepage without scrolling.
 
-Do not move optimization ahead of the data, lifecycle, execution, workflow-attribution, and Lead Recovery measurement prerequisites.
+- Hero, subhead, process, price and footer rewritten around missed calls, the text back, and
+  the proof ledger. Main button: "get my missed-call count". Second button: "see the proof
+  ledger".
+- The four places jobs slip away stay as a staged map, each with its real status: missed calls
+  (launch), quiet estimates (next), missing reviews (later), past customers (blocked). Nothing
+  past the first is shown as live.
+- The three-route section and its quiz leave the public homepage. The route model and operator
+  onboarding are kept; cold visitors are no longer asked to choose a route.
+- The nine extra services stop rendering and are kept as parked data.
+- A copy test fails on owner-facing jargon: n8n, workflow, automation (outside the company
+  name), agent, route, native, hybrid, connected, lifecycle, module, orchestration, SaaS,
+  integration, or any CRM requirement. No unsourced statistic.
+- Copy stays in `src/data/site.js`.
 
----
+**Done when.** Tests and the smoke pass are green and the five-second test passes.
 
-# 5. New major capability: ARC Performance Intelligence and Continuous Improvement
+### ARC-MK-110 — Missed-Call Count Intake
 
-ARC should not merely automate Lead Recovery and report results. It should continuously monitor trustworthy outcomes, detect meaningful changes, investigate plausible explanations, recommend safe improvements, and measure whether those improvements helped.
+**Goal.** The pilot overlay becomes a request for a free missed-call count.
 
-The intended customer experience is:
+- Asks: trade, company, service area, rough weekly calls, whether calls are missed after
+  hours, phone system, whether call history can be exported or screenshotted, what software
+  they use today (or none), and best contact.
+- The booking calendar is never blocked by a failed post.
+- Route mapping stays internal. The owner never sees or picks one.
 
-> ARC noticed a meaningful performance change, investigated the available evidence, considered both internal and external explanations, and returned with a transparent recommendation, its reasoning, its confidence level, and a safe way to test the proposed improvement.
+**Done when.** The form matches the homepage button and offers no menu of automations.
 
-This is a prominent product capability and a meaningful differentiator—not a small analytics feature.
+### ARC-MK-120 — Proof Ledger Demo
 
-## Critical diagnostic framing
+**Goal.** `/demo` shows why each lead is or is not billable. It sells the ledger, not magic.
 
-ARC must never automatically assume that a performance change was caused by:
+- Seven deterministic leads: recovered and booked; texted with no reply; spam or wrong number;
+  booked but not yet confirmed; booked and confirmed; customer cancelled; safety handoff to a
+  person.
+- Each shows its source, arrival time, whether the owner answered, ARC's first text, the
+  reply, the booking or handoff, the owner's confirmation, and its billable status with the
+  reason.
+- The demo client becomes an HVAC company.
 
-- ARC
-- A configuration version
-- The client company
-- The client’s employees
-- Market conditions
-- Any single outside variable
+**Done when.** A non-technical owner can explain each lead's status, and nothing claims to be
+live data.
 
-Every diagnosis must distinguish:
+### ARC-MK-130 — Sales Assets and Pilot Terms
 
-- Observed facts
-- Correlations
-- Inferences
-- Unverified possibilities
-- Causes supported by strong evidence
+**Goal.** Everything a solo founder needs to sign the first design partner. Not code.
 
-Temporal sequence alone is not causation. ARC must not say that a configuration version caused a decline merely because the decline followed publication.
+- One-page offer, missed-call audit checklist, outreach emails, call script, objections and
+  answers, a proof ledger explainer.
+- Pilot terms: one company, one line, 30 to 60 days; a small monthly base plus a fee per
+  proven recovered job; a monthly cap; a dispute window with a fixed list of valid reasons
+  (spam, wrong number, out of area, customer cancelled, job did not happen, owner got there
+  first, duplicate). The numbers live in the terms and in one config object in the site copy.
+- Who to approach first, and who to avoid (mature ServiceTitan shops, full-time call staff,
+  owners who will not confirm outcomes).
 
-ARC also must not hide verified ARC defects, workflow regressions, connector failures, provider outages, or scheduling failures. The objective is accurate diagnosis, not blame avoidance.
-
-An acceptable explanation would resemble:
-
-> Booking rate declined after version 6 was published. The strongest concurrent differences were a change in lead-source mix and longer human-handoff times. Current evidence does not establish that the configuration change caused the decline. ARC recommends reviewing those factors and testing the previous follow-up timing as a controlled new version.
-
-“Insufficient evidence” must always be an acceptable conclusion.
+**Done when.** Bennett can run outreach and a first call from the assets alone.
 
 ---
 
-# 6. ARC-OPT-460 — Version-Aware Outcome Attribution and Anomaly Detection
+## 5. Phase 2 — the owner portal
 
-## Purpose
+The portal is read on a phone in a truck. It should feel like a statement, not software.
 
-Build the trustworthy measurement and attribution foundation needed before ARC makes performance recommendations.
+### ARC-MK-200 — Four-Screen Owner Portal
 
-## Required capabilities
+**Goal.** A launch client sees four screens instead of thirteen.
 
-- Associate outcomes with the exact immutable configuration snapshot used.
-- Attribute results to both tenant-wide and tenant-module configuration versions.
-- Include workflow version, module lifecycle state, provider health, and relevant connector state when those prerequisites exist.
-- Separate upstream lead supply from downstream Lead Recovery performance.
-- Establish tenant-specific baselines rather than applying one universal benchmark.
-- Compare equivalent cohorts and time periods where possible.
-- Require minimum observation windows and sample sizes.
-- Account for delayed or incomplete outcomes.
-- Detect data-quality failures before diagnosing business performance.
-- Detect meaningful changes without alerting on ordinary statistical noise.
-- Preserve tenant isolation and minimize unnecessary PII.
+| Screen | Answers | Shows |
+|---|---|---|
+| This month | Is ARC working? | Jobs brought back, jobs waiting on the owner, fee owed, one card per leak |
+| Jobs | Prove it | Each lead's timeline: call, text, reply, booking, visit, outcome, billable or not |
+| Needs you | What do I have to do? | Outcome questions, safety handoffs, odd leads |
+| Account | What is ARC allowed to do? | Hours, service area, who gets alerts, quiet hours, stop list, export my data |
 
-## Potential trustworthy metrics
+- Plan first: map every existing page to keep, merge, move behind "details", or operator-only.
+  Stop for approval before hiding anything.
+- No page is deleted. The lead inbox, bookings and the machine pages stay built and are hidden
+  for launch clients. `tests/ux-clarity.test.js` keeps passing.
+- Built over demo data first. Mobile first: thumb-sized buttons, no wide tables.
+- Every figure comes through the one derivation chain. A figure that cannot be shown is a dash
+  and the reason, never a zero. State names keep their `Term` and glossary entry.
+- "Export my data" is a plain download of the client's own ledger. It is the one piece of the
+  paused `ARC-395` kept in view, so ARC is never a data trap.
 
-Only expose these when the underlying data proves them:
+**Done when.** A Lead Recovery client's nav is the four screens, in the portal and in `/demo`.
 
-- Inbound lead volume
-- Lead-source distribution
-- Time to first response
-- Customer reply rate
-- Qualification rate
-- Booking rate
-- Human-handoff acceptance time
-- Follow-up completion
-- Opt-out and suppression rate
-- Provider and connector failures
-- Confirmed recovered revenue
-- Other outcomes supported by reliable integrations
+### ARC-MK-210 — Proof Ledger Events and Counting Rules
 
-ARC must never display unprovable revenue, attribution, or performance conclusions.
+**Goal.** Decide exactly what evidence makes a job count. Design, stop, then build.
 
-## Completion boundary
+- A recovered job needs every link: a call or form arrived; nobody answered live; ARC's text
+  went out; the customer replied or booked; the visit happened; the owner confirmed it or the
+  dispute window passed under the pilot terms.
+- Statuses: answered, booked, handed off, needs owner, confirmed, disputed, billable, not
+  billable, unverified. A missing link means unverified: shown, never counted, never billed.
+- The design names the existing events reused, any new event types (mirrored in the portal's
+  types, the ingest validator and `EVENT_CONTRACT.md`), the derivation, idempotency and tenant
+  isolation.
+- The fee owed is arithmetic over confirmed results. No payment or invoicing code.
 
-ARC-OPT-460 detects and records evidence-backed changes. It does not diagnose causes, generate client recommendations, or edit configuration.
+**Done when.** Every figure on the four screens is derived from `events` by rules with tests.
 
----
+### ARC-MK-220 — Owner Outcome Answers and Disputes
 
-# 7. ARC-OPT-470 — Evidence-Based Performance Diagnosis and Recommendation Engine
+**Goal.** The owner answers one question per booked visit, in one place.
 
-## Purpose
+- Answers: sold or happened; quoted, not sold yet; did not happen; not a real job; customer
+  cancelled; duplicate or already handled.
+- This is the portal's first client write path. It goes through an edge function, takes the
+  actor from the verified sign-in, appends evidence and never edits a past event.
+- A dispute is visible to the owner and to operators, with its reason. A pattern of disputes
+  on good leads is visible in the console.
+- Considered in the design: answering by replying to a text.
 
-Open a durable investigation when ARC-OPT-460 detects a meaningful change. Consider competing hypotheses before recommending action.
-
-## Required hypothesis categories
-
-### Data and measurement
-
-- Missing or delayed CRM outcomes
-- Tracking changes
-- Duplicate or dropped events
-- Integration failures
-- Small sample size
-- Changed attribution availability
-
-### Lead supply
-
-- Lower inbound lead volume
-- Changed lead-source mix
-- Lower-quality sources
-- Advertising campaign or spend changes
-- Website or form problems
-
-ARC must distinguish “fewer leads entered the system” from “ARC handled available leads less effectively.”
-
-### Company operations
-
-- Staffing or scheduling changes
-- Slow human handoffs
-- Capacity constraints
-- Changed business hours
-- Pricing or offer changes
-- Service-area changes
-- Booking availability
-- Missed routing contacts
-- Internal process changes
-
-### Configuration
-
-- Message wording
-- Follow-up timing
-- Qualification questions
-- Routing rules
-- Booking behavior
-- After-hours settings
-- Recently published configuration versions
-
-### ARC, workflow, connector, and provider
-
-- ARC application regression
-- Workflow-version change
-- Connector failure
-- Provider outage or degraded delivery
-- Incorrect configuration resolution
-- Scheduling or execution delay
-- Failed callbacks
-- Unexpected suppression or safety behavior
-
-### External conditions
-
-- Seasonality
-- Weather
-- Holidays
-- Local demand changes
-- Economic conditions
-- Competitive changes
-- Other relevant market events
-
-External research must use authorized, appropriate, time-stamped sources. ARC must retain the evidence and sources used. Generic web results are not proof of causation.
-
-## Durable investigation output
-
-Each investigation should record:
-
-- Detected change
-- Affected time period
-- Baseline and comparison period
-- Data-quality status
-- Hypotheses considered
-- Evidence supporting or weakening each hypothesis
-- Ranked likely explanations when supportable
-- Confidence level
-- Important unknowns
-- Recommended action
-- Expected benefit when supportable
-- Risks
-- Reversibility
-- Testing or approval requirements
-- Proposed observation period
-- Success or failure criteria
-
-Recommendations must become more conservative as evidence weakens.
-
-## Completion boundary
-
-ARC-OPT-470 produces durable investigations and recommendation candidates. It does not silently notify clients, create drafts, publish settings, or activate modules.
+**Done when.** Operators see billable, disputed and needs-owner per client, and tests cover
+repeat answers and tenant isolation.
 
 ---
 
-# 8. ARC-OPT-480 — Client Recommendations, Reminders, and Guided Configuration Experiments
+## 6. Phase 3 — missed-call text-back, live
 
-## Purpose
+The engine exists: a call reaches an ARC number, is forwarded, and an unanswered one becomes a
+lead, a text back, a classified reply and a handoff. This phase proves it and turns it on. It
+uses Lead Recovery's own tables as they are; it does not wait for the CRM.
 
-Turn reviewed investigations into a safe, useful client experience.
+### ARC-GO-300 — Lead Recovery Readiness Map
 
-## Recommendation center
+**Goal.** A checklist of exactly what stands between the code and a real homeowner's phone.
+Read-only.
 
-The client-facing experience should eventually support:
+Checks each item against the repository: telephony path, business-text registration per
+client, opt-out, stop on reply, human takeover, safety classification, send-once, a canary
+that cannot reach a handset, the owner's alert when a lead is handed off, how a lead is booked
+(the hosted booking page or the owner confirming a time), ambiguous provider outcomes, and the
+deployment checklist.
 
-- New recommendation alerts
-- Evidence summaries
-- Confidence and uncertainty
-- Changed metrics
-- Competing explanations considered
-- Recommended next steps
-- Estimated impact only when supportable
-- Links to relevant settings
-- `Create suggested draft`
-- `Restore a previous version as a new draft`
-- `Compare versions`
-- `Snooze`
-- `Dismiss`
-- `Mark as handled`
-- `Request ARC/operator review`
-- Follow-up reporting after the observation period
+**Done when.** Each item reads done, gap, or hosted check, and the gaps are the scope of
+`ARC-GO-310`.
 
-## Reminder requirements
+**Done.** The map is `docs/architecture/ARC_LEAD_RECOVERY_READINESS.md`.
 
-Notifications and reminders must be:
+### ARC-GO-310 — Close the Readiness Gaps
 
-- Configurable
-- Rate-limited
-- Deduplicated
-- Prioritized by severity and likely value
-- Portal-first
-- Extendable to explicitly approved channels
-- Audited
-- Easy to snooze or disable
-- Designed to avoid alert fatigue
+**Goal.** Build only what `ARC-GO-300` found missing: the thirteen gaps in section 4 of
+`ARC_LEAD_RECOVERY_READINESS.md`, in its order. Every reply read by the safety rules, every
+handoff alerting the owner with a link the owner can open, the follow-up kept to opening hours,
+a way to record a booked visit, one reviewed message after the customer replies, the telephony
+setup the site promises, and the minimum an operator needs to stop a lead or settle an unknown
+send.
 
-For early clients, novel or low-confidence recommendations require operator review before external delivery.
+No new engine, no per-client workflow, no CRM dependency. A model still never writes a
+customer-facing message, and safety is still decided by rules.
 
-## Non-negotiable safety boundaries
+**Done when.** The readiness map has no code gaps left.
 
-A recommendation may prefill a draft only after authorization. It must never:
+### ARC-GO-320 — Safety Test Pass
 
-- Edit an immutable historical version
-- Silently publish configuration
-- Activate or reactivate a module
-- Bypass schema validation
-- Bypass required tests or lifecycle gates
-- Override consent, suppression, STOP, safety escalation, or human takeover
-- Promise unsupported leads, bookings, revenue, or causation
+**Goal.** Prove the whole path under failure, with no real customer contact.
 
-`ARC-340 — Portal and Console UX Clarity Pass` (Section 19) is sequenced after `ARC-330` and before `ARC-LR-400`, independent of this optimization phase.
+- Tenant isolation and the new client write path.
+- One synthetic run end to end: missed call to confirmed job in the ledger.
+- Failure cases: STOP arriving between queueing and sending, two workers, a provider timeout,
+  a paused module, a safety message, a duplicate webhook.
 
----
+**Done when.** The suite is green and is the gate for `ARC-GO-330`.
 
-# 9. Version history and performance comparison requirements
+### ARC-GO-330 — Live Backend and Real Telephony
 
-The appropriate client-settings and portal phases must eventually support:
+**Goal.** The first step that touches the hosted projects. Every action is authorised one at a
+time.
 
-- Viewing previous published versions
-- Seeing exact differences between versions
-- Seeing who published each version and when
-- Recording an optional reason for a change
-- Connecting each version to measurable outcomes
-- Comparing versions across appropriate observation windows
-- Restoring previous settings as a new draft
-- Validating and retesting restored settings
-- Publishing a restoration as the next immutable version
-- Tracking whether a recommendation improved the intended outcome
+- Staging brought level with live; outstanding migrations and functions deployed.
+- Twilio verified with a real account: a real inbound webhook, a forwarded call, a text to a
+  test handset owned by ARC.
+- Business-text registration understood and filed for the pilot client.
+- A canary run in production, a check that notices a client gone silent, and a one-page
+  incident note: how to pause, who to call, what to tell the owner.
 
-Historical versions must never be edited.
+**Done when.** A test number completes the loop in production and the ledger shows it.
 
-A strong historical period must not automatically be labeled the “best version.” Comparisons must account for meaningful differences such as:
+### ARC-GO-340 — First HVAC Pilot
 
-- Lead volume
-- Lead-source mix
-- Seasonality
-- Staffing
-- Human response time
-- Capacity
-- Data completeness
-- Provider and connector health
-- Workflow version
+**Goal.** One approved HVAC company, one line, 30 to 60 days.
+
+Before it starts: offer clear, terms signed, forwarding set, hours and service area and
+emergency rules configured, alert contacts set, the eleven-step activation checklist passed,
+canary green, the support promise honest.
+
+**Done when.** The pilot has run and produced a written list of what actually went wrong.
+That list, not this roadmap, decides what Phase 4 builds first.
 
 ---
 
-# 10. Guided experiment sequence
+## 7. Phase 4 — the next automations
 
-ARC should use this safe sequence for configuration experiments:
+One at a time, each as design, stop, build. Each rides on the ledger and the owner's answers
+from Phase 2, uses the same engine, and is not shown as live or made selectable until it works
+end to end. The four planned modules in the registry stay `planned` until then.
 
-1. Detect a meaningful opportunity or decline.
-2. Confirm that data is sufficiently complete.
-3. Investigate competing explanations.
-4. Present evidence and uncertainty.
-5. Recommend one bounded, reversible action.
-6. Create a draft only after authorization.
-7. Validate the draft.
-8. Require lifecycle testing, shadow mode, or approval when applicable.
-9. Publish a new immutable version after authorization.
-10. Observe results for a defined period.
-11. Compare appropriate metrics and cohorts.
-12. Report improvement, decline, or an inconclusive result.
+### ARC-AUTO-400 — Quiet Estimate Follow-Up
 
-Do not implement automatic A/B testing by default. Any future randomized experiment system requires sufficient volume, explicit authorization, safety review, and predetermined success criteria.
+Starts when the owner answers "quoted, not sold yet". A short timed sequence that stops on a
+reply, sold, lost or opt-out, and honours safety and takeover at once. Counts as revived only
+with the quote, a follow-up that left, a reply after it, and the owner marking it sold.
 
----
+### ARC-AUTO-410 — Review Requests
 
-# 11. Existing prompts whose scope or acceptance criteria changed
+One request after a confirmed completed job, one reminder at most. Never to someone who opted
+out or whose job did not happen. Reports "requests sent"; claims no reviews gained unless
+verified.
 
-The following prompts retain their primary missions but must include these contracts:
+### ARC-AUTO-420 — Come-Back Reminders
 
-| Prompt | Required roadmap addition |
-| --- | --- |
-| `ARC-110` | Supplies immutable configuration versions, restoration-as-new-version, snapshot provenance, and run-level attribution. It is already reported complete; verify these contracts rather than reopening unrelated work. |
-| `ARC-120` | Uses change-impact classifications to decide whether a change requires testing, shadow mode, operator review, or reactivation. |
-| `ARC-200` | Supports durable scheduling for future investigations, observation windows, and reminders without making optimization logic part of the core scheduler. |
-| `ARC-230` | Records exact workflow-manifest/version attribution. |
-| `ARC-240` | Emits trustworthy execution evidence needed to distinguish workflow behavior from other causes. |
-| `ARC-310` | Lets authorized clients view, compare, and restore versions safely; restoration creates a draft and later a new version. |
-| `ARC-LR-450` | Produces trustworthy outcome, proof, data-quality, and health information consumed by ARC-OPT-460. |
-| `ARC-QA-500` | Tests tenant isolation, recommendation permissions, immutable history, audit evidence, and prevention of unauthorized publication. |
-| `ARC-QA-510` | Validates investigations and causal-language safeguards with synthetic scenarios and no real customer contact. |
-| `ARC-OPS-520` | Monitors recommendation infrastructure, data freshness, investigation queues, delivery failures, and incident procedures. |
+Tune-up reminders to past customers. Blocked until consent can be proven: the consent record
+is designed first, and a bought or shared list is never valid.
 
-No existing prompt is replaced by this addition.
+Possible later additions, undecided and without IDs: a weekly summary text to the owner, and
+an appointment reminder to the customer.
 
 ---
 
-# 12. Required future synthetic validation scenarios
+## 8. Paused work, and what happened to the old IDs
 
-The QA plan must test cases where:
+Nothing here is deleted. Built pieces stay in the repository and on `main`, tested, and simply
+are not shown to launch clients or extended.
 
-- Lead volume falls while response and booking rates remain stable.
-- Lead volume remains stable but lead-source quality changes.
-- A configuration version genuinely performs worse.
-- Performance changes because staff respond more slowly.
-- A CRM or provider stops returning outcomes.
-- Seasonality or weather plausibly changes demand.
-- An ARC connector or workflow regression causes a decline.
-- Sample size is insufficient.
-- Multiple factors change simultaneously.
-- A previous version appears stronger but periods are not comparable.
-- A recommendation improves results.
-- A recommendation produces no statistically meaningful change.
-- A client restores old configuration as a new version.
-- A client lacks permission to publish a recommended change.
+| Old ID | What it was | Now |
+|---|---|---|
+| `ARC-395` | CRM sync, data quality, reporting, portability | Paused. Partly drafted in the working tree, not shipped. Only "export my data" continues, in `ARC-MK-200`. |
+| `ARC-LR-400` | Lead Recovery on the universal CRM | Paused. Lead Recovery keeps its own tables for the pilot. |
+| `ARC-LR-410` | Qualification, messaging policy, reply handling | Replaced by `ARC-GO-300` and `ARC-GO-310`. |
+| `ARC-LR-420` | Provider actions and booking coordination | Reduced to a booking link or owner handoff in `ARC-GO-310`. Connector actions paused. |
+| `ARC-LR-430` | Follow-up sequences and stop conditions | Replaced by `ARC-GO-310`. |
+| `ARC-LR-440` | Operator console, evidence timeline, manual controls | Reduced to the minimum in `ARC-GO-310`. |
+| `ARC-LR-450` | Outcome proof, reporting, health | Replaced by `ARC-MK-210` and `ARC-MK-220`. |
+| `ARC-OPT-460` | Outcome attribution and anomaly detection | Paused until real pilot data exists. |
+| `ARC-OPT-470` | Diagnosis and recommendation engine | Paused. |
+| `ARC-OPT-480` | Client recommendations and guided experiments | Paused. |
+| `ARC-QA-500` | Security, RLS and idempotency suite | Replaced by `ARC-GO-320`. |
+| `ARC-QA-510` | Synthetic end-to-end and failure scenarios | Replaced by `ARC-GO-320`. |
+| `ARC-OPS-520` | Deployment, monitoring, incident readiness | Replaced by `ARC-GO-330`. |
+| `ARC-PILOT-530` | First HVAC design-partner pilot | Replaced by `ARC-GO-340`. |
 
-Tests must confirm that ARC does not make unsupported causal claims in any of these scenarios.
+Also paused, with no ID:
 
----
+- New CRM screens: locations, service areas, field-by-field record policy.
+- Connectors to Jobber, Housecall Pro, ServiceTitan or GoHighLevel, until the manual path is
+  proven.
+- A client sending messages by hand from the conversation screen.
+- A calendar adapter and customer appointment notices.
+- Client-facing self-serve onboarding.
+- The n8n bridge in production. It stays built and disabled; Lead Recovery never needed it.
+- Named AI agents as a customer-facing offer, and the internal 3D operations view. Internal
+  ideas only; neither is on the path to the pilot.
+- Dispatch, invoicing, payments, payroll, inventory, voice AI, a workflow builder.
 
-# 13. Safety and product principles that remain binding
-
-1. Build once and configure per company.
-2. No copied workflows per client.
-3. No n8n node editing during onboarding.
-4. No manual per-client database setup.
-5. No unsupported integration improvised to close a sale.
-6. Only display provable results.
-7. Stop automation after a relevant customer reply.
-8. Apply opt-outs immediately.
-9. Human takeover blocks automated messaging.
-10. Safety and distress scenarios require human handling.
-11. Current safety state overrides pinned behavioral configuration.
-12. Pinned configuration controls deterministic run behavior.
-13. Every external effect requires durable send-once protection.
-14. Ambiguous provider outcomes must not be automatically resent.
-15. Critical state lives in ARC/Postgres.
-16. n8n history is not operational state.
-17. n8n remains replaceable.
-18. Historical configuration versions are immutable.
-19. Rollback creates a new version.
-20. Recommendations never silently change configuration.
-21. Correlation must not be described as proven causation.
-22. ARC must disclose verified faults in its own application, workflows, connectors, or providers.
-23. “Insufficient evidence” is a valid and necessary conclusion.
-
-Add this canonical product principle:
-
-> **ARC should not merely report that performance changed. It should investigate why it may have changed, show the evidence and uncertainty, recommend a safe next action, and then measure whether that action helped.**
+Bring a paused item back only when the pilot's own evidence asks for it.
 
 ---
 
-# 14. Deployment and repository boundary
+## 9. Already built
 
-The implementation prompts currently create and verify local repository changes. They do not automatically update the live site.
+All complete and on `main`. The detail for each is in `docs/architecture/` and `CLAUDE.md`.
 
-Keep these milestones separate:
+| ID | What it delivered |
+|---|---|
+| `ARC-000`, `ARC-010` | Repository audit and the ARC–n8n boundary decision |
+| `ARC-015`, `ARC-015B` | Lead Recovery safety and configuration pinning |
+| `ARC-100` | Module and connector registries |
+| `ARC-110` | Versioned client configuration |
+| `ARC-120` | Module lifecycle and the activation gate |
+| `ARC-130` | Provider connections, credentials in Vault |
+| `ARC-200`, `ARC-210` | Durable runs, actions, scheduling and the runner contract |
+| `ARC-220`, `ARC-230`, `ARC-240` | The n8n bridge, workflow manifest and shared workflows (disabled in production) |
+| `ARC-300`, `ARC-310`, `ARC-320` | Client creation, settings and the activation page in the console |
+| `ARC-330` | The three-route model |
+| `ARC-340` | The CRM core, and the portal clarity pass |
+| `ARC-350` | Native lead capture: hosted forms, API, typed-in leads, CSV |
+| `ARC-360` | Lead inbox, pipeline and CRM workspace |
+| `ARC-370` | Conversations and messages |
+| `ARC-380` | Scheduling and the hosted booking page |
+| `ARC-390` | Route-aware onboarding for operators |
 
-1. **Code checkpoint:** review and commit completed work to a feature branch when Bennett explicitly authorizes it.
-2. **Staging deployment:** apply migrations and deploy the integrated system in a non-production environment.
-3. **Production deployment:** occur only after QA, synthetic validation, rollback preparation, monitoring readiness, and an explicit authorization gate.
-4. **Pilot:** activate only the approved first HVAC design partner after production-safe canaries pass.
-
-The deployment, monitoring, and incident-readiness work belongs in `ARC-OPS-520`, followed by the controlled first pilot in `ARC-PILOT-530`.
-
-Pushing a branch is not the same as deploying production. No prompt should assume that distinction is handled automatically; it must inspect the repository and hosting configuration.
-
----
-
-# 15. Current repository and verification caution
-
-The last historical baseline before ARC-015B was 403 passing tests across 64 suites, but that number predates later implementation work and is not a permanent target.
-
-The worktree previously contained user-owned changes. The current worktree may have changed substantially after ARC-015B and ARC-110.
-
-Before every implementation prompt:
-
-- Run `git status --short`.
-- Identify pre-existing changes.
-- Preserve unrelated work.
-- Inspect the actual migration sequence.
-- Use production-adapter or database contract tests for safety-critical persistence.
-- Do not trust in-memory tests as the only proof of production behavior.
-- Do not use destructive Git commands.
-- Do not commit or push unless Bennett explicitly requests it.
+The Lead Recovery engine itself predates these IDs (migration `0010`).
 
 ---
 
-# 16. How to continue
+## 10. Gates that code alone does not close
 
-When Bennett sends:
+| Gate | What closes it | Needed for |
+|---|---|---|
+| Real telephony | Verification against a live Twilio account | `ARC-GO-330` |
+| Business-text registration | An approved registration per client | `ARC-GO-340` |
+| Live backend | Remaining functions deployed, staging level with live | `ARC-GO-330` |
+| Silent-client detection | An automatic check; alerts are raised by hand today | `ARC-GO-330` |
+| Provider connections in production | The hosted Vault checklist | Paused connectors only |
+| n8n bridge in production | A recorded licensing decision | Nothing on this roadmap |
 
-> `ARC-240`
-
-Provide the complete copy-and-paste Claude Code prompt for:
-
-> `ARC-240 — Shared n8n Core Workflows and Error Handler`
-
-The prompt must begin with a prerequisite gate that verifies ARC-015B, ARC-100, ARC-110, ARC-120, ARC-130, ARC-200, ARC-210, ARC-220, and ARC-230 in the actual repository, and must note that ARC-110 through ARC-230 are committed locally (`d7d32d8`) but not yet pushed to `main`.
-
-Do not implement ARC-OPT-460, ARC-OPT-470, or ARC-OPT-480 yet.
-
-After ARC-LR-450 completes and produces trustworthy outcome and health data, the next sequence becomes:
-
-1. `ARC-OPT-460`
-2. `ARC-OPT-470`
-3. `ARC-OPT-480`
-4. `ARC-QA-500`
-5. `ARC-QA-510`
-6. `ARC-OPS-520`
-7. `ARC-PILOT-530`
+Owner tasks, independent of the build: find and sign the design partner; agree the pilot
+numbers; supply the real screenshots the site still shows as placeholders; move the public and
+operator addresses to a domain mailbox; turn on MFA for the operator account.
 
 ---
 
-# 17. Suggested first response in the next chat
+## 11. Rules that still hold
 
-> I have read the complete handoff. ARC-120 is live on `main`. ARC-015B, ARC-100, ARC-110, ARC-130, ARC-200, ARC-210, ARC-220 and ARC-230 are complete in the repository (commit `d7d32d8`) but not yet pushed. ARC-240 is the immediate next implementation prompt, in progress and uncommitted; pushing the pending commits requires Bennett's explicit authorization. The roadmap now includes a dedicated Performance Intelligence and Continuous Improvement phase after ARC-LR-450 and before ARC-QA-500: ARC-OPT-460 for trustworthy attribution and anomaly detection, ARC-OPT-470 for evidence-based diagnosis, and ARC-OPT-480 for client recommendations and guided experiments. I will not implement those phases early, and I will preserve immutable history, run pinning, operator authorization, and the rule that recommendations cannot silently change settings.
+1. Build once, configure per company. A client is configuration, never a copied workflow.
+2. Only provable results. "Not enough evidence" is a valid answer, and it is never billed.
+3. Stop after a reply. Honour opt-outs at once. A person taking over blocks automation.
+4. Safety is decided by rules; a model can only add caution, and never writes a message.
+5. Every send is durable and happens once. An unknown outcome is never resent.
+6. Every figure is derived from the `events` log. A figure that is not available is a dash and
+   the reason, never a zero.
+7. Words on screen are the system's words, each with its meaning attached.
+8. Owner-facing copy is plain: missed call, text back, booked job, needs you, proof.
+9. Customer data is exportable.
+10. Breadth waits. The business must be understandable, and one loop must work in the real
+    world, before anything is added.
 
 ---
 
-# 18. Final summary
+## 12. How to use this file
 
-ARC’s configuration-driven, multi-tenant architecture remains settled. ARC is the control plane; Postgres is the operational system of record; shared runners remain replaceable; and each run remains pinned to the configuration under which it began. ARC-120 is live on `main`; ARC-110, ARC-130, ARC-200, ARC-210, ARC-220 and ARC-230 are complete in the repository but not yet pushed (commit `d7d32d8`), making ARC-240 the immediate next implementation prompt, followed by pushing the pending commits under Bennett's authorization and then ARC-300. The roadmap now adds three major optimization phases after Lead Recovery proof and health monitoring: ARC-OPT-460 builds trustworthy version-aware measurement and anomaly detection, ARC-OPT-470 performs evidence-based investigations across competing internal, external, data, configuration, workflow, connector, and provider explanations, and ARC-OPT-480 presents reviewed recommendations and safe guided experiments to clients. Historical versions remain immutable, restorations create new drafts and versions, weak evidence may produce no recommendation, and ARC must neither unfairly blame itself nor hide verified system faults. No optimization implementation should begin until the underlying lifecycle, execution, workflow attribution, and outcome data are trustworthy.
-
----
-
-# 19. `ARC-340` — Portal and Console UX Clarity Pass
-
-Status: complete in the repository (2026-10-02). What shipped: one glossary
-(`src/portal/lib/glossary.js`) and a `Term` component that hangs a plain-language gloss from
-each state name without renaming it; the consequence of every confirmed action printed on the
-page before the confirmation; a skip link, named icon buttons and readable contrast in the
-shared shell; a spoken "not available" beside every dash; and a label on each Roadmap
-Assistant reply saying whether it is a written answer or quoted passages. Held by
-`tests/ux-clarity.test.js`. No derivation, lifecycle, connection or publish logic changed.
-
-## Purpose
-
-Both workspaces (`/portal/dashboard/*`, `/demo/*`, and `/ops/console/*`) have grown one
-page at a time, each wired correctly to the shared `events` derivation chain but never
-reviewed together for whether a first-time client or operator can actually follow what
-they're looking at. `ARC-340` is a dedicated usability pass across both sides of the
-shared shell (`Sidebar`, `Topbar`, `CommandPalette`) to make the existing screens easier
-to read, navigate, and act on correctly — **without removing, hiding, weakening, or
-reinterpreting any existing feature, figure, control, or safety gate.**
-
-This is a clarity and polish prompt, not a redesign and not a scope change. If a proposed
-change would alter what a page shows, what a number means, or what a button is allowed to
-do, it belongs to the owning prompt (`ARC-110`/`ARC-120`/`ARC-130`/`ARC-310`/`ARC-320`/
-`ARC-330`), not to `ARC-340`.
-
-## Required capabilities
-
-- **Plain-language labeling.** Replace or annotate internal vocabulary that a client or a
-  new operator would not recognize (e.g. "lifecycle", "shadow mode", "effective
-  configuration", "canary") with a short plain-language gloss — in copy, a tooltip, or an
-  inline help affordance. The underlying terminology in code, APIs, event types, and the
-  roadmap itself does not change.
-- **Consistent structure across both workspaces.** `/portal/dashboard/*` and
-  `/ops/console/*` already share `Sidebar`/`Topbar`/`CommandPalette` over different nav
-  declarations (per `CLAUDE.md`); this prompt may improve how those shared components lay
-  out labels, grouping, and section headers, but must keep the two nav declarations
-  distinct — `/portal` and `/ops` must still never look alike.
-- **Progressive disclosure.** Surface the common case first; put advanced, destructive, or
-  rarely-needed controls (module pause, client purge, connection disconnect, version
-  restore) behind a clearly labeled secondary affordance rather than removing them or
-  making them harder to find for someone who needs them.
-- **Context before consequence.** Every control that triggers an irreversible or
-  hard-to-reverse action (publish, activate/pause a module, restore a version, purge a
-  client, disconnect a connection) gets inline explanatory copy stating what will happen
-  *before* the existing confirmation step — the confirmation step itself is not removed,
-  shortened, or auto-accepted.
-- **Correct rendering of the existing "no data" states.** `lib/modules.js`'s rule that a
-  module not part of the plan renders `—` with a reason, and `lib/health.js`'s
-  `unverified` state, must remain visually and textually distinguishable from a real zero
-  — this prompt may improve how clearly those states read, but must not change which state
-  a given module is in or compute a new one.
-- **Accessibility basics** across the shared shell: visible focus states, sufficient
-  contrast, and keyboard reachability for every control already in the DOM today.
-- **Copy-only changes to the Roadmap Assistant UI** (`RoadmapAssistant.jsx`,
-  `RoadmapAssistant.css`) are in scope if they make the excerpts/answer distinction (see
-  `docs/architecture/ARC_ROADMAP_ASSISTANT.md`) easier for an operator to read; the
-  assistant's citation and withholding behavior does not change.
-
-## Non-negotiable constraints
-
-- Never remove a page, panel, button, column, or figure to make a screen feel simpler —
-  reorganize, relabel, group, or add guidance instead.
-- Never change what a figure means or where it is derived from. Every figure still comes
-  from the same `events`-log derivation chain; `ARC-340` touches presentation, not
-  `lib/lifecycle.js`, `lib/modules.js`, `lib/health.js`, `lib/attention.js`, `lib/ops.js`,
-  or any of their call paths.
-- Never collapse, shorten, or auto-accept a confirmation gate around an irreversible
-  action. Clarity improvements sit *in front of* the existing gate, never in place of it.
-- Never let `/portal` and `/ops` converge visually, and never merge their nav
-  declarations into one.
-- Never introduce an `ARC-nnn` identifier into `_shared/roadmap/` assistant code (the
-  existing drift test must keep failing on that).
-- Never change ARC-120 lifecycle transitions, ARC-130 connection/credential handling, or
-  the publish/draft/preview flow in `ClientSettings.jsx` / `ActivationPanel.jsx` — only
-  how those existing flows are explained and laid out.
-
-## Completion boundary
-
-`ARC-340` ships copy, grouping, tooltip/help-text, progressive-disclosure layout, and
-accessibility fixes to existing portal and console pages. It does not add a new module,
-page, metric, workflow, lifecycle state, or permission, and it does not change any
-derivation, authorization, or persistence logic. A page that was correct and confusing
-before `ARC-340` must be correct and clear after it — never correct and simplified at the
-cost of a hidden feature.
+- Run one prompt ID at a time. Read `CLAUDE.md` first; where it and this file disagree on
+  repository conventions, follow `CLAUDE.md` and say so.
+- For each ID, report the files changed, the tests run, whether it is visible on the live site
+  or backend only, what needs deploying, and what Bennett should click through by hand.
+- Keep this file current when a step ships: change its status in section 3, and update
+  sections 1 and 2. The console's Roadmap Assistant answers from this file as it is on `main`.

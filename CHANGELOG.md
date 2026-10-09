@@ -9,11 +9,35 @@ documented here. Format loosely follows
 
 ### Added
 
-- `ARC_ROADMAP.md`: a one-page view of the whole build sequence, with each step's status
-  checked against the commits and migrations, the gates code alone does not close, and the
-  owner's own tasks. It summarises the canonical and master roadmap files and replaces neither.
+- **ARC-MK-130: the sales kit**, in `sales/` (gitignored: outreach, the call script and a
+  proposed price do not belong in a public repository). A one-page offer, the missed-call count
+  checklist, six outreach emails, the count-call and setup-call script, objections and answers,
+  a proof ledger explainer, the pilot terms and who to approach first. The four pilot numbers
+  are proposed in one file and are placeholders everywhere else; `site.price.terms` is still
+  unset.
+- `ARC_ROADMAP.md`: a one-page view of the build order, pointing at the canonical roadmap.
+- **ARC-GO-300: the Lead Recovery readiness map**
+  (`docs/architecture/ARC_LEAD_RECOVERY_READINESS.md`). Read-only: twelve items, each read as
+  done, gap or hosted check against the code, with the gaps confirmed by running them. Opt-out,
+  send-once, the canary, the compliance gate and unknown provider outcomes hold. Thirteen gaps
+  are the scope of `ARC-GO-310` — among them that only a customer's first reply reaches the
+  safety rules, that three kinds of handoff alert nobody, and that no screen records a booked
+  visit. Its four decisions were approved on 2026-10-09: the business keeps its number and
+  forwards unanswered calls, the owner confirms a visit time, the follow-up waits for opening
+  hours, and email alerts are refused until they exist. No code changed.
 - `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
   `PORTAL_CONTEXT.md`).
+
+### Changed
+
+- **The roadmap is rewritten around missed-job recovery** (`docs/architecture/ARC_IMPLEMENTATION_ROADMAP.md`,
+  which the Roadmap Assistant reads). Simple automations come first: a clear offer, a four-screen
+  owner portal with a proof ledger, missed-call text-back verified on real telephony, one HVAC
+  pilot, then estimate follow-up, review requests and come-back reminders one at a time. The
+  remaining steps have new prompt IDs (`ARC-MK-*`, `ARC-GO-*`, `ARC-AUTO-*`). The rest of the CRM
+  track, performance intelligence, connectors and the n8n bridge are paused, not deleted, and
+  the roadmap says what replaced each old ID. It also fixes the stale header that had the
+  assistant reporting a position from 1.26.0.
 
 ## [1.39.0] - 2026-10-08
 

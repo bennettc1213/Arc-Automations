@@ -24,6 +24,11 @@ supabase/.temp
 # here without deciding to.
 PORTAL_CONTEXT.md
 ARC_FIX_CHECKLIST.md
+# the whole-business summary: accounts, hosted state and the list of what is open.
+ARC_BUSINESS_CONTEXT.md
+# the same, plus every roadmap and architecture doc concatenated, for pasting into
+# a model or a notebook. generated; rebuild it rather than editing it.
+ARC_FULL_CONTEXT.md
 
 # n8n credentials dropped into the repo by mistake. the repo is PUBLIC and this
 # file holds a live n8n API key, which grants full control of the n8n account.
@@ -34,3 +39,8 @@ n8n.env
 
 # per-session lists of the files Claude edited, read by scripts/autoship.mjs
 .claude/autoship/
+
+# the sales kit (ARC-MK-130): outreach, the call script, objections and the proposed pilot
+# numbers. this repo is public, and a price nobody has agreed to yet does not belong in it.
+# the agreed numbers reach the site through `site.price.terms`, and nowhere else.
+sales/
