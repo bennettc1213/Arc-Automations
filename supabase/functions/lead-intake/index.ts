@@ -94,7 +94,8 @@ function depsFor(db: ReturnType<typeof createClient>): EngineDeps {
     classifierFor: (config) => classifierFor(config, { anthropicKey: ANTHROPIC_API_KEY || null }),
     urls: {
       statusCallback: `${PUBLIC_BASE}/twilio/message-status`,
-      leadInConsole: (tenantId) => (SITE_URL ? `${SITE_URL}/ops/console/clients/${tenantId}` : null),
+      /* the owner's own screen. an alert used to link to the operator console. */
+      ownerNeedsYou: () => (SITE_URL ? `${SITE_URL}/portal/dashboard/needs-you` : null),
     },
     uuid: () => crypto.randomUUID(),
     worker: 'lead-intake',

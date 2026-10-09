@@ -87,13 +87,16 @@ export function crmApi(door, tenantId) {
 }
 
 /* ARC-MK-220 — the owner's own answers, through the `ledger` function. the portal's first
-   write: `answer` is one tap for one booked visit, `asked` says the questions were shown.
+   write: `answer` is one tap for one booked visit, `asked` says the questions were shown,
+   and `visit` (ARC-GO-310) is the owner saying when the visit they agreed is.
    who is answering, and for which client, is the server's to read off the sign-in. */
 export function ledgerApi(tenantId) {
   const run = (action, rest = {}) => call('ledger', { action, tenant_id: tenantId, ...rest });
   return {
     answer: (lead, { answer, reason = null, replaces = null }) => run('outcome-answer', { lead, answer, reason, replaces }),
     asked: (leads) => run('outcome-asked', { leads }),
+    /* ARC-GO-310: the owner agreed a visit. `appointmentAt` is an instant. */
+    visit: (lead, appointmentAt) => run('visit-booked', { lead, appointment_at: appointmentAt }),
   };
 }
 

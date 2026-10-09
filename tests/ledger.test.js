@@ -621,7 +621,7 @@ describe('an answered call', () => {
   });
 
   test('the phone webhook records one only for a call a person picked up', () => {
-    const door = read('supabase/functions/twilio/index.ts');
+    const door = read('supabase/functions/twilio/handler.ts');
     assert.match(door, /dialStatus\.toLowerCase\(\) === 'completed'/);
     assert.match(door, /recordAnsweredCall\(deps, \{ tenantId: tenantConfig\.tenantId, callSid \}\)/);
   });

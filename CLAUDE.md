@@ -56,6 +56,39 @@ Activation is fail-closed against an eleven-step checklist. Deploy and Twilio
 setup: [DEPLOYMENT.md](DEPLOYMENT.md). The event contract:
 [EVENT_CONTRACT.md](EVENT_CONTRACT.md).
 
+**The ordinary path, after the first text** (ARC-GO-310, `tests/lead-recovery-readiness.test.js`,
+docs/architecture/ARC_LEAD_RECOVERY_READINESS.md §4). Every inbound message is read by the
+deterministic rules in `handleInboundMessage` itself, before anything is queued and whatever
+the run's state — never only inside `classify_reply`, which then reads everything the customer
+wrote. A run can have several actions of one type: `queue()`'s `about` keys them on the message
+or the failed send, and a reply puts the self-closing deadline back under its own key. Every
+handoff that asks for an alert sends one (`openHandoffFor` reads the run's pin when given no
+configuration), by text only — the validator refuses an email recipient — and links to the
+owner's needs-you screen (`urls.ownerNeedsYou`). A send refused because the sequence was
+rightly stopped (`SEND_STOPPED`) cancels and is never reported as a failure. The follow-up
+waits for opening hours (`followupAt`). The customer gets one `reply_ack` after routing,
+through the same effect gate. `forwarding.mode` says which number customers dial:
+`business_first` (the pilot's — a call reaching ARC is already missed, so `voiceResponse` dials
+nobody and the voice webhook records the lead) or `arc_first` (the dial result decides, and a
+voicemail pickup still reads as answered — a stated limit, warned at validation). A booked
+visit is the owner's `visit-booked` on the `ledger` function or the console's button, both the
+engine's `markBooked`; an unknown send is settled by `settleUnknownSend`, which resends
+nothing. The webhooks queue and return — only the dispatcher's schedule sends.
+
+**The gate for anything hosted is `npm run gate`** (ARC-GO-320, `tests/lead-recovery-gate.test.js`,
+`scripts/safety-gate.mjs`, ARC_LEAD_RECOVERY_READINESS.md §7): the whole suite on real SQL, failing
+unless every test ran — `npm test` is green with the database suites skipped. The gate suite goes in
+by the real doors (`twilio/handler.ts`, `ledger/handler.ts` — `index.ts` is only secrets and
+clients, built by `open()`/`deps()` after the signature or membership check) and runs each scenario
+on `MemoryStore` and again on Postgres through `supabaseStore`; add a Lead Recovery scenario there,
+to both. On SQL the claim reads the database's clock, so that world advances time by ageing rows.
+Two rules it put into the engine: `queue()` withholds words shaped like a credential and keeps the
+action (`holdable` — 0017 would refuse the row, and `MemoryStore` now refuses it too), and a
+redelivered message is finished unless what it called for is provably there (`replyWasHandled`:
+suppression for a stop, an action keyed on the message otherwise — so that action is queued last,
+and a step is queued before the run changes state). Never put an environment variable's name in a
+reason. The harness answers timestamps as text, as PostgREST does.
+
 **Whether a module may act is its lifecycle** (`0015`, `_shared/lifecycle/`,
 ARC-120): `tenant_modules` holds the operator's decision (unselected → configuring →
 testing → shadow → active ⇄ paused), what a published change requires, the exact

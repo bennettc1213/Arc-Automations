@@ -22,6 +22,11 @@
  * There is deliberately no action that provisions Twilio resources. Buying a number is a
  * billable, externally visible act, and it is done by a person in the Twilio console who
  * then records the reference here.
+ *
+ * ARC-GO-310 added one action and gave four existing ones a button. `settle-send` records
+ * what an operator found at the provider for a send whose outcome was unknown; it settles
+ * the attempt and resends nothing. `take-over`, `book`, `suppress` and the close outcomes of
+ * `book` were already here and could only be reached with a request written by hand.
  */
 
 import {
@@ -45,18 +50,20 @@ import { failed as configFailed } from './config.ts';
 import { lifecycleFailed, lifecycleOut, statusOut } from './lifecycle.ts';
 import {
   intakeLead,
+  listUnknownSends,
   markBooked,
   recordOutcome,
   recordPilotTerms,
   resolveHandoffFor,
   runDueActions,
   settleDispute,
+  settleUnknownSend,
   suppressContact,
   takeOverLead,
   type EngineDeps,
 } from '../_shared/engine/runtime.ts';
 import { classifierFor, FakeClassifier } from '../_shared/classifier.ts';
-import { dialTwiml, RecordingSender, TwilioRestSender } from '../_shared/twilio.ts';
+import { RecordingSender, TwilioRestSender, voiceResponse } from '../_shared/twilio.ts';
 import { normalisePhone } from '../_shared/phone.ts';
 
 export const LEAD_RECOVERY_ACTIONS = [
@@ -76,6 +83,7 @@ export const LEAD_RECOVERY_ACTIONS = [
   'lead-recovery-settle-dispute',
   'lead-recovery-record-terms',
   'lead-recovery-suppress',
+  'lead-recovery-settle-send',
   'lead-recovery-issue-intake-key',
 ];
 
@@ -155,7 +163,8 @@ function depsFor(context: LeadRecoveryContext, options: { synthetic?: boolean } 
       options.synthetic ? new FakeClassifier() : classifierFor(config, { anthropicKey: env.anthropicKey || null }),
     urls: {
       statusCallback: `${env.publicFunctionsBase}/twilio/message-status`,
-      leadInConsole: (tenantId) => (env.siteUrl ? `${env.siteUrl}/ops/console/clients/${tenantId}` : null),
+      /* the owner's own screen. an alert used to link to this console. */
+      ownerNeedsYou: () => (env.siteUrl ? `${env.siteUrl}/portal/dashboard/needs-you` : null),
     },
     uuid: () => crypto.randomUUID(),
     worker: 'ops-console',
@@ -250,6 +259,19 @@ export async function handleLeadRecoveryAction(
         };
         const validation = resolution.ok ? null : config ? validateLeadRecoveryConfig(config) : null;
 
+        /* sends whose outcome nobody could vouch for (ARC-GO-310). each is held, never
+           retried, until an operator says what the provider shows. the address is the
+           masked one the attempt was reserved with. */
+        const unknownSends = (await listUnknownSends(depsFor(context), { tenantId, limit: 25 })).map((attempt) => ({
+          id: attempt.id,
+          lead_id: attempt.leadId,
+          kind: attempt.effectType,
+          state: attempt.state,
+          to: attempt.destinationRef,
+          detail: attempt.errorDetail,
+          started_at: attempt.dispatchStartedAt ?? attempt.reservedAt,
+        }));
+
         /* run states, counted rather than listed: the panel shows "how many are waiting on
            a person" not a table of uuids. */
         const byState: Record<string, number> = {};
@@ -284,6 +306,7 @@ export async function handleLeadRecoveryAction(
           intake_keys: keyRead.data ?? [],
           runs_by_state: byState,
           failed_actions: failedRead.data ?? [],
+          unknown_sends: unknownSends,
           open_handoffs: handoffRead.data ?? [],
           recent_leads: leadRead.data ?? [],
         });
@@ -488,12 +511,8 @@ export async function handleLeadRecoveryAction(
 
         /* the same function the live webhook calls, on the same config. nothing is dialled
            and nothing is written — this is a computation whose output is XML. */
-        const xml = dialTwiml({
-          destination: config.forwarding.destination,
-          timeoutSeconds: config.forwarding.timeout_seconds,
-          actionUrl: `${context.env.publicFunctionsBase}/twilio/dial-status`,
-          callerId: null,
-        });
+        const answer = voiceResponse(config, { dialStatus: `${context.env.publicFunctionsBase}/twilio/dial-status` });
+        const xml = answer.twiml;
 
         /* the routing question asked the other way round: does the number this tenant
            claims actually resolve back to them, and only to them? */
@@ -508,6 +527,9 @@ export async function handleLeadRecoveryAction(
         return ok({
           dry_run: true,
           number: config.twilio.phone_number,
+          /* which way round the two numbers are, and so whether ARC dials anybody. */
+          mode: config.forwarding.mode,
+          dials: !answer.missed,
           forwards_to: config.forwarding.destination,
           timeout_seconds: config.forwarding.timeout_seconds,
           twiml: xml,
@@ -749,6 +771,26 @@ export async function handleLeadRecoveryAction(
              customers in a table operators browse. */
           address: channel === 'sms' ? `•••${(normalisePhone(address) ?? '').slice(-4)}` : address.replace(/^(.).*(@.*)$/, '$1•••$2'),
           reason,
+        });
+        return ok({ outcome: result.outcome, logged });
+      }
+
+      // ── a send nobody could vouch for, settled by somebody who looked ──
+      case 'lead-recovery-settle-send': {
+        const attemptId = typeof body.attempt_id === 'string' ? body.attempt_id : '';
+        if (!attemptId) return bad('attempt_id is required');
+        if (!context.actorId) return bad('not signed in', 401);
+        const result = await settleUnknownSend(depsFor(context), {
+          tenantId,
+          attemptId,
+          verdict: body.verdict,
+          providerMessageId: typeof body.provider_message_id === 'string' ? body.provider_message_id : null,
+          actorId: context.actorId,
+        });
+        if (!result.ok) return bad(result.outcome, result.outcome.startsWith('no held send') ? 404 : 422);
+        const logged = await context.audit('lead_recovery.unknown_send_settled', 'tenant', tenantId, {
+          attempt_id: attemptId,
+          verdict: body.verdict,
         });
         return ok({ outcome: result.outcome, logged });
       }

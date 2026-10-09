@@ -1343,6 +1343,18 @@ export async function suppressLeadContact(tenantId, { channel = 'sms', address, 
   return callOps({ action: 'lead-recovery-suppress', tenant_id: tenantId, channel, address, reason });
 }
 
+/* ARC-GO-310: a send whose outcome was unknown, settled by somebody who checked the
+   provider. `verdict` is 'sent' or 'not_sent'. it records what happened and resends nothing. */
+export async function settleUnknownSend(tenantId, attemptId, { verdict, providerMessageId = null }) {
+  return callOps({
+    action: 'lead-recovery-settle-send',
+    tenant_id: tenantId,
+    attempt_id: attemptId,
+    verdict,
+    provider_message_id: providerMessageId,
+  });
+}
+
 export async function issueIntakeKey(tenantId, { allowedOrigins = [], label = 'website form', rotate = false } = {}) {
   return callOps({
     action: 'lead-recovery-issue-intake-key',

@@ -17,6 +17,7 @@ import {
   AI_PROVIDERS,
   ALERT_CHANNELS,
   COMPLIANCE_STATUSES,
+  FORWARDING_MODES,
 } from '../lead-recovery-config.ts';
 
 export type PartControl =
@@ -60,7 +61,8 @@ const LEAD_RECOVERY_LAYOUT: Readonly<Record<string, FieldLayout>> = Object.freez
   },
   forwarding: {
     parts: [
-      { key: 'destination', label: 'forward calls to', control: 'text' },
+      { key: 'mode', label: 'which number customers dial', control: 'select', options: FORWARDING_MODES },
+      { key: 'destination', label: 'the business’s own number', control: 'text' },
       { key: 'timeout_seconds', label: 'ring for (seconds)', control: 'number' },
     ],
   },
@@ -79,6 +81,8 @@ const LEAD_RECOVERY_LAYOUT: Readonly<Record<string, FieldLayout>> = Object.freez
       { key: 'after_hours_response', label: 'after-hours response', control: 'textarea' },
       { key: 'followup', label: 'follow-up', control: 'textarea' },
       { key: 'handoff_ack', label: 'handoff acknowledgement', control: 'textarea' },
+      { key: 'reply_ack', label: 'after they reply', control: 'textarea' },
+      { key: 'reply_ack_booking', label: 'after they reply, with the booking link', control: 'textarea' },
     ],
   },
   after_hours: {

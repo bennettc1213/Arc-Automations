@@ -368,6 +368,8 @@ describe('the same message is never sent twice', () => {
     store.actions[0].attempts = 0;
     await runDueActions(d, { tenantId: null });
     assert.equal(sender.sent.length, 1, 'still once');
+    /* ARC-GO-310: a message that already went is a stop condition, not a failed send. */
+    assert.equal(store.handoffs.length, 0, 'and nobody is told a customer went unanswered');
   });
 
   test('a confirmed effect blocks a second send', async () => {
@@ -481,9 +483,11 @@ describe('an unanswered provider is not a failure and is never retried blindly',
     await intakeLead(d, missedCall());
     await runDueActions(d, { tenantId: null });
 
-    assert.equal(store.effects.length, 1);
-    assert.equal(store.effects[0].state, 'reconciliation_required');
-    assert.equal(store.effects[0].retryable, false);
+    /* the text to the customer. the alert about it is an effect of its own (ARC-GO-310). */
+    const texts = store.effects.filter((e) => e.effectType === 'customer_sms');
+    assert.equal(texts.length, 1);
+    assert.equal(texts[0].state, 'reconciliation_required');
+    assert.equal(texts[0].retryable, false);
   });
 
   test('an ambiguous outcome is not retried automatically', async () => {
@@ -492,14 +496,15 @@ describe('an unanswered provider is not a failure and is never retried blindly',
     const d = deps(store, { liveSender: sender });
     await intakeLead(d, missedCall());
     await runDueActions(d, { tenantId: null });
-    assert.equal(sender.sent.length, 1);
+    const toCustomer = () => sender.sent.filter((m) => m.to === CUSTOMER).length;
+    assert.equal(toCustomer(), 1);
 
     /* put it back on the queue as a retry would, and prove the effect refuses. */
     store.actions[0].status = 'pending';
     store.actions[0].attempts = 0;
     await runDueActions(d, { tenantId: null });
 
-    assert.equal(sender.sent.length, 1, 'the provider is not called a second time');
+    assert.equal(toCustomer(), 1, 'the provider is not called a second time');
   });
 
   test('an ambiguous outcome never counts as a send', async () => {
@@ -529,7 +534,7 @@ describe('an unanswered provider is not a failure and is never retried blindly',
     await intakeLead(d, missedCall());
     await runDueActions(d, { tenantId: null });
 
-    const open = await store.listOpenEffects(TENANT_A, 20);
+    const open = (await store.listOpenEffects(TENANT_A, 20)).filter((e) => e.effectType === 'customer_sms');
     assert.equal(open.length, 1);
     assert.equal(open[0].state, 'reconciliation_required');
   });

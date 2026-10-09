@@ -1,12 +1,12 @@
 # ARC Roadmap — Missed-Job Recovery First
 
-**Roadmap revision date:** October 8, 2026  
+**Roadmap revision date:** October 9, 2026  
 **Project:** ARC / Arc Automations  
 **Owner:** Bennett Church  
-**Last reported application version:** `1.39.0`  
+**Last reported application version:** `1.40.1`  
 **Primary niche:** small HVAC companies, 2 to 10 trucks  
 **Direction:** simple automations first. One company, one phone line, missed calls texted back, every step shown in a proof ledger.  
-**Immediate next implementation prompt:** `ARC-GO-310` — Close the Readiness Gaps
+**Immediate next implementation prompt:** `ARC-GO-330` — Live Backend and Real Telephony
 
 This revision replaces the October 1 roadmap. The platform work it described is finished and
 stays in place. What changes is the order of everything after it: the CRM track and the other
@@ -24,9 +24,13 @@ revision is in git history, and the full cards for the old steps are still in th
 - **Shipped from section 3:** `ARC-MK-100` (`1.34.0`), `ARC-MK-110` (`1.35.0`) and `ARC-MK-120`
   (`1.36.0`): the site offer, the missed-call count request and the proof ledger demo. The site
   as it was before is kept on the branch `archive/site-before-arc-mk-100`.
-- **Mapped:** `ARC-GO-300`, the Lead Recovery readiness map
-  (`docs/architecture/ARC_LEAD_RECOVERY_READINESS.md`). The safety core is sound; thirteen gaps
-  stand between the code and a real phone, and the four decisions they needed are made.
+- **Mapped, and its gaps closed:** `ARC-GO-300`, the Lead Recovery readiness map
+  (`docs/architecture/ARC_LEAD_RECOVERY_READINESS.md`), found thirteen gaps between the code
+  and a real phone. `ARC-GO-310` (`1.40.0`) closed all thirteen in code. What is left on the
+  map is hosted work only.
+- **Tested under failure:** `ARC-GO-320` (`1.40.1`) walked the whole path through its real
+  doors on real Postgres, found two defects in the engine and fixed both. The gate for the
+  hosted work is `npm run gate`.
 - **Not started:** the rest of section 3.
 - **The gap that matters:** the Lead Recovery engine is built and tested but has never texted a
   real phone, and the site and portal explain the machine instead of the result.
@@ -45,15 +49,29 @@ trust and phone forwarding, never for custom engineering.
 
 ## 2. Immediate next step
 
-`ARC-GO-310` — close the readiness gaps. `ARC-GO-300` is done: the map is
-`docs/architecture/ARC_LEAD_RECOVERY_READINESS.md`, and its section 4 is this step's scope. The four
-decisions in its section 5 are made: the business keeps its number and forwards unanswered
-calls to ARC, the owner confirms a visit time on the needs-you screen, the follow-up waits for
-opening hours, and email is refused as an alert channel until it exists. Phase 2 is built:
-`ARC-MK-200` (the four-screen owner portal) shipped in `1.37.0`, `ARC-MK-210` (the counting
-rule) in `1.38.0` and `ARC-MK-220` (the owner's answers and disputes, `ARC_PROOF_LEDGER.md`
-section 9) in `1.39.0`. Its edge functions are not deployed yet: `ledger` is new, and `ingest`,
-`ops` and `twilio` need redeploying. That is a hosted action and waits for authorisation.
+`ARC-GO-330` — the live backend and real telephony. It is the first step that touches the
+hosted projects, and every action in it is authorised one at a time. Before any of them, run
+`npm run gate` and see it pass: the whole suite on real SQL, with nothing skipped.
+
+`ARC-GO-320` is done (`1.40.1`). Section 7 of
+`docs/architecture/ARC_LEAD_RECOVERY_READINESS.md` says what the pass proved, the two defects
+it found and fixed, and three things it found and left for a decision: the event log has no
+database guard against the service role, a paused client's owner gets no alert text for a
+safety reply, and a missed call whose own recording fails halfway is not picked up again.
+
+`ARC-GO-310` is done (`1.40.0`): the thirteen gaps in section 4 of the same map are closed,
+each with a test named after its promise in `tests/lead-recovery-readiness.test.js`. Both
+telephony setups are supported and chosen per client; the pilot uses the one where the
+business keeps its number and forwards unanswered calls to ARC. One limit is left in the other
+setup and is written down in the map: with the ARC number in front, a voicemail that picks up
+inside the ring time still reads as an answered call.
+
+Phase 2 is built: `ARC-MK-200` (the four-screen owner portal) shipped in `1.37.0`, `ARC-MK-210`
+(the counting rule) in `1.38.0` and `ARC-MK-220` (the owner's answers and disputes,
+`ARC_PROOF_LEDGER.md` section 9) in `1.39.0`. None of the Lead Recovery edge functions is
+deployed to live yet: `twilio`, `dispatch`, `lead-intake`, `ledger` and `ingest` are new there,
+and `ops` needs redeploying. That is a hosted action, belongs to `ARC-GO-330` and waits for
+authorisation.
 
 `ARC-MK-130` (sales assets and pilot terms) is drafted: the kit is in `sales/`, kept out of
 this public repository. Its pilot numbers are proposed, not agreed. Once Bennett agrees them
@@ -79,9 +97,9 @@ automation real. Phase 4 adds the next automations one at a time.
 | `ARC-MK-220` | Owner outcome answers and disputes | Portal and backend | Done (`1.39.0`) |
 | **Phase 3 — missed-call text-back, live** | | | |
 | `ARC-GO-300` | Lead Recovery readiness map | Read-only | Done |
-| `ARC-GO-310` | Close the readiness gaps | Backend | Next |
-| `ARC-GO-320` | Safety test pass | Tests | To do |
-| `ARC-GO-330` | Live backend and real telephony | Hosted, each action authorised | To do |
+| `ARC-GO-310` | Close the readiness gaps | Backend | Done (`1.40.0`) |
+| `ARC-GO-320` | Safety test pass | Tests | Done (`1.40.1`) |
+| `ARC-GO-330` | Live backend and real telephony | Hosted, each action authorised | Next |
 | `ARC-GO-340` | First HVAC pilot | Pilot | To do |
 | **Phase 4 — the next automations** | | | |
 | `ARC-AUTO-400` | Quiet estimate follow-up | Automation | After the pilot |
@@ -267,6 +285,9 @@ customer-facing message, and safety is still decided by rules.
 
 **Done when.** The readiness map has no code gaps left.
 
+**Done** in `1.40.0`. No table changed and there is no migration. The map's section 4 says how
+each gap was closed. Not deployed: it reaches a real phone only through `ARC-GO-330`.
+
 ### ARC-GO-320 — Safety Test Pass
 
 **Goal.** Prove the whole path under failure, with no real customer contact.
@@ -278,11 +299,18 @@ customer-facing message, and safety is still decided by rules.
 
 **Done when.** The suite is green and is the gate for `ARC-GO-330`.
 
+**Done** in `1.40.1`. The suite is `tests/lead-recovery-gate.test.js`, and the gate is `npm run
+gate`, which fails unless every test ran on real SQL. It found two defects, both fixed: with no
+model key a reply left the lead with nobody on it, and a webhook that failed halfway was
+dropped when the provider sent it again. The readiness map's section 7 has the detail and
+what was left for a decision.
+
 ### ARC-GO-330 — Live Backend and Real Telephony
 
 **Goal.** The first step that touches the hosted projects. Every action is authorised one at a
 time.
 
+- `npm run gate` passing, before anything else.
 - Staging brought level with live; outstanding migrations and functions deployed.
 - Twilio verified with a real account: a real inbound webhook, a forwarded call, a text to a
   test handset owned by ARC.

@@ -159,6 +159,45 @@ export function sayAndHangupTwiml(message: string): string {
   ].join('\n');
 }
 
+/**
+ * What a caller hears when the business's own phone company has already sent the call on
+ * (ARC-GO-310). They have listened to the business's phone ring out, so they are not made
+ * to hear a second one: one reviewed sentence, and the line closes. It promises a reply and
+ * nothing about a text, because whether a text goes is decided afterwards, by the gates.
+ */
+export function missedCallGreeting(companyName: string): string {
+  return `Thanks for calling ${companyName}. Sorry we missed you. We will get back to you shortly.`;
+}
+
+/**
+ * What the voice webhook answers, and whether the call arriving is itself the missed call.
+ *
+ *   arc_first       ring the business, and learn from the dial result what happened.
+ *   business_first  nobody answered already — that is why the call is here. Say the one
+ *                   sentence, hang up, and `missed` tells the caller to record the lead now:
+ *                   there will be no dial result to wait for.
+ *
+ * Its own function so the branch the pilot's setup hangs off is readable, and testable,
+ * without a webhook.
+ */
+export function voiceResponse(
+  config: { company_name: string; forwarding: { destination: string; timeout_seconds: number; mode?: string } },
+  urls: { dialStatus: string },
+): { twiml: string; missed: boolean } {
+  if (config.forwarding.mode === 'business_first') {
+    return { twiml: sayAndHangupTwiml(missedCallGreeting(config.company_name)), missed: true };
+  }
+  return {
+    twiml: dialTwiml({
+      destination: config.forwarding.destination,
+      timeoutSeconds: config.forwarding.timeout_seconds,
+      actionUrl: urls.dialStatus,
+      callerId: null,
+    }),
+    missed: false,
+  };
+}
+
 /* ── dial results ───────────────────────────────────────── */
 
 /**

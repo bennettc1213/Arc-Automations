@@ -141,14 +141,46 @@ export function ownerJobs(data) {
 
 export const NEED_KINDS = [
   { key: 'outcome', label: 'did the job happen?', blurb: 'one question for each visit whose time has passed.' },
+  { key: 'visit', label: 'book the visit', blurb: 'these customers wrote back. when you have agreed a time with one, put it here.' },
   { key: 'handoff', label: 'handed to you', blurb: 'arc stopped texting. a person needs to take these.' },
   { key: 'other', label: 'worth a look', blurb: 'leads that did not go the usual way.' },
 ];
 
 const HANDOFF_REASONS = new Set(['safety', 'handoff']);
 
+/* how long a reply with no visit against it stays on the needs-you screen. after that it is
+   still on the jobs screen; it is only no longer something waiting on the owner. */
+export const VISIT_WINDOW_DAYS = 14;
+
 /**
- * everything waiting on the owner, in three kinds. derived on every read: an item that
+ * ARC-GO-310 — the customers who wrote back and have no visit on record yet. the owner
+ * agrees a time with them and records it here; until somebody does, the job cannot count.
+ * read off each lead on every load: recording the visit, the customer opting out or the
+ * window passing takes it off the list with nothing stored. a lead arc handed to a person
+ * is in its own group and never billed, so it is not asked for a visit time here.
+ */
+function awaitingVisit(data, timezone) {
+  const now = Date.parse(data?.generatedFor ?? '') || Date.now();
+  return (data?.threads ?? [])
+    .filter((lead) => {
+      if (!lead.replied || lead.booked || lead.handoff || lead.suppressed) return false;
+      const age = now - Date.parse(lead.repliedAt ?? lead.startedAt);
+      return age >= 0 && age <= VISIT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+    })
+    .map((lead) => ({
+      key: `visit-${lead.id}`,
+      kind: 'visit',
+      title: lead.name ?? (lead.phone ? maskPhone(lead.phone) : 'a customer who wrote back'),
+      detail: `wrote back ${formatStamp(lead.repliedAt ?? lead.startedAt, timezone)}`,
+      reason: 'no visit is on record for this customer yet, so this job cannot count.',
+      openedAt: lead.repliedAt ?? lead.startedAt,
+      to: 'jobs',
+      lead: lead.id,
+    }));
+}
+
+/**
+ * everything waiting on the owner, in four kinds. derived on every read: an item that
  * stops needing a person is not in the next list, with no write anywhere.
  */
 export function ownerNeeds(data) {
@@ -198,7 +230,7 @@ export function ownerNeeds(data) {
         /* when it counts by itself if nobody answers. null until arc has asked under terms. */
         countsAt: lead.ledger.windowEndsAt ? formatStamp(lead.ledger.windowEndsAt, timezone) : null,
       }));
-    items = questions.concat((data?.attention?.items ?? []).map((item) => ({
+    items = questions.concat(awaitingVisit(data, timezone), (data?.attention?.items ?? []).map((item) => ({
       key: item.key,
       kind: HANDOFF_REASONS.has(item.reasonKey) ? 'handoff' : 'other',
       title: item.customer,

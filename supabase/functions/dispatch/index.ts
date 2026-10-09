@@ -6,9 +6,10 @@
  * of those rows — there are no timers, no sleeping workflows and no cron job that
  * re-derives intent from the event log.
  *
- * Run it on a schedule. Once a minute is the right cadence: the first response is normally
- * queued for *now* and is sent by the webhook's own dispatch call, so the schedule exists
- * for follow-ups, closes and retries, none of which are second-sensitive.
+ * Run it on a schedule, once a minute. Nothing else sends: the webhooks queue and return,
+ * so the first response waits for the next run of this function — within about a minute of
+ * the missed call, and that minute is the schedule's, not a measured figure. Follow-ups,
+ * closes and retries ride the same schedule.
  *
  *   supabase functions deploy dispatch --no-verify-jwt
  *   supabase secrets set ARC_DISPATCH_KEY=<a long random string>
@@ -121,7 +122,8 @@ Deno.serve(async (request) => {
     classifierFor: (config) => classifierFor(config, { anthropicKey: ANTHROPIC_API_KEY || null }),
     urls: {
       statusCallback: `${PUBLIC_BASE}/twilio/message-status`,
-      leadInConsole: (tenantId) => (SITE_URL ? `${SITE_URL}/ops/console/clients/${tenantId}` : null),
+      /* the owner's own screen. an alert used to link to the operator console. */
+      ownerNeedsYou: () => (SITE_URL ? `${SITE_URL}/portal/dashboard/needs-you` : null),
     },
     uuid: () => crypto.randomUUID(),
     worker,

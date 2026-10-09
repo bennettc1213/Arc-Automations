@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { DateTime } from 'luxon';
 import Icon from './Icon';
 import { Empty, Panel, Pill, Term } from './ui';
 import {
@@ -20,11 +21,14 @@ import {
   getLeadRecovery,
   issueIntakeKey,
   pauseLeadRecovery,
+  recordLeadOutcome,
   resolveLeadHandoff,
   retryLeadRecoveryAction,
   runLeadRecoveryCanary,
   saveLeadRecoveryConfig,
   selectLeadRecovery,
+  settleUnknownSend,
+  suppressLeadContact,
   takeOverLead,
   testLeadRecoveryRouting,
 } from '../lib/ops';
@@ -37,7 +41,9 @@ import {
 import {
   AFTER_HOURS_BEHAVIOURS,
   COMPLIANCE_STATUSES,
+  DEFAULT_TEMPLATES,
   defaultConfig,
+  FORWARDING_MODES,
   ONBOARDING_STEPS,
   validateLeadRecoveryConfig,
   WEEKDAYS,
@@ -101,12 +107,15 @@ function toForm(config) {
     cities: fromList(base.service_area?.cities),
     destination: base.forwarding?.destination ?? '',
     timeout: String(base.forwarding?.timeout_seconds ?? 20),
+    forwarding_mode: base.forwarding?.mode ?? 'arc_first',
     alerts: (base.staff_alerts ?? []).map((a) => `${a.channel}:${a.address}${a.name ? `:${a.name}` : ''}`).join('\n'),
     booking_url: base.booking_url ?? '',
     first_response: base.templates?.first_response ?? '',
     after_hours_response: base.templates?.after_hours_response ?? '',
     followup: base.templates?.followup ?? '',
     handoff_ack: base.templates?.handoff_ack ?? '',
+    reply_ack: base.templates?.reply_ack ?? '',
+    reply_ack_booking: base.templates?.reply_ack_booking ?? '',
     after_hours_behaviour: base.after_hours?.behaviour ?? 'after_hours_response',
     callback_window: base.after_hours?.callback_window ?? '',
     emergency_keywords: fromList(base.safety?.emergency_keywords),
@@ -143,7 +152,14 @@ function toConfig(form) {
     holidays: toList(form.holidays),
     services: toList(form.services),
     service_area: { zips: toList(form.zips), cities: toList(form.cities), note: null },
-    forwarding: { destination: form.destination.trim(), timeout_seconds: Number(form.timeout) || 20 },
+    forwarding: {
+      destination: form.destination.trim(),
+      timeout_seconds: Number(form.timeout) || 20,
+      /* sent only when it is not what its absence already means, like the two templates
+         below: a save that changes neither is then a document an `ops` function from before
+         ARC-GO-310 still accepts, so shipping the site ahead of the function breaks nothing. */
+      ...(form.forwarding_mode !== 'arc_first' ? { mode: form.forwarding_mode } : {}),
+    },
     staff_alerts: alerts,
     booking_url: form.booking_url.trim() || null,
     templates: {
@@ -151,6 +167,11 @@ function toConfig(form) {
       after_hours_response: form.after_hours_response.trim(),
       followup: form.followup.trim(),
       handoff_ack: form.handoff_ack.trim(),
+      ...Object.fromEntries(
+        ['reply_ack', 'reply_ack_booking']
+          .map((key) => [key, form[key].trim()])
+          .filter(([key, text]) => text !== '' && text !== DEFAULT_TEMPLATES[key]),
+      ),
     },
     after_hours: {
       behaviour: form.after_hours_behaviour,
@@ -178,6 +199,12 @@ function toConfig(form) {
     },
   };
 }
+
+/* the two setups, in words an operator would use on the phone with the client. */
+const FORWARDING_MODE_WORDS = {
+  arc_first: "ARC's number — it rings the business, and an unanswered call is a lead",
+  business_first: 'their own number — their phone company forwards unanswered calls to ARC',
+};
 
 const COMPLIANCE_TONE = {
   approved: 'ok',
@@ -367,14 +394,21 @@ export default function LeadRecoveryPanel({ client }) {
             <TextArea value={form.cities} onChange={set('cities')} rows={2} />
           </Field>
 
-          <Field label="forward calls to" required hint="E.164 — the number that rings when somebody calls">
+          <Field label="which number customers dial" wide required hint="decides when a call counts as missed">
+            <SelectInput
+              value={form.forwarding_mode}
+              onChange={set('forwarding_mode')}
+              options={FORWARDING_MODES.map((key) => ({ value: key, label: FORWARDING_MODE_WORDS[key] ?? key }))}
+            />
+          </Field>
+          <Field label="the business's own number" required hint="E.164 — the phone that rings when ARC's number is in front, and who a lead is given to either way">
             <TextInput value={form.destination} onChange={set('destination')} mono placeholder="+16145550137" />
           </Field>
-          <Field label="ring for (seconds)" required hint="5–120. after this, the call counts as missed">
+          <Field label="ring for (seconds)" required hint="5–120. used only when ARC's number is in front: after this, the call counts as missed">
             <TextInput value={form.timeout} onChange={set('timeout')} mono />
           </Field>
 
-          <Field label="staff alerts" wide hint="one per line, as channel:address:name — sms:+16145550101:Dana">
+          <Field label="staff alerts" wide hint="one per line, as sms:number:name — sms:+16145550101:Dana. text only: email alerts are not built">
             <TextArea value={form.alerts} onChange={set('alerts')} rows={3} />
           </Field>
 
@@ -388,24 +422,30 @@ export default function LeadRecoveryPanel({ client }) {
         <Help label="why these are templates and not generated">
           A model that writes outbound SMS under the contractor&rsquo;s brand and phone number is one
           prompt injection away from writing whatever the last stranger asked it to, with no review
-          step between it and the carrier. So the classifier reads and summarises, and these four
+          step between it and the carrier. So the classifier reads and summarises, and these
           sentences are what actually leaves. Placeholders are a closed list:{' '}
           <code>{'{{company}}'}</code>, <code>{'{{customer_name}}'}</code>,{' '}
           <code>{'{{booking_url}}'}</code>, <code>{'{{callback_window}}'}</code>. The opt-out line is
           appended by the engine and cannot be edited out of a template.
         </Help>
         <div className="ops-form">
-          <Field label="first response" wide required hint="sent within seconds of a missed call or a form">
+          <Field label="first response" wide required hint="queued the moment a call is missed or a form arrives, and sent by the next run of the queue">
             <TextArea value={form.first_response} onChange={set('first_response')} rows={3} />
           </Field>
           <Field label="out-of-hours response" wide hint="used when they are closed and the behaviour below says to answer anyway">
             <TextArea value={form.after_hours_response} onChange={set('after_hours_response')} rows={3} />
           </Field>
-          <Field label="follow-up" wide hint="once, an hour later, only if nobody replied">
+          <Field label="follow-up" wide hint="once, an hour later or at the next opening time, only if nobody replied">
             <TextArea value={form.followup} onChange={set('followup')} rows={2} />
           </Field>
           <Field label="handed to a person" wide hint="sent when the sequence stops and somebody takes over">
             <TextArea value={form.handoff_ack} onChange={set('handoff_ack')} rows={2} />
+          </Field>
+          <Field label="after they reply" wide hint="sent once, after their reply has been read and passed to the business">
+            <TextArea value={form.reply_ack} onChange={set('reply_ack')} rows={2} />
+          </Field>
+          <Field label="after they reply, with the booking link" wide hint="used instead when a booking url is set above">
+            <TextArea value={form.reply_ack_booking} onChange={set('reply_ack_booking')} rows={2} />
           </Field>
           <Field label="out of hours" hint="what happens to a lead that lands when they are shut">
             <SelectInput
@@ -558,8 +598,15 @@ export default function LeadRecoveryPanel({ client }) {
           <div className="ops-lr__sub">
             <dl className="ws-facts">
               <Fact label="number">{routing.number}</Fact>
-              <Fact label="forwards to">{routing.forwards_to}</Fact>
-              <Fact label="rings for">{routing.timeout_seconds}s</Fact>
+              <Fact label="customers dial">{FORWARDING_MODE_WORDS[routing.mode] ?? routing.mode ?? '—'}</Fact>
+              {routing.dials === false ? (
+                <Fact label="arc dials">nobody — a call that reaches arc is already a missed one</Fact>
+              ) : (
+                <>
+                  <Fact label="forwards to">{routing.forwards_to}</Fact>
+                  <Fact label="rings for">{routing.timeout_seconds}s</Fact>
+                </>
+              )}
               <Fact label="resolves uniquely">{routing.resolves ? 'yes' : `no — also claimed by ${routing.conflicts.length} other`}</Fact>
             </dl>
             <p className="ops-muted">enter these in the Twilio console for this number:</p>
@@ -714,8 +761,21 @@ export default function LeadRecoveryPanel({ client }) {
         </Disclosure>
       )}
 
+      {/* ── sends nobody could vouch for (ARC-GO-310) ── */}
+      {(data.unknown_sends ?? []).length > 0 && (
+        <Disclosure
+          title={`${formatCount(data.unknown_sends.length)} send${data.unknown_sends.length === 1 ? '' : 's'} with an unknown outcome`}
+          summary="held, never resent. look each one up at the provider, then say what it shows"
+          defaultOpen
+        >
+          {data.unknown_sends.map((attempt) => (
+            <UnknownSend key={attempt.id} tenantId={tenantId} attempt={attempt} onDone={load} />
+          ))}
+        </Disclosure>
+      )}
+
       {/* ── recent leads ── */}
-      <Disclosure title="recent leads" summary="the operational records, newest first">
+      <Disclosure title="recent leads" summary="the operational records, newest first — stop one, record its visit, or close it">
         {(data.recent_leads ?? []).length === 0 ? (
           <Empty title="no leads through the engine yet">
             a missed call or a website form will create one within seconds of it happening.
@@ -730,6 +790,7 @@ export default function LeadRecoveryPanel({ client }) {
                   <th>source</th>
                   <th>status</th>
                   <th>urgency</th>
+                  <th>what you can do</th>
                 </tr>
               </thead>
               <tbody>
@@ -747,12 +808,16 @@ export default function LeadRecoveryPanel({ client }) {
                       </Pill>
                     </td>
                     <td>{lead.urgency ? String(lead.urgency).replace(/_/g, ' ') : '—'}</td>
+                    <td>
+                      <LeadControls tenantId={tenantId} lead={lead} timezone={client.timezone ?? 'UTC'} onDone={load} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+        <SuppressNumber tenantId={tenantId} onDone={load} />
       </Disclosure>
 
       {/* ── onboarding, and the switch ── */}
@@ -844,6 +909,147 @@ export default function LeadRecoveryPanel({ client }) {
         </div>
       </Disclosure>
     </Panel>
+  );
+}
+
+/* ── the operator's minimum (ARC-GO-310) ─────────────────────
+ *
+ * every action below already existed in the `ops` function and had no button: an operator
+ * who saw an ordinary lead going wrong could not stop it, and a booked visit could only be
+ * recorded with SQL. each is the engine's own call, and this decides nothing.
+ */
+
+const CLOSE_OUTCOMES = [
+  { value: 'declined', label: 'the customer said no' },
+  { value: 'no_response', label: 'the customer went quiet' },
+  { value: 'not_a_fit', label: 'not a job they do' },
+  { value: 'duplicate', label: 'a duplicate of another lead' },
+];
+
+const FINISHED_LEAD = new Set(['closed', 'suppressed']);
+
+function LeadControls({ tenantId, lead, timezone, onDone }) {
+  const [when, setWhen] = useState('');
+  const [outcome, setOutcome] = useState(CLOSE_OUTCOMES[0].value);
+
+  if (lead.is_canary) return <span className="ops-muted">a synthetic lead</span>;
+  if (FINISHED_LEAD.has(lead.status)) return <span className="ops-muted">finished</span>;
+
+  return (
+    <div className="ops-lr__sub">
+      {lead.status !== 'handed_off' && lead.status !== 'booked' && (
+        <div className="ops-rowactions">
+          <ActionButton
+            confirm="stop the automation on this lead? every message still queued for this customer is cancelled, and the lead is yours."
+            consequence="every message still queued for this customer is cancelled, and the lead is yours."
+            onRun={async () => {
+              await takeOverLead(tenantId, lead.id, { note: 'stopped from the console' });
+              await onDone();
+              return 'stopped — nothing further is sent';
+            }}
+          >
+            stop this lead
+          </ActionButton>
+        </div>
+      )}
+      <div className="ops-rowactions">
+        <Field label="visit time" hint={`on the business's clock (${timezone})`}>
+          <TextInput type="datetime-local" value={when} onChange={(event) => setWhen(event.target.value)} />
+        </Field>
+        <ActionButton
+          disabled={!when}
+          onRun={async () => {
+            const at = DateTime.fromISO(when, { zone: timezone });
+            if (!at.isValid) throw new Error('that is not a date and time');
+            await recordLeadOutcome(tenantId, lead.id, 'booked', null, at.toUTC().toISO());
+            await onDone();
+            return 'visit recorded — the automation has stopped on this lead';
+          }}
+        >
+          record the visit
+        </ActionButton>
+      </div>
+      <div className="ops-rowactions">
+        <Field label="close it as">
+          <SelectInput value={outcome} onChange={(event) => setOutcome(event.target.value)} options={CLOSE_OUTCOMES} />
+        </Field>
+        <ActionButton
+          confirm="close this lead? everything still queued for it is cancelled, and it is not reopened."
+          consequence="everything still queued for it is cancelled, and it is not reopened."
+          onRun={async () => {
+            await recordLeadOutcome(tenantId, lead.id, outcome);
+            await onDone();
+            return 'closed';
+          }}
+        >
+          close this lead
+        </ActionButton>
+      </div>
+    </div>
+  );
+}
+
+function SuppressNumber({ tenantId, onDone }) {
+  const [number, setNumber] = useState('');
+  return (
+    <div className="ops-lr__sub">
+      <div className="ops-rowactions">
+        <Field label="never text this number" hint="E.164, as +16145550137. for a customer who asked a person to stop">
+          <TextInput value={number} onChange={(event) => setNumber(event.target.value)} mono placeholder="+16145550137" />
+        </Field>
+        <ActionButton
+          disabled={!number.trim()}
+          confirm="add this number to the do-not-contact list? arc will not text it again for this client."
+          consequence="arc will not text it again for this client."
+          onRun={async () => {
+            const result = await suppressLeadContact(tenantId, { address: number.trim() });
+            setNumber('');
+            await onDone();
+            return result.outcome ?? 'added';
+          }}
+        >
+          stop texting it
+        </ActionButton>
+      </div>
+    </div>
+  );
+}
+
+function UnknownSend({ tenantId, attempt, onDone }) {
+  const [sid, setSid] = useState('');
+  const settle = (verdict) => async () => {
+    const result = await settleUnknownSend(tenantId, attempt.id, { verdict, providerMessageId: sid.trim() || null });
+    await onDone();
+    return result.outcome;
+  };
+  return (
+    <div className="ops-lr__sub">
+      <dl className="ws-facts">
+        <Fact label="what">{attempt.kind === 'staff_sms' ? 'an alert to the business' : 'a text to a customer'}</Fact>
+        <Fact label="to">{attempt.to ?? '—'}</Fact>
+        <Fact label="started">{attempt.started_at ? formatRelative(attempt.started_at) : '—'}</Fact>
+      </dl>
+      <p className="ops-muted">{attempt.detail ?? 'the provider did not answer'}</p>
+      <div className="ops-rowactions">
+        <Field label="the provider's message id" hint="optional — SM… from the provider's own log, if it shows one">
+          <TextInput value={sid} onChange={(event) => setSid(event.target.value)} mono />
+        </Field>
+        <ActionButton
+          confirm="record this as sent? it is written to the client's record as a text that went out. nothing is resent."
+          consequence="it is written to the client's record as a text that went out. nothing is resent."
+          onRun={settle('sent')}
+        >
+          the provider shows it was sent
+        </ActionButton>
+        <ActionButton
+          confirm="record this as not sent? nobody has texted this customer, and the lead stays with a person. nothing is resent."
+          consequence="nobody has texted this customer, and the lead stays with a person. nothing is resent."
+          onRun={settle('not_sent')}
+        >
+          the provider shows nothing
+        </ActionButton>
+      </div>
+    </div>
   );
 }
 

@@ -279,12 +279,19 @@ describe('who may answer', () => {
   });
 
   test('the door reads the member from the sign-in, never from the body', () => {
-    const door = read('supabase/functions/ledger/index.ts');
-    assert.match(door, /caller\.auth\.getUser\(\)/);
-    assert.match(door, /\.from\('tenant_members'\)[\s\S]*?\.eq\('tenant_id', body\.tenant_id\)[\s\S]*?\.eq\('user_id', userId\)/);
+    /* two files since ARC-GO-320: index.ts verifies the token and holds the secrets,
+       handler.ts is the door itself — driven for real in tests/lead-recovery-gate.test.js. */
+    const serve = read('supabase/functions/ledger/index.ts');
+    const door = read('supabase/functions/ledger/handler.ts');
+    assert.match(serve, /caller\.auth\.getUser\(\)/);
+    assert.match(serve, /handleLedgerAction\(\s*\{\s*userId,\s*membership: membershipFrom\(db\),/);
+    assert.match(door, /\.from\('tenant_members'\)[\s\S]*?\.eq\('tenant_id', tenantId\)[\s\S]*?\.eq\('user_id', userId\)/);
+    assert.match(door, /door\.membership\(body\.tenant_id, userId\)/);
     assert.match(door, /clientActor\(userId, body\.tenant_id, membership\)/);
-    assert.doesNotMatch(door, /body\.(user_id|role|answered_by|actor)/);
-    assert.doesNotMatch(door, /TwilioRestSender|classifierFor\(config/, 'nothing at this door can reach a customer');
+    for (const file of [serve, door]) {
+      assert.doesNotMatch(file, /body\.(user_id|role|answered_by|actor)/);
+      assert.doesNotMatch(file, /TwilioRestSender|classifierFor\(config/, 'nothing at this door can reach a customer');
+    }
   });
 
   test('the service writes through the engine’s own writers and nothing else', () => {

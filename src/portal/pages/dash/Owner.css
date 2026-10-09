@@ -238,6 +238,19 @@
   color: var(--fail);
 }
 
+/* the visit time (ARC-GO-310): a full-width control tall enough for a thumb. */
+.ow-visit__when {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 16px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 .ow-answer__change > summary {
   list-style: none;
   cursor: pointer;

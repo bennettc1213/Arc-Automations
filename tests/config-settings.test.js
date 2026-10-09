@@ -238,7 +238,13 @@ describe('the settings actions', { skip }, () => {
   test('a client with nothing published loads as the registry\'s fields, no version, no draft, and its module\'s state', async () => {
     const body = must(await call('config-scope', LRS), 'load');
     assert.equal(body.schema.key, 'lead_recovery_config');
-    assert.ok(body.schema.fields.some((f) => f.key === 'templates' && f.layout.parts.length === 4));
+    /* six since ARC-GO-310 added the two messages a customer gets after replying. this suite
+       only runs on real SQL, which is how a count of four outlived that change. */
+    assert.deepEqual(
+      body.schema.fields.find((f) => f.key === 'templates').layout.parts.map((part) => part.key),
+      layoutsFor('lead_recovery_config').templates.parts.map((part) => part.key),
+    );
+    assert.equal(body.schema.fields.find((f) => f.key === 'templates').layout.parts.length, 6);
     assert.equal(body.current, null);
     assert.equal(body.open_draft, null);
     assert.deepEqual(body.lifecycles, [{ module_key: 'lead_recovery', state: 'configuring' }]);

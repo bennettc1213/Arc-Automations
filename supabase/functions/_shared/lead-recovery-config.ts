@@ -56,7 +56,24 @@ export const COMPLIANCE_STATUSES = ['not_started', 'pending', 'approved', 'rejec
 
 export const AI_PROVIDERS = ['anthropic', 'none'] as const;
 
-export const ALERT_CHANNELS = ['sms', 'email'] as const;
+/* Who a handoff alert can reach. Text only (ARC-GO-310): an email recipient used to be
+   accepted here and never alerted, so a client could believe somebody would be told. Email
+   comes back onto this list when something sends one. */
+export const ALERT_CHANNELS = ['sms'] as const;
+
+/**
+ * Which way round the two numbers are (ARC-GO-310).
+ *
+ *   arc_first       customers dial the ARC number. ARC rings the business and learns from
+ *                   the dial result whether anybody picked up.
+ *   business_first  the business keeps its own number, and its phone company sends on the
+ *                   calls nobody answered. Every call that reaches ARC is already a missed
+ *                   one, so ARC never rings the business a second time.
+ *
+ * A configuration published before this field existed says nothing, and means what it
+ * always meant: `arc_first`.
+ */
+export const FORWARDING_MODES = ['arc_first', 'business_first'] as const;
 
 /* The placeholders a template may contain. A closed list, because the alternative is an
    expression evaluator pointed at customer-facing copy. Anything else between braces is a
@@ -73,7 +90,14 @@ export const TEMPLATE_KEYS = [
   'after_hours_response',
   'followup',
   'handoff_ack',
+  /* after the customer's reply has been read and passed to the business (ARC-GO-310).
+     the second is used instead of the first when a booking link is set. */
+  'reply_ack',
+  'reply_ack_booking',
 ] as const;
+
+/** The one template that is only ever sent when `booking_url` is set. */
+export const BOOKING_LINK_TEMPLATE = 'reply_ack_booking';
 
 /** Every template is one SMS segment's worth of room plus the opt-out line. */
 export const MAX_TEMPLATE_CHARS = 320;
@@ -92,7 +116,7 @@ export interface LeadRecoveryConfig {
   holidays: string[];
   services: string[];
   service_area: { zips: string[]; cities: string[]; note: string | null };
-  forwarding: { destination: string; timeout_seconds: number };
+  forwarding: { destination: string; timeout_seconds: number; mode: string };
   staff_alerts: { name: string | null; channel: string; address: string }[];
   booking_url: string | null;
   templates: Record<string, string>;
@@ -129,7 +153,6 @@ const E164 = /^\+[1-9][0-9]{7,15}$/;
 const ZIP = /^[0-9]{5}$/;
 const TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 const DATE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const AC_SID = /^AC[0-9a-fA-F]{32}$/;
 const MG_SID = /^MG[0-9a-fA-F]{32}$/;
 const PN_SID = /^PN[0-9a-fA-F]{32}$/;
@@ -340,6 +363,10 @@ export const DEFAULT_TEMPLATES: Record<string, string> = {
     "{{company}} again — just checking we've got this right. Reply with what you need and we'll get someone out to you.",
   handoff_ack:
     "Thanks — a member of the {{company}} team is picking this up now and will call you directly.",
+  reply_ack:
+    "Thanks{{customer_name}} — {{company}} has your message and will call you to set a time.",
+  reply_ack_booking:
+    "Thanks{{customer_name}} — {{company}} has your message. Pick a time here: {{booking_url}} or we'll call you to set one.",
 };
 
 export const DEFAULT_OPT_OUT_LANGUAGE = 'Reply STOP to opt out.';
@@ -370,7 +397,7 @@ export function defaultConfig(partial: Partial<LeadRecoveryConfig> = {}): LeadRe
     holidays: [],
     services: [],
     service_area: { zips: [], cities: [], note: null },
-    forwarding: { destination: '', timeout_seconds: 20 },
+    forwarding: { destination: '', timeout_seconds: 20, mode: 'arc_first' },
     staff_alerts: [],
     booking_url: null,
     templates: { ...DEFAULT_TEMPLATES },
@@ -506,11 +533,17 @@ export function validateLeadRecoveryConfig(input: unknown): ConfigResult {
 
   // ── the call ──────────────────────────────────────────
   const fwdRaw = input.forwarding;
-  const forwarding = { destination: '', timeout_seconds: base.forwarding.timeout_seconds };
+  const forwarding = { destination: '', timeout_seconds: base.forwarding.timeout_seconds, mode: base.forwarding.mode };
   if (!isPlainObject(fwdRaw)) {
     errors.push('forwarding is required — {destination, timeout_seconds}');
   } else {
-    rejectUnknown(fwdRaw, ['destination', 'timeout_seconds'], 'forwarding', errors);
+    rejectUnknown(fwdRaw, ['destination', 'timeout_seconds', 'mode'], 'forwarding', errors);
+    const mode = str(fwdRaw.mode, 'forwarding.mode', errors, 20) ?? base.forwarding.mode;
+    if (!(FORWARDING_MODES as readonly string[]).includes(mode)) {
+      errors.push(`forwarding.mode must be one of ${FORWARDING_MODES.join(', ')}`);
+    } else {
+      forwarding.mode = mode;
+    }
     const destination = str(fwdRaw.destination, 'forwarding.destination', errors, 20);
     if (!destination) {
       errors.push('forwarding.destination is required — the number the call is handed to');
@@ -546,6 +579,12 @@ export function validateLeadRecoveryConfig(input: unknown): ConfigResult {
         }
         rejectUnknown(entry, ['name', 'channel', 'address'], where, errors);
         const channel = str(entry.channel, `${where}.channel`, errors, 10) ?? 'sms';
+        if (channel === 'email') {
+          /* refused rather than stored: nothing sends an email alert yet, and a recipient
+             nobody alerts is worse than no recipient, because it reads as set up. */
+          errors.push(`${where}.channel is email, and email alerts are not built yet — give a mobile number on sms instead`);
+          return;
+        }
         if (!(ALERT_CHANNELS as readonly string[]).includes(channel)) {
           errors.push(`${where}.channel must be one of ${ALERT_CHANNELS.join(', ')}`);
           return;
@@ -557,10 +596,6 @@ export function validateLeadRecoveryConfig(input: unknown): ConfigResult {
         }
         if (channel === 'sms' && !E164.test(address)) {
           errors.push(`${where}.address must be E.164 for an SMS recipient`);
-          return;
-        }
-        if (channel === 'email' && !EMAIL.test(address)) {
-          errors.push(`${where}.address is not an email address`);
           return;
         }
         staffAlerts.push({ name: str(entry.name, `${where}.name`, errors, 60), channel, address });
@@ -609,6 +644,8 @@ export function validateLeadRecoveryConfig(input: unknown): ConfigResult {
   }
   if (bookingUrl === null) {
     for (const [key, text] of Object.entries(templates)) {
+      /* never sent without a link, so it cannot send the gap. */
+      if (key === BOOKING_LINK_TEMPLATE) continue;
       if (text.includes('{{booking_url}}')) {
         errors.push(`templates.${key} uses {{booking_url}} but no booking_url is set — it would send an empty gap to a customer`);
       }
@@ -777,6 +814,12 @@ export function validateLeadRecoveryConfig(input: unknown): ConfigResult {
       if (pnSid && !PN_SID.test(pnSid)) errors.push('twilio.phone_number_sid must look like PNxxxxxxxx…');
       else twilio.phone_number_sid = pnSid;
     }
+  }
+  if (forwarding.mode === 'arc_first') {
+    /* said here because nothing in the dial result can tell the two apart. */
+    warnings.push(
+      'forwarding.mode is arc_first — a voicemail that picks up inside forwarding.timeout_seconds reads as an answered call, and that caller gets no text. keep the ring time shorter than the voicemail delay',
+    );
   }
   if (twilio.phone_number && twilio.phone_number === forwarding.destination) {
     errors.push('twilio.phone_number and forwarding.destination are the same number — the call would dial itself');

@@ -525,7 +525,9 @@ export function classifierFor(
   if (config.ai.provider === 'none') return new FakeClassifier();
   if (config.ai.provider === 'anthropic') {
     if (!env.anthropicKey) {
-      return new UnavailableClassifier('ANTHROPIC_API_KEY is not set on this deployment', 'anthropic');
+      /* worded without the variable's name on purpose: this sentence becomes a handoff's
+         reason, and a reason that reads like a credential is withheld from the queue. */
+      return new UnavailableClassifier('no model key is set on this deployment', 'anthropic');
     }
     return new AnthropicClassifier(env.anthropicKey, config.ai.model);
   }

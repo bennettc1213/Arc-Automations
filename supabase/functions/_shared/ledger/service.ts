@@ -7,6 +7,9 @@
  *   - `answerOutcome`  one tap from the needs-you screen, for one booked visit;
  *   - `markAsked`      the question was put in front of a signed-in member of the client.
  *
+ * and a third since ARC-GO-310, which is the one that changes a lead: `recordVisit`, the
+ * owner saying when the visit they agreed is. It is the engine's own `markBooked`.
+ *
  * What this file adds to those writers is everything a browser must not be trusted with:
  *
  *   - **who.** The actor is the verified sign-in, and their membership of the tenant was read
@@ -27,7 +30,7 @@
  * rule (`src/portal/lib/ledger.js`).
  */
 
-import { recordOutcome, requestOutcome, type EngineDeps } from '../engine/runtime.ts';
+import { markBooked, recordOutcome, requestOutcome, type EngineDeps } from '../engine/runtime.ts';
 import { parseOwnerAnswer, termsFromPayload } from './model.ts';
 
 /** one row of evidence, as the log holds it. */
@@ -174,6 +177,64 @@ export async function answerOutcome(
   const after = standing(await deps.evidence(who.tenantId, lead.correlationId), now);
   if (same(after.answer)) return { ok: true, result: { outcome, reason, written: false } };
   return refuse('conflict', 'this question was already answered. reload to see what was said.');
+}
+
+export interface VisitResult {
+  /** the visit time as recorded, an instant. */
+  appointmentAt: string;
+}
+
+/** how far ahead a visit may be put down. past that it is a typing mistake. */
+export const MAX_VISIT_DAYS_AHEAD = 365;
+/** and how far back: a visit already made can be put down late, but not from last season. */
+export const MAX_VISIT_DAYS_BEHIND = 60;
+
+/**
+ * The owner agreed a visit with the customer and says when it is (ARC-GO-310).
+ *
+ * The ledger's fifth link, and until this existed no screen could write it, so no job could
+ * ever count. It goes through the engine's own `markBooked` — the same call an operator's
+ * console makes — so a booking is one thing whoever records it: the automation stops, and
+ * one `lead_booked` row carries the time. A changed time is a second row and the first
+ * stays on the record. Nothing here says the visit happened; that is still the question
+ * asked afterwards.
+ *
+ * Refused: a time that is not a date, one more than two months back or more than a year
+ * ahead, a lead the customer opted out of, and a visit somebody has already answered about.
+ */
+export async function recordVisit(
+  deps: LedgerDeps,
+  actor: LedgerActor | null,
+  args: { tenantId: unknown; lead: unknown; appointmentAt: unknown },
+): Promise<LedgerOutcome<VisitResult>> {
+  const who = member(actor, args.tenantId);
+  if ('refusal' in who) return who.refusal;
+  if (!isReference(args.lead)) return refuse('invalid', 'lead is required');
+  if (typeof args.appointmentAt !== 'string' || args.appointmentAt.length > 40) return refuse('invalid', 'the visit time is required');
+
+  const at = new Date(args.appointmentAt);
+  if (Number.isNaN(at.getTime())) return refuse('invalid', 'the visit time is not a date');
+
+  const lead = await deps.engine.store.getLeadByCorrelation(who.tenantId, args.lead);
+  if (!lead || lead.isCanary) return refuse('not_found', 'there is no such lead on this account');
+  if (lead.status === 'suppressed') return refuse('invalid', 'this customer asked not to be contacted, so there is no visit to record');
+
+  const now = deps.engine.now();
+  if (at.getTime() < now.getTime() - MAX_VISIT_DAYS_BEHIND * 86_400_000) return refuse('invalid', 'that time is too long ago to be this visit');
+  if (at.getTime() > now.getTime() + MAX_VISIT_DAYS_AHEAD * 86_400_000) return refuse('invalid', 'that time is more than a year away');
+
+  const before = standing(await deps.evidence(who.tenantId, lead.correlationId), now);
+  if (before.answer) return refuse('conflict', 'this visit has already been answered about, so its time cannot be changed here.');
+
+  const wrote = await markBooked(deps.engine, {
+    tenantId: who.tenantId,
+    leadId: lead.id,
+    outcome: 'booked',
+    appointmentAt: at.toISOString(),
+    actor: who.userId,
+  });
+  if (!wrote.ok) return refuse('invalid', wrote.outcome);
+  return { ok: true, result: { appointmentAt: at.toISOString() } };
 }
 
 export interface AskedResult {

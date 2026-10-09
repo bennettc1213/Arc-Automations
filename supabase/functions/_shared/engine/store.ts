@@ -6,8 +6,10 @@
  * that has no network and no Postgres. So it talks to an interface, and there are two
  * implementations: `MemoryStore` here, and `supabaseStore()` next door.
  *
- * `MemoryStore` is not a mock. It enforces the same three things the schema enforces, and
- * a test that passes against it is a test about behaviour the database also guarantees:
+ * `MemoryStore` is not a mock. It enforces what the schema enforces, and a test that passes
+ * against it is a test about behaviour the database also guarantees — as far as that goes:
+ * `tests/lead-recovery-gate.test.js` runs the same scenarios on real Postgres, because a
+ * rule this store does not know about is one the tests here cannot see.
  *
  *   - **tenant scoping**: every method takes a tenant id and no method can return a row
  *     belonging to another one. The composite foreign keys in 0010 make that structural in
@@ -32,6 +34,7 @@ import type { LifecycleStore } from '../lifecycle/store.ts';
 import type { ConnectionStore } from '../connections/store.ts';
 import { SELECTABLE_STATUSES } from '../registry/capabilities.ts';
 import { getModule } from '../registry/modules.ts';
+import { findSecretShaped } from '../scheduler/model.ts';
 import type { RunState, StopReason } from './state-machine.ts';
 
 /* ── row shapes ─────────────────────────────────────────── */
@@ -741,6 +744,13 @@ export class MemoryStore extends MemoryLifecycleStore implements EngineStore {
     /* scheduled_actions_lifecycle_guard (0015): a shadow run acts on nothing. */
     if (run.runMode === 'shadow') {
       throw new LifecycleStoreError('shadow_no_effects', 'a shadow run records what would have happened and queues nothing');
+    }
+    /* scheduled_actions_no_secrets (0017): a payload shaped like a credential is refused.
+       this store did not enforce it until ARC-GO-320, and that is how a handoff whose
+       reason named an environment variable passed every test here and was refused by
+       Postgres — leaving the lead with nobody on it. */
+    if (findSecretShaped(row.payload ?? {})) {
+      throw new Error('action insert: new row for relation "scheduled_actions" violates check constraint "scheduled_actions_no_secrets"');
     }
 
     const existing = this.actions.find(

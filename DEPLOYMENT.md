@@ -254,6 +254,47 @@ no other existing table. Then:
 Until all three are done, a hosted form link (`/form/<key>`) says "This form is not
 available". See docs/architecture/ARC_NATIVE_INTAKE.md.
 
+### 0025 — the CRM workspace (ARC-360): after 0024, with `ops` redeployed and `crm` deployed
+
+`0025_crm_workspace.sql` adds what each pipeline stage is waiting on and `crm_save_stages`,
+the only way to change a pipeline. Then redeploy `ops` and `supabase functions deploy crm`
+(JWT verification on: every caller is a signed-in member of the client). Until `crm` is
+deployed the client's lead inbox says it is not switched on. See
+docs/architecture/ARC_CRM_WORKSPACE.md.
+
+### 0026 — the communications hub (ARC-370): after 0025, with `ops` and `crm` redeployed
+
+`0026_crm_communications.sql` adds conversations, messages, their evidence and
+`crm_queue_message`. Redeploy `ops` and `crm`. No client can send from it:
+`PRODUCTION_CHANNEL_ADAPTERS` is empty, and the screen says there is no channel. See
+docs/architecture/ARC_COMMUNICATIONS_HUB.md.
+
+### 0027 — booking (ARC-380): after 0026, with `ops` and `crm` redeployed and `native-booking` deployed
+
+`0027_crm_booking.sql` adds booking settings, appointments and `crm_book_appointment`. Then
+redeploy `ops` and `crm`, and `supabase functions deploy native-booking --no-verify-jwt` (the
+page key and the origin are the gates). Until then a hosted booking link (`/book/<key>`) says
+it is not available. See docs/architecture/ARC_BOOKING.md.
+
+### 0028 — onboarding (ARC-390): after 0027, with `ops` redeployed
+
+`0028_onboarding.sql` adds `tenant_onboarding`, `onboarding_facts` and
+`onboarding_apply_authority`, and `business_profiles.route`. Redeploy `ops` so the
+`onboarding-*` actions exist. Operators only. See docs/architecture/ARC_ONBOARDING.md.
+
+### Before any `db push`: the half-drafted 0029
+
+`supabase/migrations/0029_crm_sync_quality.sql` is an unfinished draft from paused work, and
+it is not in the repository. A `supabase db push` from a checkout that still holds it would
+apply it. Move it out of the migrations folder first.
+
+### No migration for the readiness gaps (ARC-GO-310)
+
+Closing the Lead Recovery readiness gaps changed no table. It needs these functions deployed
+or redeployed, because the shared engine they all carry changed: `twilio`, `dispatch`,
+`lead-intake`, `ledger` and `ops`. A client whose configuration lists an alert recipient on
+email stops validating, by design: change the recipient to a mobile number and publish again.
+
 ### Trying the ops console against staging (no production involved)
 
 The live site talks to the live project, so staging is tried from a local copy of the site.
@@ -351,19 +392,30 @@ supabase secrets set \
 The Twilio account SID and auth token are **Arc's, one pair for the whole
 platform**. Tenant separation is the phone number and `tenant_id` on every row
 — never a second credential. A tenant's subaccount SID, messaging service SID
-and phone number are non-secret identifiers and live in
-`module_configs.config.twilio`; the config validator refuses anything that
-looks like a credential, including a bare 32-character hex string, which is
-exactly what a Twilio auth token looks like.
+and phone number are non-secret identifiers and live under `twilio` in the
+client's published Lead Recovery configuration (0014; `module_configs.config`
+has been frozen since then and is read by nothing). The config validator
+refuses anything that looks like a credential, including a bare 32-character
+hex string, which is exactly what a Twilio auth token looks like.
+
+`ARC_SITE_URL` is also where an alert's link points: the owner's own needs-you
+screen, `<ARC_SITE_URL>/portal/dashboard/needs-you`. With it unset an alert
+carries no link.
 
 ---
 
 ## 5. The dispatcher's schedule
 
-Everything the engine will do in the future is a row in `scheduled_actions`.
-The first response is normally sent by the webhook's own dispatch call; the
-schedule exists for follow-ups, closes and retries, none of which are
-second-sensitive. Once a minute is right.
+Everything the engine will do in the future is a row in `scheduled_actions`,
+and this schedule is the only thing that sends. The webhooks queue and return:
+neither `twilio` nor `lead-intake` runs the queue. So the first response goes
+out on the next run, within about a minute of the missed call. That minute is
+the schedule's interval, not a measured figure, and the site claims no speed
+until one has been measured on a real line. Follow-ups, closes and retries ride
+the same schedule. Without it nothing is ever sent.
+
+The one follow-up waits for the business's opening hours: an hour after the
+first text, or at the next opening time when that hour falls outside them.
 
 Enable `pg_cron` and `pg_net`, then in the SQL editor:
 
@@ -406,6 +458,28 @@ always in step with the deployment.
 The console's **test phone routing** button prints all four URLs for the tenant
 you are looking at, alongside the TwiML that would be returned. Use that rather
 than transcribing from here.
+
+### Which number customers dial
+
+One setting, `forwarding.mode`, and the webhook URLs above are the same for both.
+
+- **`business_first`: the business keeps its number.** Its phone company is set
+  to send on the calls nobody answers (no answer and busy, never every call) to
+  the ARC number. A call that reaches ARC is already a missed one, so ARC rings
+  nobody: the caller hears one sentence and the lead is recorded from that call.
+  ARC never sees the calls the business did answer, so "calls you answered
+  yourself" is not shown for this client. This is the setup the site describes.
+- **`arc_first`: the ARC number is the one customers dial.** ARC rings
+  `forwarding.destination` for `forwarding.timeout_seconds` and reads the dial
+  result. Nothing in that result can tell a person from a voicemail that picked
+  up inside the ring time: such a call reads as answered and gets no text. Keep
+  the ring time shorter than the voicemail delay. The validator says so every
+  time this setup is saved.
+
+A configuration published before the setting existed means `arc_first`.
+
+The caller's network name is never used. Where a carrier supplies one it is
+often a label or a town, so the first text opens with no name.
 
 ### How a webhook finds its tenant
 
@@ -518,6 +592,17 @@ npm i --prefix ../pglite @electric-sql/pglite
 ARC_PGLITE_DIR=../pglite npm test
 ```
 
+**Before deploying a function or applying a migration, run the gate** (ARC-GO-320):
+
+```bash
+ARC_PGLITE_DIR=../pglite npm run gate
+```
+
+It is the same suite, and it fails unless every test ran on real SQL. `npm test` passes with
+the database suites skipped, and two engine defects sat behind that skip until
+`tests/lead-recovery-gate.test.js` ran the whole Lead Recovery path on real Postgres. See
+section 7 of `docs/architecture/ARC_LEAD_RECOVERY_READINESS.md`.
+
 `npm test` runs the portal's derivations **and** the whole Lead Recovery engine
 — intake, replies, the dispatcher, retries, suppression, canaries, tenancy,
 versioned configuration — against `MemoryStore` and recording senders. It
@@ -560,7 +645,13 @@ Stated plainly, because it is the difference between "implemented" and
   inbound webhook from a real Twilio account.
 - No number has been purchased, no call forwarded, no SMS sent. Every test and
   every operator control in the console uses a recording sender.
+- A call sent on by a business's own phone company has never reached the voice
+  webhook. Whether `From` is still the customer's number on a forwarded call,
+  and what the caller hears between the business's ring and ARC's sentence, are
+  to be proved on a real line.
+- The time from a missed call to the text has not been measured.
 - `AnthropicClassifier` is covered by the strict output parser's tests; it has
   not been run against the live API from this deployment.
 
-All three need credentials that only exist outside this repository.
+All of these need credentials, or a real phone line, that only exist outside
+this repository.

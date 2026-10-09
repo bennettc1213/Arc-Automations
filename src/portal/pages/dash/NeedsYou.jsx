@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { DateTime } from 'luxon';
 import { Link } from 'react-router-dom';
 import { Empty, Panel, Pill } from '../../components/ui';
 import { site } from '../../../data/site';
@@ -12,9 +13,10 @@ import './Owner.css';
 /**
  * ARC-MK-200 — needs you: what do I have to do?
  *
- * everything waiting on the owner, in three kinds: an outcome question for a visit whose
- * time has passed, a lead arc stopped on and handed to a person, and anything that did not
- * go the usual way. the list is derived on every read (`ownerNeeds`) — nothing is stored,
+ * everything waiting on the owner, in four kinds: an outcome question for a visit whose
+ * time has passed, a customer who wrote back and has no visit on record yet (ARC-GO-310 —
+ * the owner puts the agreed time in here, which is what lets the job count), a lead arc
+ * stopped on and handed to a person, and anything that did not go the usual way. the list is derived on every read (`ownerNeeds`) — nothing is stored,
  * so nothing here can go stale.
  *
  * ARC-MK-220 — the question is answered here, with one tap. the six answers are the
@@ -29,7 +31,7 @@ import './Owner.css';
  * nothing, and none pretends.
  */
 
-const KIND_TONE = { outcome: 'warn', handoff: 'fail', other: 'neutral' };
+const KIND_TONE = { outcome: 'warn', visit: 'warn', handoff: 'fail', other: 'neutral' };
 
 /* what the owner is told before the tap. words only: whether it counts is the ledger's. */
 const WHAT_HAPPENS = {
@@ -107,6 +109,71 @@ function AnswerButtons({ send, lead, changing = false }) {
   );
 }
 
+/**
+ * ARC-GO-310 — "we agreed a visit for tuesday at two". a date, a time and one button.
+ *
+ * the time typed is the business's own clock, whatever the phone's is set to: it is read in
+ * the business's timezone and sent as an instant. the page decides nothing — whether the
+ * time is acceptable is the server's, and after the tap it reloads.
+ */
+function VisitForm({ send, lead, timezone }) {
+  const [when, setWhen] = useState('');
+  const [state, setState] = useState({ kind: 'idle' });
+  const busy = state.kind === 'busy';
+
+  async function submit(event) {
+    event.preventDefault();
+    const at = DateTime.fromISO(when, { zone: timezone });
+    if (!when || !at.isValid) {
+      setState({ kind: 'error', message: 'pick the day and the time of the visit first.' });
+      return;
+    }
+    setState({ kind: 'busy' });
+    try {
+      const message = await send(at.toUTC().toISO());
+      setState({ kind: 'done', message });
+    } catch (error) {
+      setState({ kind: 'error', message: error.message });
+    }
+  }
+
+  if (state.kind === 'done') {
+    return (
+      <p className="ow-answer__done" role="status">
+        {state.message}
+      </p>
+    );
+  }
+
+  return (
+    <form className="ow-answer" onSubmit={submit}>
+      <label className="ow-answer__ask" htmlFor={`visit-${lead}`}>
+        when is the visit?
+      </label>
+      <input
+        id={`visit-${lead}`}
+        className="ow-visit__when"
+        type="datetime-local"
+        value={when}
+        disabled={busy}
+        onChange={(event) => setWhen(event.target.value)}
+      />
+      <button type="submit" className="ws-btn ws-btn--primary ow-tap" disabled={busy}>
+        save the visit time
+      </button>
+      <p className="ow-answer__note">
+        arc stops texting this customer once a visit is saved. after the visit, we ask you one question: did the job happen?
+      </p>
+      {busy && <p className="ow-answer__note" role="status">saving the visit…</p>}
+      {state.kind === 'error' && (
+        <p className="ow-answer__error" role="alert">
+          {state.message}
+        </p>
+      )}
+    </form>
+  );
+}
+
 export default function NeedsYou({ data, base, live, onChanged }) {
   const needs = ownerNeeds(data);
   const tz = data.tenant?.timezone ?? 'UTC';
@@ -158,6 +225,24 @@ export default function NeedsYou({ data, base, live, onChanged }) {
     return `recorded. ${WHAT_HAPPENS[answer.counts]}`;
   };
 
+  const visitSender = (item) => async (appointmentAt) => {
+    if (!canWrite) {
+      const what = needs.example ? 'an example' : 'a preview';
+      return `this is ${what}, so nothing was saved. on your own account the visit time is recorded, and arc stops texting that customer.`;
+    }
+    try {
+      await ledgerApi(tenantId).visit(item.lead, appointmentAt);
+    } catch (error) {
+      if (isNotDeployed(error)) {
+        setOff(true);
+        throw new Error('saving a visit from this screen is not switched on for your account yet. email us the time and we record it for you.');
+      }
+      throw error;
+    }
+    await onChanged?.();
+    return 'saved. after the visit, we ask you whether the job happened.';
+  };
+
   if (needs.total === 0 && needs.answered.length === 0) {
     return (
       <div className="ow">
@@ -192,6 +277,7 @@ export default function NeedsYou({ data, base, live, onChanged }) {
                   <p className="ow-need__reason">if nobody answers, it counts by itself after {item.countsAt}.</p>
                 )}
                 {group.key === 'outcome' && <AnswerButtons send={sender(item)} lead={item.key} />}
+                {group.key === 'visit' && <VisitForm send={visitSender(item)} lead={item.key} timezone={tz} />}
                 {item.to && (
                   <Link className="ws-btn ow-tap" to={`${base}/${item.to}`}>
                     see the record

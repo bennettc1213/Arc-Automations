@@ -173,6 +173,29 @@ export async function refused(db, sql, params = []) {
 
 const IDENT = /^[a-z_][a-z0-9_]*$/;
 
+/**
+ * A timestamp as PostgREST sends it. Its answer is JSON, so a `timestamptz` reaches the
+ * adapters as text — `2026-10-09T21:31:13.452+00:00`, trailing zeros dropped — and never as
+ * a `Date`. PGlite hands back a `Date`; left as one, code that is right in production
+ * (`a.occurredAt.localeCompare(b.occurredAt)`) fails here, and code that only works on a
+ * `Date` would pass here and fail in production (ARC-GO-320).
+ */
+export function postgrestTimestamp(value) {
+  const [stamp, fraction] = value.toISOString().slice(0, -1).split('.');
+  const digits = (fraction ?? '').replace(/0+$/, '');
+  return `${stamp}${digits ? `.${digits}` : ''}+00:00`;
+}
+
+/** Every `Date` in an answer, at any depth, as the text PostgREST would have sent. */
+function wire(value) {
+  if (value instanceof Date) return postgrestTimestamp(value);
+  if (Array.isArray(value)) return value.map(wire);
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, wire(inner)]));
+  }
+  return value;
+}
+
 function ident(name) {
   if (!IDENT.test(name)) throw new Error(`restClient: unsupported identifier ${name}`);
   return `"${name}"`;
@@ -211,7 +234,7 @@ export function restClient(db, { role = 'service_role', sub = null } = {}) {
         await tx.query(`set local role ${role}`);
         return await fn(tx);
       });
-      return { data, error: null };
+      return { data: wire(data), error: null };
     } catch (error) {
       return { data: null, error: { code: error.code ?? null, message: error.message, details: error.detail ?? null } };
     }

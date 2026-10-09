@@ -337,6 +337,19 @@ describe('needs you', () => {
     assert.match(question.reason, /did the job happen\?/);
   });
 
+  test('a customer who wrote back and has no visit yet is asked for one, on the page', () => {
+    /* ARC-GO-310: until somebody records the visit, the job cannot count. */
+    const events = [...liveEvents(), ...chain('lead-5', { name: 'Robin Example', phone: '+16145550105', arrived: daysAgo(1) })];
+    const needs = ownerNeeds(liveData(events));
+    assert.deepEqual(needs.groups.map((group) => group.key), ['outcome', 'visit', 'handoff']);
+    const [visit] = needs.groups[1].items;
+    assert.deepEqual([visit.lead, visit.title], ['lead-5', 'Robin Example']);
+
+    /* recording the visit takes it off the list, with nothing stored. */
+    const booked = [...liveEvents(), ...chain('lead-5', { phone: '+16145550105', arrived: daysAgo(1), visitAt: daysAhead(1) })];
+    assert.equal(ownerNeeds(liveData(booked)).groups.some((group) => group.key === 'visit'), false);
+  });
+
   test('answering the question takes it off the list, with nothing stored', () => {
     const answered = [...liveEvents(), ...chain('lead-2', { phone: '+16145550102', arrived: daysAgo(5), visitAt: daysAgo(2), answers: [{ id: 'a2', at: daysAgo(1), outcome: 'happened' }] }).slice(-1)];
     assert.equal(ownerNeeds(liveData(answered)).groups.some((group) => group.key === 'outcome'), false);
@@ -543,6 +556,17 @@ describe('the four screens, rendered', () => {
     assert.doesNotMatch(html, /not switched on/);
     assert.match(render('NeedsYou', live), /did the job happen\?/);
     assert.match(render('NeedsYou', { ...live, data: liveData(chain('lead-1', { reply: false })) }), /nothing needs you/);
+  });
+
+  test('needs you asks for the visit time of a customer who wrote back, in words an owner would use', () => {
+    /* ARC-GO-310. */
+    const events = [...liveEvents(), ...chain('lead-5', { name: 'Robin Example', phone: '+16145550105', arrived: daysAgo(1) })];
+    const html = render('NeedsYou', { ...live, data: liveData(events) });
+    assert.match(html, /book the visit/);
+    assert.match(html, /when is the visit\?/);
+    assert.match(html, /type="datetime-local"/);
+    assert.match(html, /save the visit time/);
+    assert.equal(ownerCopyProblem(plain(html)), null);
   });
 
   test('account shows the example settings in the demo, and the reason when there are none', () => {

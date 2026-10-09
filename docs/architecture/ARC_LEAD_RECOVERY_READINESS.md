@@ -3,12 +3,21 @@
 **Prompt:** `ARC-GO-300` · **Checked:** October 8, 2026, against the working tree at `1.39.0`
 **Kind:** read-only. Nothing in the engine, the schema or a hosted project was changed.
 
+**Updated:** October 9, 2026, by `ARC-GO-310` (`1.40.0`). Every code gap below is closed, and
+each has a test named after its promise in `tests/lead-recovery-readiness.test.js`. Section 2
+reads as it stands now. Section 3 is kept as the finding of October 8, so the file and line
+references in it describe the code before the fix. Section 4 says how each gap was closed.
+Nothing hosted has changed: section 6 is still all to do.
+
+**Tested:** October 9, 2026, by `ARC-GO-320` (`1.40.1`). Section 7 says what the safety test
+pass walked through, the two defects it found and fixed, and what it left for a decision.
+
 The question this answers: what stands between the code and a real homeowner's phone?
 
 Each item reads one of three ways.
 
 - **Done** — the code does it and a test named after the promise holds it.
-- **Gap** — the code does not do it, or does it wrongly. These are the scope of `ARC-GO-310`.
+- **Gap** — the code does not do it, or does it wrongly. These were the scope of `ARC-GO-310`.
 - **Hosted check** — the code is written, and only a real Twilio account, a real handset or the
   hosted Supabase project can prove it. These belong to `ARC-GO-330`.
 
@@ -16,24 +25,24 @@ Each item reads one of three ways.
 
 ## 1. The short answer
 
-The safety core is sound. Opt-out, send-once, the canary, the compliance gate, the pause and the
-handling of a provider that does not answer are all built, and 370 tests across the six Lead
-Recovery and ledger files pass.
+The safety core was sound on October 8: opt-out, send-once, the canary, the compliance gate, the
+pause and the handling of a provider that does not answer were all built.
 
-What is missing is the ordinary path. Today a customer can be texted, can reply, and then the
-loop stops being a product:
+What was missing was the ordinary path. A customer could be texted, could reply, and then the
+loop stopped being a product. Four things stood out, and each is now closed:
 
-1. **No job can count.** Nothing on any screen records that a visit was booked, so the ledger's
-   fifth link is never written and every lead stays short of "counts".
-2. **Only the customer's first reply is read.** A second text is dropped or makes the webhook
-   fail, and its words never reach the safety rules.
-3. **The owner is told about some handoffs and not others,** and the link in the alert opens a
-   page the owner cannot sign in to.
-4. **The site says "your unanswered calls are forwarded to ARC". The engine is built the other
-   way round:** the ARC number rings first and forwards to the business.
+1. **No job could count,** because no screen recorded a booked visit. The owner now saves the
+   visit time on the needs-you screen, and an operator can do the same in the console.
+2. **Only the customer's first reply was read.** Every reply is now read by the safety rules
+   when it arrives, whatever the run is doing, and a second reply no longer makes the webhook
+   fail.
+3. **The owner was told about some handoffs and not others,** with a link they could not open.
+   Every handoff that says to alert the owner now does, and the link is their own needs-you
+   screen.
+4. **The site says "your unanswered calls are forwarded to ARC" and the engine was built the
+   other way round.** Both setups are now supported, chosen per client.
 
-Thirteen gaps are listed in section 4, and the four decisions they depended on are made
-(section 5). None needs a new engine, a per-client workflow or the CRM.
+What stands between the code and a real phone is now only hosted work: section 6.
 
 ---
 
@@ -41,24 +50,25 @@ Thirteen gaps are listed in section 4, and the four decisions they depended on a
 
 | # | Item | Reads | In one line |
 |---|---|---|---|
-| 1 | Telephony path | **Gap** and hosted check | Built for an ARC number in front of the business. The setup the site promises is not supported, and a voicemail pickup reads as answered. |
+| 1 | Telephony path | Done, and hosted check | Either setup, chosen per client: the business keeps its number and forwards unanswered calls, or the ARC number is in front. Neither has met a real line. |
 | 2 | Business-text registration per client | Done, and hosted check | Nothing sends or activates unless the client's status is `approved`. The status is typed by an operator; the registration itself has never been filed. |
-| 3 | Opt-out | **Done** | STOP and its plain-language forms suppress the number, cancel the queue and end the run. Checked again at the moment of sending. |
-| 4 | Stop on reply | Done, with a **gap** | Any reply cancels the chasing. A bare "yes" then goes nowhere, and a second reply is not handled. |
-| 5 | Human takeover | Done, with a **gap** | Taking over cancels everything and silences the run. The console offers it only on a lead that is already a handoff. |
-| 6 | Safety classification | Done, with a **gap** | Rules run before any model and a model cannot clear them. They run on the first reply only. |
-| 7 | Send-once | **Done** | One claim per action, one reserved effect per message, one event per send. |
-| 8 | A canary that cannot reach a handset | **Done**, and hosted check | The sender is chosen from the lead's canary flag in one place. A production canary has not been run. |
-| 9 | The owner's alert on a handoff | **Gap** | Sent for a safety or classifier handoff. Not sent for a failed, undeliverable or unknown send. Wrong link. Email recipients ignored. |
-| 10 | How a lead is booked | **Gap** | No message after the customer replies, no booking link, and no screen that records a visit time. |
-| 11 | Ambiguous provider outcomes | Done, with a **gap** | An unknown outcome is held and never resent. Nothing lets an operator settle it afterwards. |
-| 12 | Deployment checklist | **Gap** and hosted check | `DEPLOYMENT.md` is wrong about when the first text is sent and stops at migration 0024. Nothing Lead Recovery needs is deployed to live. |
+| 3 | Opt-out | Done | STOP and its plain-language forms suppress the number, cancel the queue and end the run. Checked again at the moment of sending. An operator can suppress a number from the console. |
+| 4 | Stop on reply | Done | Any reply cancels the chasing. A bare "yes" tells the owner, and the lead still closes itself. |
+| 5 | Human takeover | Done | Taking over cancels everything and silences the run. The console offers it on any open lead. |
+| 6 | Safety classification | Done | Rules run before any model and a model cannot clear them. They run on every reply. |
+| 7 | Send-once | Done | One claim per action, one reserved effect per message, one event per send. |
+| 8 | A canary that cannot reach a handset | Done, and hosted check | The sender is chosen from the lead's canary flag in one place. A production canary has not been run. |
+| 9 | The owner's alert on a handoff | Done | Sent for every handoff that asks for it, by text, with a link to the owner's own screen. An email recipient is refused at validation. |
+| 10 | How a lead is booked | Done | The customer gets one reviewed message after replying, with the booking link where one is set. The owner or an operator records the visit time. |
+| 11 | Ambiguous provider outcomes | Done | An unknown outcome is held and never resent, and an operator settles it by saying what the provider shows. |
+| 12 | Deployment checklist | Done, and hosted check | `DEPLOYMENT.md` matches the code. Nothing Lead Recovery needs is deployed to live. |
 
 ---
 
-## 3. Item by item
+## 3. Item by item — as found on October 8
 
-File references are from the repository root. Line numbers are as of the date above.
+This section is the finding, kept as written. Every gap it names is closed; section 4 says
+how. File references are from the repository root. Line numbers are as of October 8.
 
 ### 3.1 Telephony path — gap, and hosted check
 
@@ -298,37 +308,43 @@ file from the paused `ARC-395` sitting in the migrations folder, and a push woul
 
 ---
 
-## 4. The gaps — the scope of `ARC-GO-310`
+## 4. The gaps, and how `ARC-GO-310` closed each
 
-In the order they should be closed. Sizes are relative.
+In the order they were closed. No table changed and there is no migration.
 
-| # | Gap | From | Size | Kind |
-|---|---|---|---|---|
-| 1 | Every reply is read by the safety rules, whatever the run's state; a second reply never makes the webhook fail | E | Small | Engine |
-| 2 | Every handoff that says to alert the owner does | F | Small | Engine |
-| 3 | The alert links to the owner's needs-you screen | G | Small | Engine |
-| 4 | A bare "yes" tells the owner and leaves the lead able to close | D | Small | Engine |
-| 5 | The follow-up respects the business's hours | below | Small | Engine |
-| 6 | A booked visit can be recorded: by the owner on needs-you, and by an operator in the console | J | Medium | Portal, console, `ledger` function |
-| 7 | The customer gets one reviewed message after replying, with the booking link where one is set | I | Medium | Template and config schema |
-| 8 | The telephony setup is chosen, and the engine supports it | A | Medium | Engine and config schema |
-| 9 | A voicemail pickup does not read as answered | B | Small to medium | Engine, depends on 8 |
-| 10 | An unknown send can be settled by an operator | K | Small | `ops` and console |
-| 11 | An alert recipient on email is alerted or refused | H | Small | Validator, or a second channel |
-| 12 | The operator's minimum: stop any lead, suppress a number, book or close a lead | 3.3, 3.5 | Small | Console only; the actions exist |
-| 13 | The documents match the code: first-text timing, 0025 to 0028, the caller-name greeting | L, M, C | Small | Docs, one line of engine |
+| # | Gap | From | How it was closed |
+|---|---|---|---|
+| 1 | Every reply is read by the safety rules, whatever the run's state; a second reply never makes the webhook fail | E | The rules run in `handleInboundMessage` on every message, before anything else is decided. A hit goes to a person: a new handoff, a second alert on a lead a person already has, or a lead of its own when the run had finished. The model then reads everything the customer wrote, not one message. |
+| 2 | Every handoff that says to alert the owner does | F | `openHandoffFor` reads the recipients from the run's own pinned configuration when it is given none. An undelivered text, reported by a callback that holds no lease, queues its alert. |
+| 3 | The alert links to the owner's needs-you screen | G | `urls.ownerNeedsYou`, in all four functions. |
+| 4 | A bare "yes" tells the owner and leaves the lead able to close | D | The acknowledgement queues an alert, and every reply puts the self-closing deadline back, keyed on the message. |
+| 5 | The follow-up respects the business's hours | below | `followupAt`: an hour later, or the next opening time. The lead's deadline runs from when the follow-up will go. |
+| 6 | A booked visit can be recorded: by the owner on needs-you, and by an operator in the console | J | `ledger` action `visit-booked` → `recordVisit` → the engine's own `markBooked`. A "book the visit" group on needs-you, derived on every load. The console's recent leads carry the same control. |
+| 7 | The customer gets one reviewed message after replying, with the booking link where one is set | I | Templates `reply_ack` and `reply_ack_booking`, sent once per lead from `route_to_contractor` through the one effect gate. |
+| 8 | The telephony setup is chosen, and the engine supports it | A | `forwarding.mode`: `business_first` or `arc_first`. `voiceResponse` decides what the voice webhook answers, and a forwarded call is recorded as the missed call it is. |
+| 9 | A voicemail pickup does not read as answered | B | In `business_first`, which the pilot uses, ARC dials nobody, so there is no pickup to misread. `arc_first` cannot tell the two apart from the dial result; it now says so as a warning every time it is validated. See the note below. |
+| 10 | An unknown send can be settled by an operator | K | `ops` action `lead-recovery-settle-send` → `settleUnknownSend`. It records what the provider shows and resends nothing. |
+| 11 | An alert recipient on email is alerted or refused | H | Refused by the validator, with the reason. |
+| 12 | The operator's minimum: stop any lead, suppress a number, book or close a lead | 3.3, 3.5 | Buttons on every open lead in the console's Lead Recovery panel, each with what it will do printed before the press. |
+| 13 | The documents match the code: first-text timing, 0025 to 0028, the caller-name greeting | L, M, C | `DEPLOYMENT.md` and the dispatcher's header say "within about a minute". The guide lists 0025 to 0028. The caller's network name is no longer used. |
 
-**The follow-up's timing (gap 5).** `FOLLOWUP_AFTER_MINUTES` is a fixed 60
-(`engine/runtime.ts:109`, queued at `:1465`). A call missed at 10:30pm with the default
-out-of-hours behaviour gets its first text at once and its follow-up at 11:30pm. Confirmed by
-running it. The stop conditions are all in place: a reply, a stop, a takeover, a booking, a close
-and a pause each cancel it or refuse it at the send. Only the time is wrong. The engine has no
-notion of quiet hours beyond the business's opening hours and the four out-of-hours behaviours.
+**One finding made along the way.** A send refused at the last moment because the sequence had
+rightly stopped (the customer replied, opted out or was booked, a person took the lead, or the
+message had already gone) was recorded as a failed send and opened a handoff. While those
+handoffs told nobody it did little harm. With every failed send now alerting the owner it would
+have told them a customer was left unanswered who was not. Those refusals now cancel the
+action and open nothing.
 
-Gaps 1 to 5 are safety and honesty. Gaps 6 to 9 follow the decisions in section 5, which are
-made.
+**What gap 9 leaves.** `arc_first` still reads a voicemail that picks up inside the ring time
+as an answered call. The fix there is to make whoever answers press a key, which changes what
+the business hears on every call and needs a real line to prove. It was not built, because the
+pilot does not use that setup. A client put on `arc_first` should be told, and the ring time
+kept shorter than their voicemail delay.
 
-Not gaps, and not to be built: a new engine, a per-client workflow, anything that depends on the
+**Smaller, and left as it was.** A failed alert leaves an attempt row and no retry. An alert
+whose outcome is unknown is now on the operator's list of sends to settle.
+
+Not gaps, and not built: a new engine, a per-client workflow, anything that depends on the
 CRM, a model writing a message, or the owner answering by text.
 
 ---
@@ -363,10 +379,15 @@ Bennett approved all four recommendations on October 9, 2026. They are the brief
 
 Nothing below can be closed from the repository. Each is its own authorised action.
 
+- `npm run gate` passing on the commit being deployed. It is the whole suite on real SQL and
+  fails unless every test ran (section 7).
 - Staging brought level with live. The paused 0029 draft moved out of the migrations folder
   first.
 - `twilio`, `dispatch`, `lead-intake` and `ledger` deployed; `ingest` and `ops` redeployed so the
-  five ledger event types are accepted and written.
+  five ledger event types are accepted and written. All of them carry the `ARC-GO-310` engine.
+- The pilot client's configuration published with `forwarding.mode` set to `business_first`.
+- A call sent on by a phone company's no-answer forwarding reaches the voice webhook with the
+  customer's own number as the caller, and the caller hears the one sentence.
 - Secrets set: the Twilio pair, the public functions URL, the dispatch key, the site URL, and the
   model key if replies are to be classified rather than all handed to a person.
 - The dispatcher's once-a-minute schedule created, and a first run seen in the logs.
@@ -375,6 +396,9 @@ Nothing below can be closed from the repository. Each is its own authorised acti
 - A call placed and left unanswered produces one lead and one text on a handset ARC owns; an
   answered call produces neither.
 - A reply, a STOP, a second reply and a redelivered webhook each behave as the tests say.
+- Two dispatcher runs overlapping on the hosted database send one text. The suite can only
+  run them one after the other.
+- With the model key left unset, a reply reaches the owner as a handoff with its reason.
 - The delivery callback arrives and settles the message.
 - The time from the missed call to the text, measured. Until then the site claims no speed.
 - Business-text registration filed for the pilot client, and its approval recorded.
@@ -383,7 +407,105 @@ Nothing below can be closed from the repository. Each is its own authorised acti
 
 ---
 
-## 7. How this was checked
+## 7. The safety test pass — `ARC-GO-320`
+
+The suite is `tests/lead-recovery-gate.test.js`. The gate is `npm run gate`.
+
+### 7.1 What it does differently
+
+Every earlier suite tests a part: the engine on its in-memory store, one migration, one rule.
+This one goes in by the doors a request really uses and reads the result where the owner
+reads it.
+
+- **The phone door.** A webhook signed the way Twilio signs it, posted at
+  `twilio/handler.ts`. The handlers used to live inside `Deno.serve`, where a test could not
+  reach them; `index.ts` now holds only the secrets, the database client and the senders.
+- **The queue.** `runDueActions` for every client, as the `dispatch` function calls it.
+- **The owner's door.** `ledger/handler.ts`, as whoever the sign-in verified as.
+- **The owner's screen.** The portal's own `buildDashboardData` over the `events` rows.
+
+Each scenario runs twice: on the in-memory store, and on real Postgres with every migration
+applied, through the production adapter. The two must agree.
+
+### 7.2 What it proves
+
+| The roadmap asked for | Proved by |
+|---|---|
+| One run end to end, missed call to confirmed job | A forwarded call, one text, a delivery receipt, a reply, the owner alerted and the customer told, the owner saving the visit, the question asked once the visit has passed, "it happened", then the ledger reading *confirmed* with the fee from the terms on record. Every link is on the log once. A website-form lead takes the same path. |
+| STOP between queueing and sending | Three moments: before the dispatcher ran, between the first text and the follow-up, and after a worker had already claimed the send. Nothing is sent after any of them. A stop belongs to one client. |
+| Two workers | Two dispatchers at once send one text. A worker that stalls is replaced, and when it wakes it can neither send nor close the action. |
+| A provider timeout | Asked once, never resent by the queue or by an operator's retry, counted as no send, handed to a person, the owner told, and settled by an operator without sending anything. A number refused for good and an undelivered text are handed over once. |
+| A paused module | The queued follow-up does not go. A new call is still answered on the phone and recorded, with no run and no text. Time passing un-pauses nothing. |
+| A safety message | In the first reply, and after the lead was already routed. A model that says "routine" cannot clear it. With no model key every reply goes to a person. |
+| A duplicate webhook | A call, a reply, a STOP, a delivery receipt and a dial result, each delivered more than once, each counted once. |
+| Tenant isolation | The number that was called owns the request, whatever else the request says. A test press for one client leaves another's customer waiting for the real dispatcher. |
+| The new client write path | No sign-in is refused. A member of another client is refused before anything is read, and finds nothing under their own client. A body cannot claim a client, a role or who answered. |
+| The signature | Seven kinds of forged request are refused, and the database client is never built for any of them. |
+| A canary | The production dispatcher picks it up with the live sender in its hands, and the live sender is not used. No figure counts it. |
+| What a browser can reach | Asked of real Postgres as a signed-in member: their own rows and nobody else's, nothing of the queue, no write of any kind, none of the worker's functions. |
+
+### 7.3 What it found, and fixed
+
+1. **With no model key set, a reply left the lead with nobody on it.** The handoff's reason
+   read "ANTHROPIC_API_KEY is not set". The queue refuses a payload shaped like a credential,
+   and that name is. The action was refused, the run had already been marked as needing a
+   person, and the retry saw that state and cancelled itself. No handoff, no alert. Running
+   without the key is a supported setup and the likeliest one for a first pilot.
+   *Fixed:* the queue keeps the action and withholds the words; the reason no longer names the
+   variable; the step is queued before the run changes state. The same fix covers a provider
+   error whose text reads like a credential, and a customer whose own words do.
+2. **A webhook that failed halfway was dropped when the provider sent it again.** Twilio
+   redelivers when it gets no success, and a fault partway through the handler looks the same.
+   By then the message was on record, so the redelivery was read as a duplicate. An opt-out
+   could be left with no suppression, a safety word with nobody told.
+   *Fixed:* a redelivery is finished unless what the message called for is provably there.
+
+Both passed every earlier test, for the same reason: the in-memory store did not enforce the
+queue's credential check, and nothing made a write fail partway. The in-memory store now
+enforces the check.
+
+Three smaller things in the tests themselves: a settings test that only runs on real SQL was
+still expecting four message templates; the SQL test harness handed back date objects where
+the real API sends text, which made correct code fail there; and `npm test` passes with every
+database suite skipped. `npm run gate` is the answer to the last one.
+
+### 7.4 What it found, and left
+
+Each needs a decision or a hosted project, not a test.
+
+1. **The event log has no database guard against the service role.** A browser cannot write
+   `events` at all: that is row level security, and the suite proves it. Code holding the
+   service key can update or delete a row, and nothing in the schema refuses it. Other
+   append-only tables have a trigger. Adding one here is a migration, and the test-client purge
+   would need its exception.
+2. **A paused client's owner gets no alert text.** While a client is paused, a reply that says
+   "I can smell gas" still reaches a person's list on the needs-you screen and in the console.
+   No text goes to the owner, because a paused client sends nothing. That is the existing
+   rule, and the suite states it rather than hiding it. Whether a safety alert to the owner
+   should be exempt from a pause is a decision.
+3. **A missed call whose own recording fails halfway is not picked up again.** The fix in 7.3
+   covers messages. If the database fails during the few writes that record a new call, the
+   lead can be on record with no text queued, and a redelivery finds the lead and stops. In
+   the pilot's setup the caller still hears their sentence.
+4. **Two connections at once.** The claim's `for update skip locked` is exercised one call
+   after another, because the test database has one connection. Section 6 asks for it on the
+   hosted one.
+
+### 7.5 Running it
+
+```
+ARC_PGLITE_DIR=<a directory holding @electric-sql/pglite> npm run gate
+```
+
+It prints the count and either "PASSED, on real SQL, with nothing skipped" or what failed or
+was skipped. Without PGlite it does not run and says so. On October 9 it ran 2,338 tests.
+
+It does not prove anything in section 6. No test here has met Twilio, a handset or the hosted
+project.
+
+---
+
+## 8. How this was checked
 
 - Read end to end: `supabase/functions/twilio/index.ts`, `dispatch/index.ts`,
   `_shared/engine/` (`runtime`, `rules`, `templates`, `state-machine`), `_shared/twilio.ts`,

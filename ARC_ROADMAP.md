@@ -1,6 +1,6 @@
 # ARC roadmap — at a glance
 
-**Revised:** 2026-10-08, at repository version `1.34.0`.
+**Revised:** 2026-10-09, at repository version `1.40.1`.
 
 The roadmap itself is
 [docs/architecture/ARC_IMPLEMENTATION_ROADMAP.md](docs/architecture/ARC_IMPLEMENTATION_ROADMAP.md).
@@ -11,7 +11,7 @@ below. This page is only the order.
 back, every step shown in a proof ledger. The CRM track and the other complex work are paused,
 not deleted.
 
-**Done:** `ARC-MK-100` (`1.34.0`), `ARC-MK-110` (`1.35.0`), `ARC-MK-120` (`1.36.0`), `ARC-MK-200` (`1.37.0`), `ARC-MK-210` (`1.38.0`), `ARC-MK-220` (`1.39.0`). **Drafted:** `ARC-MK-130` (pilot numbers to agree). **Mapped:** `ARC-GO-300` ([the readiness map](docs/architecture/ARC_LEAD_RECOVERY_READINESS.md)). **Next:** `ARC-GO-310`.
+**Done:** `ARC-MK-100` (`1.34.0`), `ARC-MK-110` (`1.35.0`), `ARC-MK-120` (`1.36.0`), `ARC-MK-200` (`1.37.0`), `ARC-MK-210` (`1.38.0`), `ARC-MK-220` (`1.39.0`), `ARC-GO-300` ([the readiness map](docs/architecture/ARC_LEAD_RECOVERY_READINESS.md)), `ARC-GO-310` (`1.40.0`), `ARC-GO-320` (`1.40.1`, the gate is `npm run gate`). **Drafted:** `ARC-MK-130` (pilot numbers to agree). **Next:** `ARC-GO-330`.
 
 | Phase | ID | Step |
 |---|---|---|

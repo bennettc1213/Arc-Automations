@@ -14,7 +14,7 @@
  */
 
 import type { LeadRecoveryConfig } from '../lead-recovery-config.ts';
-import { DEFAULT_OPT_OUT_LANGUAGE, DEFAULT_TEMPLATES } from '../lead-recovery-config.ts';
+import { BOOKING_LINK_TEMPLATE, DEFAULT_OPT_OUT_LANGUAGE, DEFAULT_TEMPLATES } from '../lead-recovery-config.ts';
 import { isOpenAt, nextOpenAt } from './hours.ts';
 
 export interface RenderInput {
@@ -148,6 +148,30 @@ export function renderFollowup(config: LeadRecoveryConfig, customerName?: string
 /** Sent once, when a person takes over, so the customer is not left on a dead thread. */
 export function renderHandoffAck(config: LeadRecoveryConfig, customerName?: string | null): string {
   return withOptOut(render(config.templates.handoff_ack ?? DEFAULT_TEMPLATES.handoff_ack, { config, customerName }), config);
+}
+
+/**
+ * Sent once, after the customer's reply has been read and passed to the business
+ * (ARC-GO-310), so they are not left wondering whether anybody saw it. The wording with the
+ * booking link is used only when a link is set — the validator lets that one template name
+ * `{{booking_url}}` for exactly this reason.
+ */
+export function renderReplyAck(config: LeadRecoveryConfig, customerName?: string | null): { body: string; templateKey: string } {
+  const templateKey = config.booking_url ? BOOKING_LINK_TEMPLATE : 'reply_ack';
+  const template = config.templates[templateKey] ?? DEFAULT_TEMPLATES[templateKey];
+  return { templateKey, body: withOptOut(render(template, { config, customerName }), config) };
+}
+
+/**
+ * When the one follow-up may go (ARC-GO-310).
+ *
+ * The first text answers a call the customer has just made. The follow-up is unprompted, so
+ * it waits for the business's opening hours: the earliest moment that is both after the
+ * usual gap and inside them. Null when the next fourteen days hold no opening hours at all,
+ * and then there is no follow-up.
+ */
+export function followupAt(config: LeadRecoveryConfig, earliest: Date): Date | null {
+  return nextOpenAt(earliest, config);
 }
 
 /**

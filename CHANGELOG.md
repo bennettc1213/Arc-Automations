@@ -7,7 +7,127 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.40.1] - 2026-10-09
+
+**ARC-GO-320: the safety test pass.** The whole Lead Recovery path, walked through its real
+doors and then broken on purpose, on the in-memory store and again on real Postgres. It found
+two defects in the engine, both fixed here. No table changed and there is no migration.
+Nothing is deployed.
+
 ### Added
+
+- **`tests/lead-recovery-gate.test.js`, the gate for `ARC-GO-330`.** Each scenario posts a
+  signed webhook at the phone door, runs the queue the way the scheduler does, and answers
+  through the owner's door, then reads the result off `events` with the portal's own code. One
+  missed call becomes a confirmed job with the right fee. The failure cases are a STOP at three
+  different moments, two workers, a provider that does not answer, a paused client, a safety
+  message, and a redelivered webhook. Every scenario runs twice: in memory, and on real
+  Postgres through the production adapter. A last group asks the database which rows a
+  signed-in browser can reach.
+- **`npm run gate`.** The whole suite on real SQL, and it fails unless every test ran. `npm
+  test` passes with the database suites skipped, which is how the two defects below went
+  unseen. Run it as `ARC_PGLITE_DIR=<dir> npm run gate`.
+
+### Fixed
+
+- **With no model key set, a reply left the lead with nobody on it.** The handoff's reason
+  named the missing environment variable, the queue's credential check refused the action, and
+  the retry cancelled itself. The lead read "needs a person" with no handoff and no alert. The
+  queue now keeps the action and withholds the words, and the reason no longer names the
+  variable. The same held for any provider error whose text read like a credential, and for a
+  customer whose own words did.
+- **A webhook that failed halfway was dropped when the provider sent it again.** The message
+  was already on record, so its redelivery was read as a duplicate. An opt-out could be left
+  with no suppression, a safety word with nobody told, an ordinary reply never read. A
+  redelivery is now finished unless what the message called for is provably there.
+- A reply that needs a person, or is ready to route, queues that step before the run changes
+  state. The other way round, a failure between the two left a run with nothing queued behind
+  it.
+- A text whose words were withheld from the queue goes to a person. It is never sent blank.
+
+### Changed
+
+- **The phone door and the owner's door can be tested.** `twilio/handler.ts` and
+  `ledger/handler.ts` hold what `index.ts` held inside `Deno.serve`. What each door does is
+  unchanged. A forged request never reaches the database client or a sender.
+- The in-memory store refuses a queue payload shaped like a credential, as Postgres does.
+- The test harness answers timestamps as text, the way the real API does. It was handing back
+  date objects, which made correct code fail there.
+- A settings test that only runs on real SQL still expected four message templates. There have
+  been six since `1.40.0`.
+
+## [1.40.0] - 2026-10-09
+
+**ARC-GO-310: the thirteen readiness gaps are closed.** No table changed and there is no
+migration. Nothing is deployed: the functions named below reach a real phone only through
+`ARC-GO-330`.
+
+### Added
+
+- **The owner records a booked visit on the needs-you screen.** A "book the visit" group lists
+  the customers who wrote back and have no visit on record. The owner picks the day and time,
+  on the business's own clock, and saves. That is the ledger's fifth link, and until now no
+  screen could write it, so no job could ever count. It goes through the `ledger` function's
+  new `visit-booked` action and the engine's own booking: who is saving it comes from the
+  sign-in, another client's lead is not found, and a visit somebody has already answered about
+  cannot be moved.
+- **One reviewed message after the customer replies.** Once a reply has been read and passed
+  to the business, the customer is told so, once per lead. Two templates, `reply_ack` and
+  `reply_ack_booking`; the second is used when a booking link is set. It goes through the same
+  gate as every other text.
+- **Either telephony setup, chosen per client** (`forwarding.mode`). `business_first`: the
+  business keeps its number and its phone company forwards unanswered calls. A call that
+  reaches ARC is already a missed one, so ARC rings nobody, the caller hears one sentence, and
+  the lead is recorded from that call. `arc_first` is what was built before. A configuration
+  published before the setting existed means `arc_first`.
+- **An operator can settle a send whose outcome was unknown** (`ops`
+  `lead-recovery-settle-send`). It records what the provider shows and resends nothing. The
+  console lists each one with two buttons.
+- **The console's Lead Recovery panel has the operator's minimum**: stop any open lead, record
+  its visit, close it with a reason, and stop texting a number. Each prints what it will do
+  before the press. The actions existed and had no button.
+- `tests/lead-recovery-readiness.test.js`: sixty-four tests, one group per gap, each named
+  after the promise.
+
+### Changed
+
+- **Every reply is read by the safety rules when it arrives**, whatever the run is doing. A
+  second message that says "actually, I can smell gas" goes to a person and the owner is
+  alerted, including when a person already has the lead. The model then reads everything the
+  customer wrote, not only the first message.
+- **Every handoff that says to alert the owner does.** An undelivered text, a send the provider
+  refused, a send whose outcome is unknown and retries running out each used to open a handoff
+  and tell nobody.
+- **An alert links to the owner's own needs-you screen.** It linked to the operator console.
+- **A bare "yes" tells the owner**, and a lead somebody replied to still closes itself.
+- **The follow-up waits for opening hours.** A call missed at 10:30pm is answered at once and
+  chased when the shop opens, not at 11:30pm.
+- **An alert recipient on email is refused** by the validator. Nothing sends an email alert,
+  and one that was accepted read as set up. A client with one must change it to a mobile
+  number and publish again.
+- **A sequence that was rightly stopped is no longer recorded as a failed send.** A text held
+  at the last moment because the customer replied, opted out or was booked, a person took the
+  lead, or the message had already gone, cancels and opens nothing.
+- A booking is a stop condition from every state a run can be working in.
+- `DEPLOYMENT.md` says the first text goes on the next run of the queue, within about a
+  minute, and that the figure is the schedule's and not measured. It lists migrations 0025 to
+  0028 and both telephony setups. The readiness map reads as it stands now and says how each
+  gap was closed.
+
+### Fixed
+
+- A customer's second reply after the first was classified made the webhook fail and was never
+  assessed.
+- The caller's network name is no longer used as the customer's name. Where a carrier supplies
+  one it is often a label or a town.
+
+### Known limit
+
+- With the ARC number in front (`arc_first`), a voicemail that picks up inside the ring time
+  still reads as an answered call. The pilot's setup does not have this. The validator warns
+  every time `arc_first` is saved.
+
+### Also in this release (earlier, already on `main`)
 
 - **ARC-MK-130: the sales kit**, in `sales/` (gitignored: outreach, the call script and a
   proposed price do not belong in a public repository). A one-page offer, the missed-call count
@@ -27,9 +147,6 @@ documented here. Format loosely follows
   hours, and email alerts are refused until they exist. No code changed.
 - `ARC_BUSINESS_CONTEXT.md`, a local-only summary of the whole business (gitignored, like
   `PORTAL_CONTEXT.md`).
-
-### Changed
-
 - **The roadmap is rewritten around missed-job recovery** (`docs/architecture/ARC_IMPLEMENTATION_ROADMAP.md`,
   which the Roadmap Assistant reads). Simple automations come first: a clear offer, a four-screen
   owner portal with a proof ledger, missed-call text-back verified on real telephony, one HVAC

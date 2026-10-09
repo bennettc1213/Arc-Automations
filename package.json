@@ -1,7 +1,7 @@
 {
   "name": "ben-portfolio",
   "private": true,
-  "version": "1.39.0",
+  "version": "1.40.1",
   "type": "module",
   "scripts": {
     "predev": "node scripts/build-demo-data.mjs",
@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "demo-data": "node scripts/build-demo-data.mjs",
     "test": "node --test \"tests/**/*.test.js\"",
+    "gate": "node scripts/safety-gate.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:ecosystem": "node scripts/smoke-ecosystem.mjs",
     "memory:sync": "node scripts/damon-memory-sync.mjs",

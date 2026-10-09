@@ -63,10 +63,13 @@ export const TRANSITIONS: Record<RunState, RunState[]> = {
      text in before the automation has finished speaking: a web-form lead whose first
      response is still queued, or an inbound SMS that arrived with no prior contact at all.
      A reply always outranks a scheduled message. */
-  new: ['response_queued', 'qualifying', 'handoff_required', 'suppressed', 'closed', 'failed'],
-  response_queued: ['awaiting_reply', 'qualifying', 'handoff_required', 'suppressed', 'closed', 'failed'],
+  /* `booked` is reachable from every state a run can be working in (ARC-GO-310): a person
+     saying "this turned into a visit" is a stop condition whenever it is said, and a run
+     that could not take it was left open with its queue already cancelled. */
+  new: ['response_queued', 'qualifying', 'handoff_required', 'booked', 'suppressed', 'closed', 'failed'],
+  response_queued: ['awaiting_reply', 'qualifying', 'handoff_required', 'booked', 'suppressed', 'closed', 'failed'],
   awaiting_reply: ['qualifying', 'handoff_required', 'booked', 'suppressed', 'closed', 'failed'],
-  qualifying: ['qualified', 'handoff_required', 'awaiting_reply', 'suppressed', 'closed', 'failed'],
+  qualifying: ['qualified', 'handoff_required', 'awaiting_reply', 'booked', 'suppressed', 'closed', 'failed'],
   qualified: ['handed_off', 'handoff_required', 'booked', 'awaiting_reply', 'suppressed', 'closed', 'failed'],
   handoff_required: ['handed_off', 'booked', 'closed', 'suppressed'],
   handed_off: ['booked', 'closed', 'suppressed'],
