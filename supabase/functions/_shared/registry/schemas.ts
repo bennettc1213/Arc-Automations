@@ -267,6 +267,24 @@ const LEAD_RECOVERY_FIELDS: readonly FieldMetadata[] = Object.freeze([
     control: 'group',
   },
   {
+    key: 'followup',
+    type: 'object',
+    label: 'follow-up',
+    help: 'Whether the one follow-up is sent to a customer who has not replied, and how long after the first text. It always waits for opening hours.',
+    required: false,
+    clientEditable: false,
+    operatorEditable: true,
+    protected: false,
+    secretProhibited: true,
+    /* changes whether and when a second message reaches a customer, like the out-of-hours
+       setting above. a run already in flight keeps the limits it was pinned to. */
+    requiresRetest: true,
+    requiresShadow: false,
+    requiresReactivation: false,
+    sensitiveDisplay: false,
+    control: 'group',
+  },
+  {
     key: 'safety',
     type: 'object',
     label: 'safety rules',

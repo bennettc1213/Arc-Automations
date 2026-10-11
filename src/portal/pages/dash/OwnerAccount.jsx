@@ -11,6 +11,7 @@ import { jobsTable, ownerJobs } from '../../lib/owner';
 import {
   AFTER_HOURS_WORDS,
   STOP_REASON_WORDS,
+  followupWords,
   hoursLines,
 } from '../../../../supabase/functions/_shared/account/model.ts';
 import './Owner.css';
@@ -18,8 +19,8 @@ import './Owner.css';
 /**
  * ARC-MK-200 — account: what is arc allowed to do?
  *
- * the owner's hours, service area, what happens outside hours, who is told when a lead
- * needs a person, and who must never be texted — then their data, a person to reach, and
+ * the owner's hours, service area, what happens outside hours and to a customer who does
+ * not reply, who is told when a lead needs a person, and who must never be texted — then their data, a person to reach, and
  * the rest of the workspace under "details".
  *
  * the settings are read, never edited here. a signed-in client's come from the `crm`
@@ -111,6 +112,13 @@ export default function OwnerAccount({ data, base, live }) {
               {AFTER_HOURS_WORDS[settings.after_hours.behaviour] ?? settings.after_hours.behaviour}
               {settings.after_hours.callback_window && ` it says you will call ${settings.after_hours.callback_window}.`}
             </p>
+            {/* absent until the server that reads it is deployed: then the line is left out,
+                never filled with a default that would look like this client's own choice. */}
+            {settings.followup && (
+              <p className="ow-rule">
+                <b>if a customer does not reply:</b> {followupWords(settings)}
+              </p>
+            )}
           </>
         ) : (
           <Unavailable state={state} />

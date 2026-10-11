@@ -33,6 +33,7 @@ const EXAMPLE_CONFIG = {
     { name: 'office', channel: 'email', address: 'office@halstead.example' },
   ],
   after_hours: { behaviour: 'after_hours_response', callback_window: 'first thing in the morning' },
+  followup: { enabled: true, after_minutes: 60 },
 };
 
 const EXAMPLE_STOP_LIST = [

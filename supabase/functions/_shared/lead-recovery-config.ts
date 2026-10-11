@@ -102,6 +102,21 @@ export const BOOKING_LINK_TEMPLATE = 'reply_ack_booking';
 /** Every template is one SMS segment's worth of room plus the opt-out line. */
 export const MAX_TEMPLATE_CHARS = 320;
 
+/**
+ * The follow-up's limits (ARC-SAAS-020).
+ *
+ * The engine sends at most one follow-up to a customer who has not replied, and that count is
+ * not a setting. What a client may choose is whether it is sent at all, and how long after
+ * the first text. The floor is there so a follow-up can never land on top of the text it
+ * follows; the ceiling is a day, because a lead closes itself three days after.
+ *
+ * A configuration published before this field existed says nothing, and means what it always
+ * meant: one follow-up, an hour later.
+ */
+export const DEFAULT_FOLLOWUP_AFTER_MINUTES = 60;
+export const MIN_FOLLOWUP_AFTER_MINUTES = 15;
+export const MAX_FOLLOWUP_AFTER_MINUTES = 1440;
+
 /* ── the shape ──────────────────────────────────────────── */
 
 export interface BusinessHourRange {
@@ -121,6 +136,7 @@ export interface LeadRecoveryConfig {
   booking_url: string | null;
   templates: Record<string, string>;
   after_hours: { behaviour: string; callback_window: string | null };
+  followup: { enabled: boolean; after_minutes: number };
   safety: {
     emergency_keywords: string[];
     always_handoff_services: string[];
@@ -334,6 +350,7 @@ const TOP_LEVEL = [
   'booking_url',
   'templates',
   'after_hours',
+  'followup',
   'safety',
   'ai',
   'compliance',
@@ -402,6 +419,7 @@ export function defaultConfig(partial: Partial<LeadRecoveryConfig> = {}): LeadRe
     booking_url: null,
     templates: { ...DEFAULT_TEMPLATES },
     after_hours: { behaviour: 'after_hours_response', callback_window: 'first thing in the morning' },
+    followup: { enabled: true, after_minutes: DEFAULT_FOLLOWUP_AFTER_MINUTES },
     safety: {
       emergency_keywords: [],
       always_handoff_services: [],
@@ -676,6 +694,34 @@ export function validateLeadRecoveryConfig(input: unknown): ConfigResult {
     errors.push('after_hours.callback_window is required when the out-of-hours text promises a time');
   }
 
+  // ── the follow-up ─────────────────────────────────────
+  const followupRaw = input.followup;
+  const followup = { ...base.followup };
+  if (followupRaw !== undefined && followupRaw !== null) {
+    if (!isPlainObject(followupRaw)) {
+      errors.push('followup must be an object');
+    } else {
+      rejectUnknown(followupRaw, ['enabled', 'after_minutes'], 'followup', errors);
+      followup.enabled = bool(followupRaw.enabled, 'followup.enabled', errors, true);
+      if (followupRaw.after_minutes !== undefined && followupRaw.after_minutes !== null) {
+        const minutes = followupRaw.after_minutes;
+        if (
+          typeof minutes !== 'number' || !Number.isInteger(minutes) ||
+          minutes < MIN_FOLLOWUP_AFTER_MINUTES || minutes > MAX_FOLLOWUP_AFTER_MINUTES
+        ) {
+          errors.push(
+            `followup.after_minutes must be a whole number of minutes between ${MIN_FOLLOWUP_AFTER_MINUTES} and ${MAX_FOLLOWUP_AFTER_MINUTES}`,
+          );
+        } else {
+          followup.after_minutes = minutes;
+        }
+      }
+    }
+  }
+  if (!followup.enabled) {
+    warnings.push('the follow-up is off — a customer who does not answer the first text hears nothing more');
+  }
+
   // ── safety ────────────────────────────────────────────
   const safetyRaw = input.safety;
   const safety = { ...base.safety };
@@ -842,6 +888,7 @@ export function validateLeadRecoveryConfig(input: unknown): ConfigResult {
       booking_url: bookingUrl,
       templates,
       after_hours: afterHours,
+      followup,
       safety,
       ai,
       compliance,

@@ -29,6 +29,7 @@ import {
   activeItem,
 } from '../src/portal/lib/nav.js';
 import { NO_VERDICT, isLaunchClient, jobsTable, ownerJobs, ownerMonth, ownerNeeds } from '../src/portal/lib/owner.js';
+import { HANDLING_LABELS } from '../src/portal/lib/handling.js';
 import { buildDashboardData } from '../src/portal/lib/dashboard-data.js';
 import { buildProofLedger } from '../src/portal/demo/proof-ledger.js';
 import { buildDemoAccountSettings } from '../src/portal/demo/owner-account.js';
@@ -36,14 +37,16 @@ import { ownerCopyProblem } from '../src/lib/owner-copy.js';
 import { site } from '../src/data/site.js';
 import {
   AFTER_HOURS_WORDS,
+  FOLLOWUP_AFTER_MINUTES,
   STOP_LIST_SHOWN,
   STOP_REASON_WORDS,
   accountSettingsView,
   addressHint,
+  followupWords,
   hoursLines,
 } from '../supabase/functions/_shared/account/model.ts';
 import { readAccountSettings } from '../supabase/functions/_shared/account/service.ts';
-import { AFTER_HOURS_BEHAVIOURS } from '../supabase/functions/_shared/lead-recovery-config.ts';
+import { AFTER_HOURS_BEHAVIOURS, DEFAULT_FOLLOWUP_AFTER_MINUTES } from '../supabase/functions/_shared/lead-recovery-config.ts';
 import { MemoryStore } from '../supabase/functions/_shared/engine/store.ts';
 import { leadRecoveryConfig, seedPublishedConfig } from './config-fixtures.js';
 import { LEDGER_NOW, LEDGER_TENANT, chain, daysAgo, daysAhead, event, terms } from './ledger-fixtures.js';
@@ -246,7 +249,10 @@ describe('jobs', () => {
     const { columns, rows } = jobsTable(jobs);
     assert.equal(rows.length, 7);
     assert.deepEqual(columns.map((c) => c.label).slice(-3), ['status', 'billed', 'why']);
-    assert.equal(columns.length, 1 + 7 + 3);
+    /* the job, the seven lines, the five handling lines (ARC-MK-230), then status, billed, why */
+    assert.equal(columns.length, 1 + 7 + 5 + 3);
+    assert.deepEqual(columns.slice(8, 13).map((c) => c.label), HANDLING_LABELS);
+    assert.equal(columns[9].value(rows[0]), 'air conditioning repair');
     assert.equal(columns.at(-2).value(rows[0]), 'yes');
     assert.equal(columns.at(-2).value(rows[1]), 'no');
     assert.deepEqual(jobsTable([]).columns.map((c) => c.label), ['job', 'status', 'billed', 'why']);
@@ -378,7 +384,7 @@ describe('the account screen’s settings', () => {
 
   test('it is a projection: nothing but the owner’s own settings', () => {
     const view = accountSettingsView(config, stop);
-    assert.deepEqual(Object.keys(view).sort(), ['after_hours', 'alerts', 'available', 'hours', 'service_area', 'stop_list', 'timezone', 'versions']);
+    assert.deepEqual(Object.keys(view).sort(), ['after_hours', 'alerts', 'available', 'followup', 'hours', 'service_area', 'stop_list', 'timezone', 'versions']);
     const json = JSON.stringify(view);
     for (const withheld of ['template', 'twilio', 'MG0123', 'forwarding', 'compliance', 'CMP123', 'emergency_keywords']) {
       assert.equal(json.includes(withheld), false, withheld);
@@ -404,6 +410,25 @@ describe('the account screen’s settings', () => {
     const sql = read('supabase/migrations/0010_lead_recovery.sql');
     const reasons = /create table if not exists public\.suppressions[\s\S]*?reason in \(([\s\S]*?)\)\)/.exec(sql)[1].match(/'([a-z_]+)'/g).map((r) => r.slice(1, -1));
     assert.deepEqual(Object.keys(STOP_REASON_WORDS).sort(), reasons.sort());
+  });
+
+  test('what happens to a customer who does not reply is the client’s own setting, in an owner’s words', () => {
+    /* ARC-SAAS-020. */
+    assert.deepEqual(accountSettingsView(config, stop).followup, { enabled: true, after_minutes: DEFAULT_FOLLOWUP_AFTER_MINUTES });
+    assert.equal(followupWords(accountSettingsView(config, stop)), 'arc sends one more text, an hour later or when you next open, and then stops.');
+
+    const slower = accountSettingsView(leadRecoveryConfig({ followup: { enabled: true, after_minutes: 180 } }), stop);
+    assert.match(followupWords(slower), /one more text, 3 hours later/);
+    assert.match(followupWords({ followup: { enabled: true, after_minutes: 45 } }), /45 minutes later/);
+
+    const off = accountSettingsView(leadRecoveryConfig({ followup: { enabled: false, after_minutes: 60 } }), stop);
+    assert.equal(followupWords(off), 'arc does not text them again.');
+  });
+
+  test('a configuration that says nothing about the follow-up reads as the engine treats it', () => {
+    /* the projection imports nothing, so its own copy of the default is checked here. */
+    assert.equal(FOLLOWUP_AFTER_MINUTES, DEFAULT_FOLLOWUP_AFTER_MINUTES);
+    assert.deepEqual(accountSettingsView({}, []).followup, config.followup);
   });
 
   test('the demo’s settings come through the same projection', () => {
@@ -546,6 +571,35 @@ describe('the four screens, rendered', () => {
     assert.equal([...html.matchAll(/ws-pill--ok/g)].length, 1, 'one lead counts, and only one');
     assert.match(html, /every step is on record, and you said the job happened\./);
     assert.doesNotMatch(html, /not switched on/);
+  });
+
+  test('this month shows the offer’s three lines, each with its record', () => {
+    /* ARC-MK-230. the names are the homepage's own. */
+    for (const props of [demo, live]) {
+      const html = render('ThisMonth', props);
+      assert.equal([...html.matchAll(/<li class="hd-step"/g)].length, 3);
+      for (const item of site.leaks.covers.items) assert.ok(html.includes(`<h3 class="hd-step__name">${item.name}</h3>`), item.key);
+    }
+    /* signed in, the time is the one measured on their own line; the examples show none. */
+    assert.match(render('ThisMonth', live), /typical time to the text<\/dt><dd class="hd-figures__value">4 seconds</);
+    assert.match(render('ThisMonth', live), /href="\/portal\/dashboard\/jobs\?from=missed_call"/);
+    const example = render('ThisMonth', demo);
+    assert.match(example, /typical time to the text<\/dt><dd class="hd-figures__value"><span aria-hidden="true">—<\/span><span class="ws-sr">not available<\/span>/);
+    assert.match(example, /measured on a real phone line/);
+    assert.doesNotMatch(plain(example), /\b\d+\s?(seconds?|secs?|minutes?|mins?)\b/);
+  });
+
+  test('a job’s card shows what arc asked and who it told, under the seven lines', () => {
+    for (const props of [demo, live]) {
+      const html = render('Jobs', props);
+      assert.match(html, /what arc asked, and who it told/);
+      for (const label of HANDLING_LABELS) assert.ok(plain(html).includes(label), label);
+    }
+    assert.match(plain(render('Jobs', demo)), /43214 — in your area/);
+    assert.match(plain(render('Jobs', live)), /4 seconds after the missed call/);
+    /* the list can be narrowed to one way in, and says how many came each way. */
+    assert.match(plain(render('Jobs', live)), /missed calls · 4/);
+    assert.match(plain(render('Jobs', live)), /website requests · 0/);
   });
 
   test('needs you shows the question and its six answers, and the handoff has none', () => {

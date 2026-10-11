@@ -50,6 +50,7 @@ import { classifierFor, FakeClassifier } from '../supabase/functions/_shared/cla
 import { eventKey } from '../supabase/functions/_shared/event-writer.ts';
 import { RecordingSender, twilioSignature } from '../supabase/functions/_shared/twilio.ts';
 import { supabaseLedgerReads } from '../supabase/functions/_shared/ledger/service.ts';
+import { runQuietCheck, supabaseWatchReads } from '../supabase/functions/_shared/watch/service.ts';
 import { handleTwilioWebhook, messageTenantFrom, TWILIO_ROUTES } from '../supabase/functions/twilio/handler.ts';
 import { handleLedgerAction, LEDGER_ACTIONS, MAX_BODY_BYTES, membershipFrom } from '../supabase/functions/ledger/handler.ts';
 import { toEvent } from '../src/portal/lib/event-row.js';
@@ -594,6 +595,53 @@ function gate(title, makeWorld, options = {}) {
       await world.dispatch();
       assert.equal(await stateOf(world, client, intake.lead), 'qualified');
       assert.equal(world.carrier.to(client.ownerPhone).length, 1);
+      assert.deepEqual(world.invalid(), []);
+    });
+
+    /* ── the follow-up's limits are each client's own (ARC-SAAS-020) ── */
+
+    test('a customer who says nothing gets one follow-up after the client\'s own wait, and never a second', async () => {
+      const world = await makeWorld();
+      const client = await world.client({ config: { followup: { enabled: true, after_minutes: 120 } } });
+      const { customer, lead } = await texted(world, client);
+
+      await world.advance(HOUR + 30 * MINUTE);
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 1, 'not yet: this client asked for two hours');
+
+      await world.advance(HOUR);
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 2, 'the one follow-up');
+      assert.match(world.carrier.to(customer)[1].body, /Reply STOP to opt out\.$/);
+
+      await world.advance(DAY);
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 2, 'there is only ever one');
+      assert.equal(await stateOf(world, client, lead), 'awaiting_reply');
+      assert.equal(count(await world.events(client), 'sms_sent'), 2);
+      assert.deepEqual(world.invalid(), []);
+    });
+
+    test('a client that turned the follow-up off is never chased, and the client beside it still is', async () => {
+      const world = await makeWorld();
+      const quiet = await world.client({ config: { followup: { enabled: false, after_minutes: 60 } } });
+      const usual = await world.client();
+      const first = await texted(world, quiet);
+      const second = await texted(world, usual);
+
+      const queued = await world.store.listActionsForRun(quiet.tenantId, (await runOf(world, quiet, first.lead)).id);
+      assert.equal(queued.some((action) => action.actionType === 'send_followup'), false, 'nothing is queued to be cancelled later');
+
+      await world.advance(3 * HOUR);
+      await world.dispatch();
+      assert.equal(world.carrier.to(first.customer).length, 1, 'the first text, and nothing more');
+      assert.equal(world.carrier.to(second.customer).length, 2, 'a setting belongs to one client');
+
+      /* the lead that was not chased still closes itself. */
+      await world.advance(4 * DAY);
+      await world.dispatch();
+      assert.equal(await stateOf(world, quiet, first.lead), 'closed');
+      assert.equal(world.carrier.to(first.customer).length, 1);
       assert.deepEqual(world.invalid(), []);
     });
   });
@@ -1390,6 +1438,75 @@ describe('what a signed-in browser can reach, asked of real Postgres', { skip },
     const other = await world.dashboard(theirs, { as: theirs.owner });
     assert.equal(other.threads.length, 1);
     assert.notEqual(other.threads[0].id, data.threads[0].id);
+  });
+});
+
+/* ── a live client gone quiet (ARC-GO-330) ──────────────── */
+
+describe('a live client gone quiet, asked of real Postgres', { skip }, () => {
+  test('the hourly check alerts the quiet ones once, through the production reads, and writes nothing else', async () => {
+    const world = await sqlWorld();
+    const db = world.db;
+    const quiet = await world.client();
+    const never = await world.client();
+    const busy = await world.client();
+    const paused = await world.client();
+    const left = await world.client();
+    await call(world, quiet, customerNumber());
+    await call(world, paused, customerNumber());
+    await pause(world, paused);
+    await db.query(`update public.tenants set status = 'archived' where id = $1`, [left.tenantId]);
+
+    /* two days and an hour pass. one of them takes a call this morning. */
+    await world.advance(49 * HOUR);
+    await call(world, busy, customerNumber());
+
+    const mine = [quiet, never, busy, paused, left].map((client) => client.tenantId);
+    const eventCount = async () => (await db.query('select count(*)::int as n from public.events where tenant_id = any($1)', [mine])).rows[0].n;
+    const before = await eventCount();
+    const check = () => runQuietCheck({ reads: supabaseWatchReads(restClient(db)), now: world.now });
+    const of = (report, client) => report.results.find((row) => row.tenantId === client.tenantId) ?? null;
+
+    const report = await check();
+    assert.equal(report.unread, 0);
+    assert.deepEqual(of(report, quiet), { tenantId: quiet.tenantId, moduleKey: LR, kind: 'quiet', hours: 49, raised: true });
+    assert.equal(of(report, never).kind, 'never_arrived', 'the canary that put it live is not an arrival');
+    assert.equal(of(report, never).raised, true);
+    assert.equal(of(report, busy).kind, 'arriving');
+    assert.equal(of(report, busy).raised, false);
+    assert.equal(of(report, paused), null, 'a paused module is not expected to hear anything');
+    assert.equal(of(report, left), null, 'nor is a client that has left');
+
+    const alerts = async (client) => (await db.query('select check_type, severity, message, resolved_at from public.alerts where tenant_id = $1 order by fired_at', [client.tenantId])).rows;
+    const [raised] = await alerts(quiet);
+    assert.equal(raised.check_type, 'watermark');
+    assert.equal(raised.severity, 'warning');
+    assert.match(raised.message, /^Automatic check: no call or form has reached ARC from your line since /);
+    assert.match((await alerts(never))[0].message, /Call forwarding may not be set up/);
+    assert.equal((await alerts(busy)).length, 0);
+    assert.equal((await alerts(paused)).length, 0);
+
+    /* the next hour's run says nothing new. */
+    const again = await check();
+    assert.equal(of(again, quiet).kind, 'quiet');
+    assert.equal(of(again, quiet).raised, false);
+    assert.equal((await alerts(quiet)).length, 1);
+
+    /* a person resolves it, the line is still quiet, and it is said again. */
+    await db.query('update public.alerts set resolved_at = now() where tenant_id = $1', [quiet.tenantId]);
+    assert.equal(of(await check(), quiet).raised, true);
+    assert.equal((await alerts(quiet)).length, 2);
+
+    assert.equal(await eventCount(), before, 'the check wrote no event');
+    assert.equal(world.carrier.sent.length, 0, 'and reached no handset');
+
+    /* the owner reads their own alert, nobody else's, and cannot write one. */
+    const seen = await asRole(db, { role: 'authenticated', sub: quiet.owner }, async (tx) => (await tx.query('select tenant_id from public.alerts')).rows);
+    assert.deepEqual([...new Set(seen.map((row) => row.tenant_id))], [quiet.tenantId]);
+    await assert.rejects(
+      asRole(db, { role: 'authenticated', sub: quiet.owner }, async (tx) =>
+        await tx.query(`insert into public.alerts (tenant_id, check_type, severity, message) values ($1, 'watermark', 'warning', 'mine')`, [quiet.tenantId])),
+    );
   });
 });
 

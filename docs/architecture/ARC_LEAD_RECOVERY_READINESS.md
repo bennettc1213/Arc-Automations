@@ -405,6 +405,79 @@ Nothing below can be closed from the repository. Each is its own authorised acti
 - A canary run in production.
 - The check that notices a client gone silent. Alerts are raised by hand today.
 
+### 6.1 What `ARC-GO-330` did without touching anything hosted
+
+- **The gate passed** on October 9, on the commit to be deployed: 2,338 tests on real SQL,
+  nothing skipped. It passed again with the check below in it.
+- **The paused 0029 draft is out of the migrations folder** (`supabase/drafts/`), so a
+  `db push` cannot apply it.
+- **The check that notices a client gone silent is built**: `_shared/watch/`, run by a second
+  schedule on the `dispatch` function, once an hour. For every client whose Lead Recovery is
+  live it asks when a call, a form or a customer's reply last came in. Past the registry's
+  48 hours it raises one watermark alert, in words written for the owner. The clock starts
+  when the module last went live, so a new client is not two days quiet. It writes no event,
+  touches no lifecycle and sends nothing. Its limits are stated on the console's alerts page:
+  it cannot tell a slow week from forwarding that has stopped, it runs only once its schedule
+  exists, and nobody is paged when an alert opens.
+- **The incident note is written**: `ARC_INCIDENT_NOTE.md`.
+
+The registry also names a dispatcher heartbeat for this module. That is not built: nothing
+notices a queue that has stopped draining. Until it is, the test in the incident note
+(ring the line, let it ring out) is the check.
+
+### 6.2 Where live stood on October 9
+
+Read with the CLI. Nothing was changed.
+
+| | Live (`ekrszulekvvhbfemcrsl`) |
+|---|---|
+| Migrations | 0001 to 0028, level with the repository. Nothing outstanding. |
+| Functions deployed | `ops`, `ledger`, `crm`, `native-intake`, `native-booking`. `ops` and `ledger` were deployed 48 minutes before the gated commit was made, so they are redeployed from it. |
+| Functions missing | `twilio`, `dispatch`, `lead-intake`, `ingest`, `client-login`. Without `client-login` no owner can sign in with a client ID. |
+| Secrets set | The site address, the model key. |
+| Secrets missing | The Twilio pair, the public functions address, the dispatch key. |
+| Staging | Not visible to the account the CLI is signed in to. Not compared. |
+
+### 6.3 The order, each line its own authorisation
+
+1. Deploy `twilio`, `dispatch`, `lead-intake`, `ingest` and `client-login`; redeploy `ops` and
+   `ledger`. Until the Twilio pair is set every phone webhook answers 403, so this exposes
+   nothing.
+2. Create the Twilio account or choose the one to use. Set the four missing secrets.
+3. Turn on `pg_cron` and `pg_net`; create the two schedules in `DEPLOYMENT.md` section 5.
+   See one dispatcher run in the logs.
+4. Buy one number. Point it at the three webhook addresses.
+5. Create a test client. Publish its settings with the business keeping its own number.
+6. File the business-text registration (6.4). Texts to real handsets wait for its approval.
+7. Run the checklist's canary, then activate.
+8. From a handset ARC owns: call and let it ring out, reply, reply again, STOP. Time the
+   first text. Read the ledger.
+9. Bring staging level, from an account that can see it.
+
+### 6.4 Business-text registration
+
+What is understood, to be confirmed against Twilio's current requirements when filing. None
+of this is legal advice.
+
+- A text from an ordinary ten-digit US number to a US mobile is carried only if the sender
+  is registered: the **business** (legal name, tax ID, address, a contact) and a **campaign**
+  describing what is sent, with sample messages and how the customer agreed to get them.
+  Unregistered texts are filtered or blocked by the networks.
+- The sender here is the HVAC company, not ARC. Each client is registered as its own
+  business under ARC's Twilio account, and its campaign is attached to the messaging service
+  whose ID is in that client's settings.
+- A business with no tax ID registers as a sole proprietor, with lower limits.
+- Review takes days to weeks and can be refused. It is the longest wait in this list, so it
+  is filed as soon as the pilot client is signed.
+- ARC already holds what the form asks for: the reviewed templates are the sample messages,
+  the engine appends the opt-out line to every one, and the consent step of the checklist is
+  the description of how the customer agreed.
+- The part to get right: the customer called the business and did not ask for a text. How a
+  text back after a missed call is described on the form, and what the business tells its
+  callers, decides whether the campaign is approved. Settle the wording before filing.
+- ARC refuses to send, and refuses to activate, until the client's registration is recorded
+  as approved. There is no override.
+
 ---
 
 ## 7. The safety test pass — `ARC-GO-320`

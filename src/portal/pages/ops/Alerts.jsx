@@ -5,6 +5,7 @@ import { Empty, Panel, Pill, StatCard } from '../../components/ui';
 import { Field, Notice, SelectInput, TextArea } from '../../components/ops-ui';
 import { acknowledgeAlert, raiseAlert, resolveAlert } from '../../lib/ops';
 import { formatCount, formatSpan, formatStamp } from '../../lib/format';
+import { quietAfterHours } from '../../../../supabase/functions/_shared/watch/model.ts';
 
 /**
  * the write path for the only mutable table in the schema.
@@ -16,11 +17,13 @@ import { formatCount, formatSpan, formatStamp } from '../../lib/format';
  * appears on your reliability page" against a table that could not have
  * contents. This page is the half of that promise that lives in this repo.
  *
- * The other half does not exist yet and this page says so rather than implying
- * otherwise. Detection — the poller that sweeps for tenants that have gone quiet
- * and raises the alert without anybody watching — is Phase 2. Until it ships,
- * every row here got here because a human noticed, and an operator reading this
- * page should know that about it.
+ * The other half is one check, and this page says exactly how far it goes
+ * (ARC-GO-330, `_shared/watch/`): the dispatcher's hourly schedule looks at every
+ * live client and raises a watermark alert when nothing has arrived for the
+ * registry's quiet window. It runs only where that schedule has been created, it
+ * pages nobody, and it cannot tell a slow week from a dead line. Every other row
+ * here got here because a human noticed, and an operator reading this page
+ * should know that about it.
  *
  * Acknowledge and resolve go through the edge function even though the admin
  * update policy would allow them straight from the browser. Routing them through
@@ -34,6 +37,9 @@ const CHECK_TYPES = [
 ];
 
 const SEVERITIES = ['critical', 'warning', 'info'];
+
+/* the automatic check's own window, read from where the check reads it. */
+const QUIET_HOURS = quietAfterHours('lead_recovery');
 
 export default function Alerts({ clients, base, reload }) {
   const [tenantId, setTenantId] = useState('');
@@ -114,12 +120,13 @@ export default function Alerts({ clients, base, reload }) {
         />
       </div>
 
-      <Notice tone="warn" title="detection is not built yet">
-        this page raises, acknowledges and resolves alerts, and they render correctly on the
-        affected client&rsquo;s reliability page. nothing yet <em>detects</em> that a client has
-        gone quiet — that is the n8n poller in phase 2 (N4). until it ships, an alert exists
-        because a person noticed, and the support page&rsquo;s promise that we get paged
-        automatically is not yet true.
+      <Notice tone="warn" title="one thing is detected, and nobody is paged">
+        once an hour, where the dispatcher&rsquo;s watch schedule has been created, a live
+        client with no call, form or reply in {QUIET_HOURS} hours gets a watermark alert that
+        starts &ldquo;Automatic check&rdquo;. it is raised once and stays open until somebody
+        here resolves it. it cannot tell a slow week from call forwarding that has stopped,
+        so ring the client&rsquo;s number to find out. nothing texts or emails us when an
+        alert opens, and every other alert here exists because a person noticed.
       </Notice>
 
       <Panel title="raise an alert" note="writes through the ops function, and is logged">
@@ -199,8 +206,8 @@ export default function Alerts({ clients, base, reload }) {
       >
         {rows.length === 0 ? (
           <Empty title="no alerts have ever been raised">
-            which is either very good news or the reason this page exists. nothing writes to
-            this table on its own yet.
+            which is either very good news or the reason this page exists. only the hourly
+            quiet check writes to this table on its own, and only where it is scheduled.
           </Empty>
         ) : (
           <ol className="ws-timeline">

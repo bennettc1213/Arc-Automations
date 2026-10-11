@@ -35,7 +35,8 @@ import {
   takeOverLead,
 } from '../supabase/functions/_shared/engine/runtime.ts';
 import { transition } from '../supabase/functions/_shared/engine/state-machine.ts';
-import { followupAt, renderReplyAck } from '../supabase/functions/_shared/engine/templates.ts';
+import { followupAt, followupDueAt, renderReplyAck } from '../supabase/functions/_shared/engine/templates.ts';
+import { changeImpact } from '../supabase/functions/_shared/registry/schemas.ts';
 import { FakeClassifier } from '../supabase/functions/_shared/classifier.ts';
 import { missedCallGreeting, RecordingSender, voiceResponse } from '../supabase/functions/_shared/twilio.ts';
 import { MAX_VISIT_DAYS_AHEAD, MAX_VISIT_DAYS_BEHIND, answerOutcome, recordVisit, standing } from '../supabase/functions/_shared/ledger/service.ts';
@@ -521,6 +522,90 @@ describe('the follow-up respects the business\'s hours', () => {
     const config = validateLeadRecoveryConfig(goodConfig()).config;
     /* friday 18:00 eastern. */
     assert.equal(followupAt(config, new Date('2026-09-18T22:00:00.000Z')).toISOString(), '2026-09-21T12:00:00.000Z');
+  });
+});
+
+/* ══ 5b. the follow-up's limits are the client's (ARC-SAAS-020) ══ */
+
+describe('the follow-up\'s limits are the client\'s own setting', () => {
+  test('a client that turned the follow-up off is texted once and never chased', async () => {
+    const sender = new RecordingSender();
+    const d = deps(setup({ config: goodConfig({ followup: { enabled: false, after_minutes: 60 } }) }), { liveSender: sender });
+    const intake = await texted(d);
+    assert.equal(d.store.actions.some((action) => action.actionType === 'send_followup'), false, 'no follow-up is ever queued');
+
+    d.advance(6 * HOUR);
+    await drain(d);
+    assert.equal(to(sender, CUSTOMER).length, 1, 'the first text, and nothing after it');
+
+    /* and the lead still closes itself, counted from the first text. */
+    const close = d.store.pendingActions(TENANT_A).find((action) => action.actionType === 'close_run');
+    assert.equal(close.runAt, new Date(NOW.getTime() + CLOSE_AFTER_HOURS * HOUR).toISOString());
+    d.advance(CLOSE_AFTER_HOURS * HOUR);
+    await drain(d);
+    assert.equal((await runOf(d, intake)).state, 'closed');
+  });
+
+  test('a client\'s own wait is the one used, and there is still only one follow-up', async () => {
+    const sender = new RecordingSender();
+    const d = deps(setup({ config: goodConfig({ followup: { enabled: true, after_minutes: 120 } }) }), { liveSender: sender });
+    await texted(d);
+    const queued = d.store.actions.filter((action) => action.actionType === 'send_followup');
+    assert.deepEqual(queued.map((action) => action.runAt), [new Date(NOW.getTime() + 2 * HOUR).toISOString()]);
+
+    d.advance(HOUR);
+    await drain(d);
+    assert.equal(to(sender, CUSTOMER).length, 1, 'not after an hour');
+    d.advance(HOUR);
+    await drain(d);
+    assert.equal(to(sender, CUSTOMER).length, 2, 'after the two they asked for');
+    d.advance(5 * HOUR);
+    await drain(d);
+    assert.equal(to(sender, CUSTOMER).length, 2, 'and never a third');
+  });
+
+  test('a longer wait still lands inside opening hours', () => {
+    const config = validateLeadRecoveryConfig(goodConfig({ followup: { enabled: true, after_minutes: 240 } })).config;
+    /* a first text at 3pm eastern on a wednesday: four hours later is 7pm, so thursday 8am. */
+    assert.equal(followupDueAt(config, new Date('2026-09-16T19:00:00.000Z')).toISOString(), '2026-09-17T12:00:00.000Z');
+  });
+
+  test('a configuration published before the setting existed means what it always meant', () => {
+    const { followup: _dropped, ...older } = goodConfig();
+    const result = validateLeadRecoveryConfig(older);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.config.followup, { enabled: true, after_minutes: 60 });
+    assert.equal(followupDueAt(result.config, NOW).toISOString(), new Date(NOW.getTime() + HOUR).toISOString());
+  });
+
+  test('the wait has a floor and a ceiling, and nothing else can be set', () => {
+    const tried = (followup) => validateLeadRecoveryConfig(goodConfig({ followup }));
+    for (const minutes of [0, 5, 14, 1441, 90.5, '60']) {
+      const result = tried({ enabled: true, after_minutes: minutes });
+      assert.equal(result.ok, false, String(minutes));
+      assert.match(result.errors.join(' '), /followup\.after_minutes must be a whole number of minutes between 15 and 1440/);
+    }
+    for (const minutes of [15, 60, 1440]) assert.equal(tried({ enabled: true, after_minutes: minutes }).ok, true, String(minutes));
+
+    /* how many follow-ups there are is the engine's, not a setting. */
+    const more = tried({ enabled: true, after_minutes: 60, count: 3 });
+    assert.equal(more.ok, false);
+    assert.match(more.errors.join(' '), /followup\.count is not a setting this module has/);
+    assert.match(tried({ enabled: 'no' }).errors.join(' '), /followup\.enabled must be true or false/);
+  });
+
+  test('turning it off is said out loud to whoever saves it', () => {
+    const off = validateLeadRecoveryConfig(goodConfig({ followup: { enabled: false } }));
+    assert.equal(off.ok, true);
+    assert.ok(off.warnings.some((warning) => /the follow-up is off/.test(warning)));
+    assert.equal(validateLeadRecoveryConfig(goodConfig()).warnings.some((warning) => /follow-up is off/.test(warning)), false);
+  });
+
+  test('the settings screen draws both parts, and a change to either is retested before new leads use it', () => {
+    assert.deepEqual(layoutsFor('lead_recovery_config').followup.parts.map((part) => [part.key, part.control]), [['enabled', 'toggle'], ['after_minutes', 'number']]);
+    assert.deepEqual(changeImpact('lead_recovery_config', ['followup']), {
+      requiresRetest: true, requiresShadow: false, requiresReactivation: false, unknownFields: [],
+    });
   });
 });
 

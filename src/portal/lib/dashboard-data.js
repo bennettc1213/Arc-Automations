@@ -46,7 +46,9 @@ import {
 import { computeModuleHealth, overallHealth } from './health.js';
 import { buildAttentionQueue } from './attention.js';
 import { buildActivity } from './activity.js';
+import { buildLeadProof } from './lead-proof.js';
 import { buildLedger } from './ledger.js';
+import { summariseHandling } from './handling.js';
 
 /* threads kept in the payload. the leads table pages through these; the overview rail
    shows the first handful. deliberately bounded — the old repo shipped 3.26MB to render a
@@ -125,6 +127,7 @@ export function buildDashboardData(tenant, events = [], now = DateTime.now(), al
      as everything else here, over every lead rather than the capped list, so the month's
      figure and a job's own status cannot come from two different sets of rows. */
   const ledger = buildLedger(leadCapture.leads, events, { now, timezone: zone });
+  const leadProof = buildLeadProof(events);
 
   return {
     tenant,
@@ -156,7 +159,7 @@ export function buildDashboardData(tenant, events = [], now = DateTime.now(), al
        leave two arrays free to disagree about what a lead is. */
     threads: leadCapture.leads
       .slice(0, THREAD_LIMIT)
-      .map((lead) => ({ ...lead, ledger: ledger.byLead.get(lead.id) ?? null })),
+      .map((lead) => ({ ...lead, ledger: ledger.byLead.get(lead.id) ?? null, proof: leadProof.get(lead.id) ?? [] })),
     /* the true count behind the capped list, so the leads table can say "150 of 412"
        rather than implying the client only ever had 150 leads. */
     threadTotal: leadCapture.leads.length,
@@ -171,6 +174,10 @@ export function buildDashboardData(tenant, events = [], now = DateTime.now(), al
     activity: buildActivity(events, ACTIVITY_LIMIT),
     /* metrics only. the rows live in `threads` above. */
     leadCapture: { metrics: leadCapture.metrics, recordTotal: leadCapture.leads.length },
+    /* the three things the offer names, counted (ARC-MK-230): per way in, how many were
+       texted back and how long it took, then what the questions found. over every lead in
+       the window, like the metrics above it. */
+    handling: summariseHandling(leadCapture.leads, now),
     /* the ledger's totals, month, terms and dispute counts. each lead's own verdict rides on
        its thread. */
     ledger: {

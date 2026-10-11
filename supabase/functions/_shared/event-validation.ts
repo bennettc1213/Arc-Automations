@@ -57,6 +57,10 @@ export const EVENT_TYPES = [
   'lead_outcome_recorded',
   // an operator's decision on an answer that said the job should not count.
   'lead_dispute_settled',
+  // Lead-action proof: facts that were previously only in effect or queue state.
+  'owner_alerted',
+  'handoff_accepted',
+  'followup_stopped',
   // the pilot terms a fee is worked out under. the fee is arithmetic over the log, so its terms are in it.
   'pilot_terms_recorded',
   // estimate recovery

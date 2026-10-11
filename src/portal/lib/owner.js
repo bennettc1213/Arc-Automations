@@ -26,6 +26,7 @@
 
 import { formatStamp, maskPhone } from './format.js';
 import { LEDGER_STATUS, disputeReasonWords } from './ledger.js';
+import { handlingLines, leadHandlingFacts, learnedSummary } from './handling.js';
 
 /* ── who gets the four screens ──────────────────────────── */
 
@@ -96,7 +97,11 @@ function liveJob(lead, timezone) {
   return {
     key: lead.id,
     title: lead.name ?? (lead.phone ? maskPhone(lead.phone) : 'unknown caller'),
+    source: lead.source ?? null,
     record,
+    /* how long the text took, what the customer answered and who was told (ARC-MK-230). */
+    handling: handlingLines(leadHandlingFacts(lead)),
+    proof: lead.proof ?? [],
     verdict: ledger ? verdict(ledger.status, ledger.reason) : verdict('unverified', NO_VERDICT),
   };
 }
@@ -113,7 +118,15 @@ export function ownerJobs(data) {
     const { leads, tally } = data.proofLedger;
     return {
       example: true,
-      jobs: leads.map((lead) => ({ key: lead.key, title: lead.title, record: lead.record, verdict: lead.verdict })),
+      jobs: leads.map((lead) => ({
+        key: lead.key,
+        title: lead.title,
+        source: lead.source ?? null,
+        record: lead.record,
+        handling: lead.handling ?? null,
+        proof: lead.proof ?? null,
+        verdict: lead.verdict,
+      })),
       tally: { total: tally.total, counts: tally.counts, needsYou: tally.needsYou, notBilled: tally.notBilled },
       of: tally.total,
     };
@@ -167,11 +180,13 @@ function awaitingVisit(data, timezone) {
       const age = now - Date.parse(lead.repliedAt ?? lead.startedAt);
       return age >= 0 && age <= VISIT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
     })
-    .map((lead) => ({
+    .map((lead) => [lead, learnedSummary(leadHandlingFacts(lead))])
+    .map(([lead, learned]) => ({
       key: `visit-${lead.id}`,
       kind: 'visit',
       title: lead.name ?? (lead.phone ? maskPhone(lead.phone) : 'a customer who wrote back'),
-      detail: `wrote back ${formatStamp(lead.repliedAt ?? lead.startedAt, timezone)}`,
+      /* what they answered, so the owner knows the job before calling back. */
+      detail: `wrote back ${formatStamp(lead.repliedAt ?? lead.startedAt, timezone)}${learned ? ` — ${learned}` : ''}`,
       reason: 'no visit is on record for this customer yet, so this job cannot count.',
       openedAt: lead.repliedAt ?? lead.startedAt,
       to: 'jobs',
@@ -376,13 +391,16 @@ export function ownerMonth(data, { leaks = [] } = {}) {
 
 /* ── export my data ─────────────────────────────────────── */
 
-/** the jobs screen as a table: one row per job, the seven lines, then the status and why. */
+/** the jobs screen as a table: one row per job, the seven lines, what arc learned, then the
+    status and why. */
 export function jobsTable(jobs) {
   const labels = jobs[0]?.record.map((line) => line.label) ?? [];
+  const handled = jobs[0]?.handling?.map((line) => line.label) ?? [];
   return {
     columns: [
       { label: 'job', value: (job) => job.title },
       ...labels.map((label, index) => ({ label, value: (job) => job.record[index]?.value ?? '' })),
+      ...handled.map((label, index) => ({ label, value: (job) => job.handling?.[index]?.value ?? '' })),
       { label: 'status', value: (job) => job.verdict.label },
       { label: 'billed', value: (job) => (job.verdict.billed ? 'yes' : 'no') },
       { label: 'why', value: (job) => job.verdict.reason },

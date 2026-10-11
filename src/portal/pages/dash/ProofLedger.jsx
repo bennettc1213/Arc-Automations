@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Panel, Pill } from '../../components/ui';
 import { site } from '../../../data/site';
+import { formatStamp } from '../../lib/format';
 import './ProofLedger.css';
 
 /**
@@ -25,9 +26,20 @@ const HELD_WORD = { true: 'on record', false: 'missing', null: 'does not apply' 
 /* one lead's card: the seven lines, then its status and the reason. exported because the
    jobs screen (ARC-MK-200) draws a client's own leads with the same card — `noun` is the
    only thing that differs, so an example can never be mistaken for a real lead. */
-export function LedgerCard({ lead, index, total, noun = 'example' }) {
-  const { verdict, record } = lead;
+export function LedgerCard({ lead, index, total, noun = 'example', timezone = 'UTC' }) {
+  const { verdict, record, handling } = lead;
   const headingId = `pl-lead-${lead.key}`;
+  const lines = (rows) =>
+    rows.map((line) => (
+      <div className={`pl-record__row pl-record__row--${String(line.held)}`} key={line.label}>
+        <dt>
+          <i aria-hidden="true">{HELD_GLYPH[String(line.held)]}</i>
+          {line.label}
+          <span className="pl-sr"> ({HELD_WORD[String(line.held)]})</span>
+        </dt>
+        <dd>{line.value}</dd>
+      </div>
+    ));
 
   return (
     <article className={`pl-lead pl-lead--${verdict.tone}`} aria-labelledby={headingId}>
@@ -39,18 +51,32 @@ export function LedgerCard({ lead, index, total, noun = 'example' }) {
         <Pill tone={verdict.tone}>{verdict.label}</Pill>
       </header>
 
-      <dl className="pl-record">
-        {record.map((line) => (
-          <div className={`pl-record__row pl-record__row--${String(line.held)}`} key={line.label}>
-            <dt>
-              <i aria-hidden="true">{HELD_GLYPH[String(line.held)]}</i>
-              {line.label}
-              <span className="pl-sr"> ({HELD_WORD[String(line.held)]})</span>
-            </dt>
-            <dd>{line.value}</dd>
-          </div>
-        ))}
-      </dl>
+      <dl className="pl-record">{lines(record)}</dl>
+
+      {/* ARC-MK-230: how long the text took, what the customer answered and who was told.
+          a second list, not more lines in the first — the seven above are what makes a job
+          count, and none of these does. */}
+      {handling?.length > 0 && (
+        <>
+          <h4 className="pl-lead__sub">what arc asked, and who it told</h4>
+          <dl className="pl-record pl-record--handling">{lines(handling)}</dl>
+        </>
+      )}
+
+      {lead.proof?.length > 0 && (
+        <details className="pl-proof">
+          <summary>action history · {lead.proof.length} events</summary>
+          <ol>
+            {lead.proof.map((event, position) => (
+              <li key={event.id ?? `${event.at}-${position}`}>
+                <time dateTime={event.at}>{formatStamp(event.at, timezone)}</time>
+                <span>{event.label}{event.status === 'failure' ? ' · failed' : ''}</span>
+                {event.id && <small>record {event.id}</small>}
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
 
       <p className="pl-lead__verdict">
         <strong>{verdict.label}.</strong> {verdict.reason}
@@ -74,6 +100,11 @@ export default function ProofLedger({ data, base }) {
           below are seven example leads for a made-up heating and cooling company. each shows what
           is on record, in order, and why it counts or does not. a missing step is marked, never
           hidden.
+        </p>
+        <p className="pl-sub">
+          under those steps is what arc asked and who it told: what the customer needs, where
+          they are and how soon. none of that decides whether a job counts — it is there so you
+          know the job before you call back.
         </p>
 
         <ul className="pl-tally" aria-label="the seven examples, by status">

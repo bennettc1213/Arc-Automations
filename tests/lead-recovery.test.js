@@ -671,6 +671,8 @@ describe('safety language creates a mandatory handoff', () => {
     assert.equal(handoff.isSafety, true);
     assert.equal(handoff.reasonCode, 'safety');
     assert.equal(store.eventsOfType('handoff_requested').length, 1);
+    assert.equal(store.eventsOfType('owner_alerted').length, 1, 'the accepted staff SMS is proof in the event log');
+    assert.equal(store.eventsOfType('owner_alerted')[0].event.payload.channel, 'sms');
     assert.ok(sender.sent.some((m) => m.to === '+16145550188'), 'the staff alert went out');
   });
 
@@ -712,6 +714,7 @@ describe('a reply stops the automation', () => {
 
     assert.equal(result.cancelled >= 2, true);
     assert.equal(store.pendingActions().some((a) => a.actionType === 'send_followup'), false);
+    assert.equal(store.eventsOfType('followup_stopped').length, 1, 'cancelling a queued follow-up is on the record');
     const run = await store.getRunForLead(TENANT_A, lead.id);
     assert.equal(run.state, 'qualifying');
   });
@@ -1501,6 +1504,8 @@ describe('a person taking over stops the automation', () => {
     const run = await store.getRunForLead(TENANT_A, intake.lead.id);
     assert.equal(run.state, 'handed_off');
     assert.equal(maySend(run.state), false);
+    assert.equal(store.eventsOfType('handoff_accepted').length, 1);
+    assert.equal(store.eventsOfType('followup_stopped').length, 1);
   });
 
   test('a follow-up already on the queue is refused after a takeover', async () => {

@@ -42,6 +42,8 @@ export const CORPUS_DOCS: CorpusDoc[] = [
   { key: 'booking', path: 'docs/architecture/ARC_BOOKING.md' },
   { key: 'onboarding', path: 'docs/architecture/ARC_ONBOARDING.md' },
   { key: 'proof_ledger', path: 'docs/architecture/ARC_PROOF_LEDGER.md' },
+  { key: 'product-scope', path: 'docs/architecture/ARC_PRODUCT_SCOPE.md' },
+  { key: 'tenant-settings', path: 'docs/architecture/ARC_TENANT_SETTINGS.md' },
   { key: 'n8n-boundary', path: 'docs/architecture/ARC_N8N_EXECUTION_BOUNDARY_ADR.md' },
   { key: 'n8n-audit', path: 'docs/architecture/ARC_N8N_REPOSITORY_AUDIT.md' },
   { key: 'master-roadmap', path: 'ARC_MASTER_ROADMAP_FROM_ARC_200.md' },

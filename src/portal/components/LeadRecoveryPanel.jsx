@@ -41,9 +41,12 @@ import {
 import {
   AFTER_HOURS_BEHAVIOURS,
   COMPLIANCE_STATUSES,
+  DEFAULT_FOLLOWUP_AFTER_MINUTES,
   DEFAULT_TEMPLATES,
   defaultConfig,
   FORWARDING_MODES,
+  MAX_FOLLOWUP_AFTER_MINUTES,
+  MIN_FOLLOWUP_AFTER_MINUTES,
   ONBOARDING_STEPS,
   validateLeadRecoveryConfig,
   WEEKDAYS,
@@ -118,6 +121,8 @@ function toForm(config) {
     reply_ack_booking: base.templates?.reply_ack_booking ?? '',
     after_hours_behaviour: base.after_hours?.behaviour ?? 'after_hours_response',
     callback_window: base.after_hours?.callback_window ?? '',
+    followup_enabled: base.followup?.enabled !== false,
+    followup_after: String(base.followup?.after_minutes ?? DEFAULT_FOLLOWUP_AFTER_MINUTES),
     emergency_keywords: fromList(base.safety?.emergency_keywords),
     always_handoff: fromList(base.safety?.always_handoff_services),
     confidence_floor: String(base.safety?.confidence_floor ?? 0.7),
@@ -177,6 +182,18 @@ function toConfig(form) {
       behaviour: form.after_hours_behaviour,
       callback_window: form.callback_window.trim() || null,
     },
+    /* sent only when it is not what its absence already means, like the forwarding mode
+       above: an untouched follow-up is then a document an `ops` function from before
+       ARC-SAAS-020 still accepts. a wait that is not a number is sent as typed, so the
+       validator says so instead of the form quietly saving the default. */
+    ...(form.followup_enabled && form.followup_after.trim() === String(DEFAULT_FOLLOWUP_AFTER_MINUTES)
+      ? {}
+      : {
+          followup: {
+            enabled: form.followup_enabled,
+            after_minutes: /^\d+$/.test(form.followup_after.trim()) ? Number(form.followup_after.trim()) : form.followup_after.trim(),
+          },
+        }),
     safety: {
       emergency_keywords: toList(form.emergency_keywords),
       always_handoff_services: toList(form.always_handoff),
@@ -435,8 +452,20 @@ export default function LeadRecoveryPanel({ client }) {
           <Field label="out-of-hours response" wide hint="used when they are closed and the behaviour below says to answer anyway">
             <TextArea value={form.after_hours_response} onChange={set('after_hours_response')} rows={3} />
           </Field>
-          <Field label="follow-up" wide hint="once, an hour later or at the next opening time, only if nobody replied">
+          <Field label="follow-up" wide hint="once, after the wait below or at the next opening time, only if nobody replied">
             <TextArea value={form.followup} onChange={set('followup')} rows={2} />
+          </Field>
+          <Field label="send the follow-up" hint="off means a customer who does not answer the first text hears nothing more">
+            <label className="ops-check">
+              <input type="checkbox" checked={form.followup_enabled} onChange={set('followup_enabled')} />
+              <span>one follow-up when nobody replies — never more than one</span>
+            </label>
+          </Field>
+          <Field
+            label="wait before the follow-up (minutes)"
+            hint={`${MIN_FOLLOWUP_AFTER_MINUTES}–${MAX_FOLLOWUP_AFTER_MINUTES}. it never goes outside opening hours, whatever this says`}
+          >
+            <TextInput value={form.followup_after} onChange={set('followup_after')} mono />
           </Field>
           <Field label="handed to a person" wide hint="sent when the sequence stops and somebody takes over">
             <TextArea value={form.handoff_ack} onChange={set('handoff_ack')} rows={2} />

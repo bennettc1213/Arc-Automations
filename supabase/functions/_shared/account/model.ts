@@ -5,7 +5,8 @@
  * The answer already exists — it is the client's published Lead Recovery configuration and
  * its do-not-contact list — but until now only an operator could read either. This is the
  * projection a signed-in client is given: the hours, the service area, what happens outside
- * hours, who is told when a lead needs a person, and who must never be texted.
+ * hours and to a customer who does not reply (ARC-SAAS-020), who is told when a lead needs a
+ * person, and who must never be texted.
  *
  * Portal-safe: it imports nothing, so the page, the demo's written example and the edge
  * function all build and read the same shape. Three rules:
@@ -43,6 +44,12 @@ export const STOP_REASON_WORDS: Readonly<Record<string, string>> = Object.freeze
   other: 'other',
 });
 
+/**
+ * what a configuration that says nothing about the follow-up means: one, an hour after the
+ * first text. drift-tested against the validator's own default, which this file cannot import.
+ */
+export const FOLLOWUP_AFTER_MINUTES = 60;
+
 /** how many stop-list rows the view carries. the total is always the true count. */
 export const STOP_LIST_SHOWN = 50;
 
@@ -59,6 +66,8 @@ export interface AccountSettingsView {
   timezone: string | null;
   hours: { day: string; ranges: { open: string; close: string }[] }[];
   after_hours: { behaviour: string; callback_window: string | null };
+  /** whether a customer who has not replied gets the one follow-up, and how long after the first text. */
+  followup: { enabled: boolean; after_minutes: number };
   service_area: { zips: string[]; cities: string[]; note: string | null };
   alerts: { name: string | null; channel: string; address_hint: string }[];
   stop_list: { total: number; entries: { channel: string; address_hint: string; reason: string; added_at: string | null }[] };
@@ -101,6 +110,7 @@ export function accountSettingsView(
   const hoursRaw = isObject(config.business_hours) ? config.business_hours : {};
   const area = isObject(config.service_area) ? config.service_area : {};
   const after = isObject(config.after_hours) ? config.after_hours : {};
+  const chase = isObject(config.followup) ? config.followup : {};
   const alerts = Array.isArray(config.staff_alerts) ? config.staff_alerts.filter(isObject) : [];
 
   return {
@@ -116,6 +126,10 @@ export function accountSettingsView(
     after_hours: {
       behaviour: text(after.behaviour) ?? 'same_response',
       callback_window: text(after.callback_window),
+    },
+    followup: {
+      enabled: chase.enabled !== false,
+      after_minutes: typeof chase.after_minutes === 'number' ? chase.after_minutes : FOLLOWUP_AFTER_MINUTES,
     },
     service_area: { zips: texts(area.zips), cities: texts(area.cities), note: text(area.note) },
     alerts: alerts.map((entry) => ({
@@ -143,6 +157,19 @@ export function clockWords(hhmm: string): string {
   const hour = Number(match[1]);
   const suffix = hour % 24 < 12 ? 'am' : 'pm';
   return `${hour % 12 === 0 ? 12 : hour % 12}:${match[2]} ${suffix}`;
+}
+
+/** "an hour", "2 hours", "45 minutes" — how long after the first text, as an owner would say it. */
+export function waitWords(minutes: number): string {
+  if (minutes % 60 !== 0) return `${minutes} minutes`;
+  const hours = minutes / 60;
+  return hours === 1 ? 'an hour' : `${hours} hours`;
+}
+
+/** what happens to a customer who does not answer the first text, in an owner's words. */
+export function followupWords(view: Pick<AccountSettingsView, 'followup'>): string {
+  if (!view.followup.enabled) return 'arc does not text them again.';
+  return `arc sends one more text, ${waitWords(view.followup.after_minutes)} later or when you next open, and then stops.`;
 }
 
 /** one line per weekday: the day and its hours, or "closed". */

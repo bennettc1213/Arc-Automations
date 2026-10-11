@@ -25,6 +25,7 @@
  */
 
 import { LEDGER_STATUS, ledgerStatus } from '../lib/ledger.js';
+import { handlingLines, summariseFacts } from '../lib/handling.js';
 
 export const PROOF_LEDGER_COMPANY = 'Halstead Heating & Air';
 
@@ -37,6 +38,8 @@ const FORM_TEXT = `Hi, this is ${PROOF_LEDGER_COMPANY} — thanks for getting in
  *   answered   did a person at the company pick up. a form has nobody to pick up: null.
  *   text       arc's first text, or null if none went out
  *   reply      the customer's words, or null
+ *   need       the kind of job read from the reply (ARC-MK-230), where there is one
+ *   urgency    how soon, in the reader's own vocabulary: 'same_day' | 'scheduling' | 'emergency'
  *   ruledOut   a reply that ends it: 'wrong_number'
  *   handoff    why arc stopped and gave it to a person, or null
  *   booking    { when } or null
@@ -52,6 +55,8 @@ export const PROOF_LEDGER_LEADS = [
     answered: false,
     text: FIRST_TEXT,
     reply: 'ac is blowing warm air. 43214',
+    need: 'air conditioning repair',
+    urgency: 'same_day',
     ruledOut: null,
     handoff: null,
     booking: { when: 'wednesday · 9:00 am' },
@@ -66,6 +71,8 @@ export const PROOF_LEDGER_LEADS = [
     answered: false,
     text: FIRST_TEXT,
     reply: 'furnace keeps shutting off. 43202',
+    need: 'furnace repair',
+    urgency: 'same_day',
     ruledOut: null,
     handoff: null,
     booking: { when: 'friday · 2:00 pm' },
@@ -80,6 +87,8 @@ export const PROOF_LEDGER_LEADS = [
     answered: false,
     text: FIRST_TEXT,
     reply: 'no heat this morning. 43221',
+    need: 'no heat',
+    urgency: 'same_day',
     ruledOut: null,
     handoff: null,
     booking: { when: 'monday · 1:30 pm' },
@@ -122,6 +131,8 @@ export const PROOF_LEDGER_LEADS = [
     answered: null,
     text: FORM_TEXT,
     reply: 'need a tune-up before winter. 43085',
+    need: 'a tune-up',
+    urgency: 'scheduling',
     ruledOut: null,
     handoff: null,
     booking: { when: 'tuesday · 11:00 am' },
@@ -136,6 +147,8 @@ export const PROOF_LEDGER_LEADS = [
     answered: false,
     text: FIRST_TEXT,
     reply: 'i smell gas near the furnace',
+    need: 'a gas smell near the furnace',
+    urgency: 'emergency',
     ruledOut: null,
     handoff: 'the reply sounded unsafe',
     booking: null,
@@ -226,14 +239,53 @@ export function ledgerRecord(lead) {
   ];
 }
 
+/* the made-up company's service area: the zip codes its example account screen lists
+   (`owner-account.js`; a test holds the two together). whether an example is in the area is
+   read off this, never typed onto the lead. */
+export const PROOF_LEDGER_ZIPS = ['43085', '43202', '43214', '43221'];
+
+/* a written example, as the facts the five handling lines read (ARC-MK-230,
+   `lib/handling.js`) — the same lines a real lead gets. the zip is the one in the customer's
+   own reply. no time is stated: an example has no clock, and how fast the text goes out is
+   measured on a real phone line. */
+export function handlingFacts(lead, zips = PROOF_LEDGER_ZIPS) {
+  const zip = /\b\d{5}\b/.exec(lead.reply ?? '')?.[0] ?? null;
+  const passedOn = Boolean(lead.reply) && !lead.ruledOut && !lead.handoff;
+  return {
+    source: lead.source,
+    texted: Boolean(lead.text),
+    textFailed: false,
+    speedMs: null,
+    speedHidden: 'not shown for an example',
+    replied: Boolean(lead.reply),
+    read: Boolean(lead.reply),
+    wrongNumber: lead.ruledOut === 'wrong_number',
+    need: lead.need ?? null,
+    zip,
+    inArea: zip ? zips.includes(zip) : null,
+    urgency: lead.urgency ?? null,
+    safety: [],
+    handoff: Boolean(lead.handoff),
+    toldTo: passedOn ? 'you' : null,
+  };
+}
+
 /* the page's data: each lead with its record and verdict, and the tally the heading prints.
    the tally is counted from the verdicts, never typed. */
 export function buildProofLedger(leads = PROOF_LEDGER_LEADS) {
-  const rows = leads.map((lead) => ({ ...lead, record: ledgerRecord(lead), verdict: ledgerVerdict(lead) }));
+  const facts = leads.map((lead) => handlingFacts(lead));
+  const rows = leads.map((lead, index) => ({
+    ...lead,
+    record: ledgerRecord(lead),
+    handling: handlingLines(facts[index]),
+    verdict: ledgerVerdict(lead),
+  }));
   const count = (status) => rows.filter((row) => row.verdict.status === status).length;
   return {
     company: PROOF_LEDGER_COMPANY,
     leads: rows,
+    /* the three cards on "this month", counted from the same seven. */
+    handling: summariseFacts(facts),
     tally: {
       total: rows.length,
       counts: rows.filter((row) => row.verdict.billed).length,

@@ -432,6 +432,30 @@ $$);
 Overlapping runs are safe: `claim_scheduled_actions()` hands a row to exactly
 one caller under `for update skip locked`.
 
+### The hourly look at who has gone quiet (ARC-GO-330)
+
+A second schedule on the same function, with the same key. It sends nothing and
+claims nothing: for every client whose Lead Recovery is live it asks when a
+call, a form or a reply last came in, and past 48 hours it raises one watermark
+alert on the console's alerts page. Without this schedule nothing raises an
+alert on its own.
+
+```sql
+select cron.schedule('arc-quiet-client-watch', '7 * * * *', $$
+  select net.http_post(
+    url     := 'https://<ref>.supabase.co/functions/v1/dispatch',
+    headers := '{"content-type":"application/json","x-arc-dispatch-key":"<ARC_DISPATCH_KEY>"}'::jsonb,
+    body    := '{"watch":true}'::jsonb
+  );
+$$);
+```
+
+To run it by hand, post the same body with the same header. The answer lists
+each live client and what it found. Nobody is paged when an alert opens, and
+nothing yet notices a queue that has stopped draining. What to do when
+something is wrong is one page:
+[docs/architecture/ARC_INCIDENT_NOTE.md](docs/architecture/ARC_INCIDENT_NOTE.md).
+
 ---
 
 ## 6. Twilio, per tenant

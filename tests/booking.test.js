@@ -505,7 +505,11 @@ describe('the bookings screen', async () => {
     assert.match(failed, /the network dropped/);
   });
 
-  test('what is waiting for an answer comes first, with the buttons that are its legal next steps', () => {
+  test('what is waiting for an answer comes first, with the buttons that are its legal next steps', (t) => {
+    /* a wednesday at noon in the business's own time. the appointments are placed hours from
+       now and the screen draws this week, so on the real clock the ones a day either side
+       fall out of the week every sunday and monday. */
+    t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-07T18:00:00.000Z') });
     const html = draw(overview());
     assert.match(html, /waiting for an answer/);
     assert.match(html, /1 waiting for an answer/);

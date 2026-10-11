@@ -21,6 +21,24 @@ different nav declarations. Every figure on either side is derived by the same
 code from the `events` log — there is one derivation chain, so the console and
 a client's dashboard cannot disagree.
 
+**What the launch product is and is not is frozen in one file** (ARC-SAAS-010,
+[docs/architecture/ARC_PRODUCT_SCOPE.md](docs/architecture/ARC_PRODUCT_SCOPE.md)): nine things
+in, eight out. Check it before building anything a launch client would see or be sold; moving
+something across the boundary edits that file as its own decision. Where the `ARC-SAAS-*`
+prompt file disagrees with the repository (n8n as Lead Recovery's execution layer, a promised
+reply speed, a scripted qualification exchange), section 5 says which holds.
+
+**What one client can change is listed in one table, held to the code** (ARC-SAAS-020,
+[docs/architecture/ARC_TENANT_SETTINGS.md](docs/architecture/ARC_TENANT_SETTINGS.md),
+`tests/tenant-settings.test.js`). A new field in `lead-recovery-config.ts` fails that test until
+it is placed in the table, and it needs its metadata in `registry/schemas.ts` and a layout in
+`registry/layouts.ts`. Add a setting only when the engine reads it — a stored value nothing
+reads looks like it does something. An optional field's absence must mean what it meant before
+the field existed, and `LeadRecoveryPanel` sends it only when it differs from that, so the site
+can ship ahead of the functions. The follow-up's limits are `followup` (`enabled`,
+`after_minutes`, read by `followupDueAt`); that there is one follow-up and never two is the
+engine's, not a setting.
+
 ## ARC Lead Recovery (`0010`)
 
 The first module Arc **runs** rather than watches. A call reaches an ARC/Twilio
@@ -88,6 +106,17 @@ redelivered message is finished unless what it called for is provably there (`re
 suppression for a stop, an action keyed on the message otherwise — so that action is queued last,
 and a step is queued before the run changes state). Never put an environment variable's name in a
 reason. The harness answers timestamps as text, as PostgREST does.
+
+**A live client gone quiet is noticed by one check, and it only raises an alert** (ARC-GO-330,
+`_shared/watch/`, `tests/watch.test.js`, ARC_LEAD_RECOVERY_READINESS.md §6). `dispatch` posted
+`{"watch":true}` — a second, hourly schedule — runs `runQuietCheck`: for every module whose
+lifecycle is `active`, the newest real arrival (`ARRIVAL_EVENT_TYPES`: something from outside,
+never a text ARC sent, never a canary) against the registry's `quietAfterHours`, counted from
+when the module last went live. Quiet raises one `watermark` row in `alerts`, worded for the
+owner (`quietMessage`), and a person resolves it. It writes no event — the portal already
+derives quiet from the log — and touches no lifecycle, health overlay or queue. It pages nobody,
+and the registry's `dispatcher_heartbeat` is still not built. What to do in an incident is
+docs/architecture/ARC_INCIDENT_NOTE.md; the hosted actions left, in order, are §6.3 of the map.
 
 **Whether a module may act is its lifecycle** (`0015`, `_shared/lifecycle/`,
 ARC-120): `tenant_modules` holds the operator's decision (unselected → configuring →
@@ -223,7 +252,9 @@ listener and no vendor.
 **The public homepage sells one thing, in an owner's words** (ARC-MK-100, `src/Site.jsx`,
 `Leaks` / `Ledger` / `Price`, `tests/site-offer.test.js`). Missed calls texted back, with the
 proof shown: the four leaks are a staged map (`site.leaks`, each `stage` a claim about today —
-only move one when the thing behind it works end to end), the ledger's leads are labelled
+only move one when the thing behind it works end to end; `site.leaks.covers` is the three things
+the first one covers — missed call, website request, the questions asked — one system, listed
+under the map and never a stage of their own), the ledger's leads are labelled
 examples, and every pilot number lives in `site.price.terms`, where null prints the row's words
 and never a zero. The test reads the *rendered* page, so a word hardcoded in a component is
 caught too: `ownerCopyProblem` (`src/lib/owner-copy.js`) fails on the machine's words, an

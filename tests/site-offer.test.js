@@ -151,6 +151,7 @@ describe('the homepage offer', () => {
     assert.equal(count(html, /<h1\b/g), 1);
     const sub = /<p class="hero__sub">([^<]*)<\/p>/.exec(hero)[1];
     assert.match(sub, /small hvac companies/);
+    assert.match(sub, /every call or website request/);
     assert.match(sub, /texts the caller back/);
     assert.match(sub, /monthly base/, 'what it costs');
     assert.match(sub, /only for jobs we can prove/, 'when you pay');
@@ -207,6 +208,25 @@ describe('the four places jobs slip away', () => {
     assert.match(site.leaks.items[0].status, /pilot/);
     for (const leak of site.leaks.items.slice(1)) assert.match(leak.status, /not built yet|blocked/, leak.key);
     assert.match(site.leaks.items[3].status, /consent/);
+  });
+
+  /* the launch offer is three things an owner would name — a missed call, a website
+     request and the questions asked — and one system. they sit under the map, not in
+     it: the map is still four, and none of the three claims a stage of its own. */
+  test('the first one covers three things, under the map and never as cards in it', () => {
+    const { covers } = site.leaks;
+    assert.deepEqual(covers.items.map((c) => c.key), ['missed-call', 'web-request', 'questions']);
+    const section = html.slice(html.indexOf('<section class="leaks'), html.indexOf('<section class="ledger'));
+    assert.ok(section.indexOf('</ol>') < section.indexOf(covers.title), 'after the four');
+    assert.equal(count(section, /<li class="covers__item"/g), 3);
+    for (const item of covers.items) {
+      assert.ok(section.includes(`<h4 class="covers__name">${item.name}</h4>`), item.key);
+      assert.equal(item.stage, undefined, 'a stage is a leak\'s, not a line\'s');
+      assert.doesNotMatch(item.what, /\blive\b|in production|available now|running/i, item.key);
+    }
+    /* a website request is only texted once the customer has agreed to it */
+    assert.match(covers.items[1].what, /ticks a box agreeing to texts/);
+    assert.match(covers.items[2].what, /unsafe goes straight to a person/);
   });
 });
 

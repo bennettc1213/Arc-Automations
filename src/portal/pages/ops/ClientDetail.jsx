@@ -24,6 +24,7 @@ import ServicesPanel from '../../components/ServicesPanel';
 import BuildPanel from '../../components/BuildPanel';
 import LeadRecoveryPanel from '../../components/LeadRecoveryPanel';
 import LedgerPanel from '../../components/LedgerPanel';
+import HandlingPanel from '../../components/HandlingPanel';
 import TenantModulesPanel from '../../components/ModuleSelection';
 import PurgeClientPanel from '../../components/PurgeClientPanel';
 import ReportDialog from '../../components/ReportDialog';
@@ -428,6 +429,11 @@ function ClientBody({ client, base, reload, reloadBuilds, probe, runProbe }) {
           (ARC-MK-220). drawn from the same dashboard object the client sees, so the two cannot
           disagree. shown for a past client too, read-only: their ledger is still their record. */}
       <LedgerPanel data={data} tenant={tenant} reload={reload} readOnly={archived} />
+
+      {/* the offer's three lines for this client — missed calls texted back, website requests
+          texted back, and what the questions found (ARC-MK-230). the same panel their owner
+          reads on "this month", from the same object. */}
+      <HandlingPanel data={data} title="what arc does with each lead — as the owner sees it" />
 
       <div className="ws-stats">
         <StatCard

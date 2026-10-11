@@ -23,6 +23,17 @@
  *     );
  *   $$);
  *
+ * A second schedule, once an hour, posts `{"watch":true}` to the same function: the check
+ * that notices a live client gone quiet (`_shared/watch/`, ARC-GO-330). It sends nothing.
+ *
+ *   select cron.schedule('arc-quiet-client-watch', '7 * * * *', $$
+ *     select net.http_post(
+ *       url     := 'https://<ref>.supabase.co/functions/v1/dispatch',
+ *       headers := '{"content-type":"application/json","x-arc-dispatch-key":"<the same string>"}'::jsonb,
+ *       body    := '{"watch":true}'::jsonb
+ *     );
+ *   $$);
+ *
  * Two callers are allowed and they authenticate differently: the scheduler presents
  * `x-arc-dispatch-key`, and an operator pressing "run the queue now" in the console
  * presents their own JWT, which is checked against `arc_admins` the same way the `ops`
@@ -40,6 +51,7 @@ import { runDueActions, type EngineDeps } from '../_shared/engine/runtime.ts';
 import { classifierFor } from '../_shared/classifier.ts';
 import { RecordingSender, TwilioRestSender } from '../_shared/twilio.ts';
 import { safeEqual } from '../_shared/twilio.ts';
+import { runQuietCheck, supabaseWatchReads } from '../_shared/watch/service.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -102,11 +114,27 @@ Deno.serve(async (request) => {
     return json({ error: 'not authorised' }, 401);
   }
 
-  let body: { limit?: number; worker?: string } = {};
+  let body: { limit?: number; worker?: string; watch?: boolean } = {};
   try {
     body = (await request.json()) as typeof body;
   } catch {
     /* an empty body from the scheduler is normal. */
+  }
+
+  /* the hourly look at who has gone quiet (ARC-GO-330). a second schedule on this function,
+     behind the same two callers. it claims nothing and sends nothing: it reads, and raises
+     at most one alert per client. */
+  if (body.watch === true) {
+    try {
+      const report = await runQuietCheck({ reads: supabaseWatchReads(db), now: () => new Date() });
+      if (report.raised > 0 || report.unread > 0) {
+        console.log(`watch (${caller}): checked ${report.checked}, quiet ${report.quiet}, raised ${report.raised}, unread ${report.unread}`);
+      }
+      return json({ ok: true, ...report }, 200);
+    } catch (error) {
+      console.error('watch failed', error);
+      return json({ error: 'the quiet check failed', detail: (error as Error)?.message ?? null }, 500);
+    }
   }
 
   const limit = Math.max(1, Math.min(MAX_LIMIT, Math.round(body.limit ?? 25)));

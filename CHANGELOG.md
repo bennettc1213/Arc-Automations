@@ -7,6 +7,123 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.43.0] - 2026-10-11
+
+**ARC-SAAS-020: what one client can change, and one setting it could not.** The settings
+store was already built. Of the nineteen settings the SaaS prompt asks for, sixteen were in it
+or are fixed by the engine on purpose. One was missing and is added. No table changed and there
+is no migration. Nothing is deployed.
+
+### Added
+
+- **A client's own follow-up limits** (`followup` in the Lead Recovery configuration):
+  whether a customer who has not replied gets the follow-up at all, and how long after the
+  first text (15 to 1440 minutes). Until now it was always sent, an hour later. There is still
+  one follow-up and never two, and it still waits for opening hours. A configuration published
+  before the setting existed means what it always meant, so nothing has to be republished.
+- The owner's account screen says which it is: "if a customer does not reply: arc sends one
+  more text, an hour later or when you next open, and then stops", or that arc does not text
+  them again. `/demo` shows the same line.
+- Both settings forms in the console edit it. Turning it off prints a warning to whoever
+  saves, and changing it is a retest before new leads use it.
+- **`docs/architecture/ARC_TENANT_SETTINGS.md`**: where a client's settings live, the five
+  things that read them, the nineteen settings in one table, and why trade, an emergency
+  window, a question list and an n8n status are not settings.
+- `tests/tenant-settings.test.js` holds that table to the code: a new configuration field
+  fails it until the field is placed. Two new scenarios in the safety gate run the follow-up's
+  limits on the in-memory store and on real Postgres.
+
+### Changed
+
+- With the follow-up off none is queued, and the lead closes itself three days after the first
+  text.
+- The Roadmap Assistant searches the settings document too. It takes effect when `ops` is next
+  deployed.
+
+### Fixed
+
+- A bookings-screen test placed its appointments hours from the real clock, so it failed
+  whenever one fell outside the week the screen draws, as it did on Sunday October 11. That
+  one test now runs at a fixed midweek time. The screen itself was never wrong.
+
+## [1.42.1] - 2026-10-11
+
+**ARC-SAAS-010: the launch boundary, written down.** A document only. No code path, table or
+hosted project changed.
+
+### Added
+
+- **`docs/architecture/ARC_PRODUCT_SCOPE.md`**: what ARC Lead Recovery is at launch (nine
+  things, each with where it lives and how it stands) and what it is not (eight things, each
+  with what already exists and how it is kept out), a four-question test for anything new, and
+  the four places where the SaaS prompt file differs from the repository: n8n is not Lead
+  Recovery's execution layer, "SaaS" is not an owner-facing word, qualification is one reply
+  read by rules, and no speed is promised until one is measured.
+
+### Changed
+
+- The roadmap's current position points to the scope document.
+- The Roadmap Assistant searches the scope document too (`CORPUS_DOCS`). It takes effect when
+  `ops` is next deployed.
+
+## [1.42.0] - 2026-10-10
+
+**The launch offer names three things.** The homepage said one: missed calls texted back. It
+now says what that first step covers. Nothing was built; the website form and the questions
+were already part of the same system as the missed call.
+
+### Added
+
+- **"The first one covers three things"**, under the four places jobs slip away
+  (`site.leaks.covers`, `Leaks.jsx`): a missed call gets a text back, a website request gets
+  one too, and the questions are asked before the owner calls back. The map is still four and
+  none of the three is a stage of its own.
+
+### Changed
+
+- The hero's line under the headline says "every call or website request", and the price
+  half of it is shorter to make room.
+- How it works: setup mentions the request form for the owner's website, and the third step
+  covers a website request and the service-area check.
+- The moving strip adds "website request" and "questions asked".
+
+## [1.41.0] - 2026-10-10
+
+**ARC-GO-330, the half that touches nothing hosted.** The gate passed, the check that notices
+a client gone quiet is built, and there is one page for when something goes wrong. No table
+changed and there is no migration. Nothing is deployed, and no hosted project was changed.
+
+### Added
+
+- **The check that notices a live client gone quiet** (`_shared/watch/`). Once an hour, on a
+  second schedule of the `dispatch` function, it asks of every client whose Lead Recovery is
+  live when a call, a form or a customer's reply last came in. Past the registry's 48 hours
+  it raises one watermark alert, worded for the owner, who reads it on their reliability
+  page. The clock starts when the module last went live. A text ARC sent is not an arrival,
+  and neither is a canary. It writes no event, changes no lifecycle and sends nothing; a
+  person resolves the alert, and arrivals starting again do not close it.
+- **`docs/architecture/ARC_INCIDENT_NOTE.md`.** How to stop one client, one customer or
+  everything; what each symptom usually is; who to call; what to tell the owner.
+- **`tests/watch.test.js`**, and the same check on real Postgres through the production reads
+  in `tests/lead-recovery-gate.test.js`: a quiet client, one nothing ever reached, a busy
+  one, a paused one and one that has left.
+- The readiness map's section 6 now says where the live project stood on October 9, the nine
+  hosted actions in order, and what the business-text registration needs.
+
+### Changed
+
+- The console's alerts page no longer says detection is not built. It says what the one
+  check does, that it runs only where its schedule exists, that it cannot tell a slow week
+  from forwarding that has stopped, and that nobody is paged.
+
+### Not done
+
+- Every hosted action of `ARC-GO-330`. Live is level on migrations and is missing `twilio`,
+  `dispatch`, `lead-intake`, `ingest` and `client-login`, the Twilio pair, the public
+  functions address and the dispatch key.
+- Nothing notices a queue that has stopped draining. The registry names a dispatcher
+  heartbeat for this module and it is not built.
+
 ## [1.40.1] - 2026-10-09
 
 **ARC-GO-320: the safety test pass.** The whole Lead Recovery path, walked through its real

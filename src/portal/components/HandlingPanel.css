@@ -1,0 +1,95 @@
+/* ARC-MK-230 — the offer's three lines, each with its record. one column on a phone, three
+   once there is room; a card's figures are a short list, never a table. */
+
+.hd-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.hd-step {
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--accent);
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+}
+
+.hd-step__n {
+  margin: 0;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+.hd-step__name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.hd-step__what {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.hd-figures {
+  margin: 6px 0 0;
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.hd-figures div {
+  background: var(--surface);
+  padding: 10px 12px;
+  display: grid;
+  gap: 2px;
+}
+
+.hd-figures dt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.hd-figures dd {
+  margin: 0;
+}
+
+.hd-figures__value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.hd-figures__note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.hd-step__more {
+  justify-self: start;
+  padding: 10px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+
+@media (min-width: 900px) {
+  .hd-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Panel, Pill } from '../../components/ui';
 import { ModuleStat } from '../../components/ModuleUI';
+import HandlingPanel from '../../components/HandlingPanel';
 import { site } from '../../../data/site';
 import { formatCount, formatMoney } from '../../lib/format';
 import { ownerMonth } from '../../lib/owner';
@@ -10,7 +11,8 @@ import './Owner.css';
  * ARC-MK-200 — this month: is arc working?
  *
  * the owner portal's front page, read on a phone between jobs. three figures, then what
- * provably happened, then one card for each place a job slips away.
+ * provably happened, then the three things arc does with a lead (ARC-MK-230), then one card
+ * for each place a job slips away.
  *
  * the page decides nothing: `ownerMonth` hands it every figure already derived, and a
  * figure it could not derive arrives as null with its reason. that is drawn as a dash and
@@ -71,6 +73,9 @@ export default function ThisMonth({ data, base }) {
         )}
         <p className="ow-sub">{site.price.counts}</p>
       </Panel>
+
+      {/* ARC-MK-230: the offer's three lines, each with what the record shows for it. */}
+      <HandlingPanel data={data} base={base} />
 
       <Panel title="where jobs slip away" note="one at a time">
         <ul className="ow-leaks">

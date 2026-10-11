@@ -3,7 +3,7 @@
 **Roadmap revision date:** October 9, 2026  
 **Project:** ARC / Arc Automations  
 **Owner:** Bennett Church  
-**Last reported application version:** `1.40.1`  
+**Last reported application version:** `1.41.0`  
 **Primary niche:** small HVAC companies, 2 to 10 trucks  
 **Direction:** simple automations first. One company, one phone line, missed calls texted back, every step shown in a proof ledger.  
 **Immediate next implementation prompt:** `ARC-GO-330` — Live Backend and Real Telephony
@@ -45,6 +45,13 @@ ARC is sold as a productized service with a simple portal, not as self-serve sof
 client runs the same system and differs only in configuration. Setup still includes a call, for
 trust and phone forwarding, never for custom engineering.
 
+What is in the launch product and what is not is frozen in
+`docs/architecture/ARC_PRODUCT_SCOPE.md` (`ARC-SAAS-010`): nine things in, eight out, and four
+places where the SaaS prompt file differs from the repository. What one client can change is
+`docs/architecture/ARC_TENANT_SETTINGS.md` (`ARC-SAAS-020`, `1.43.0`): the nineteen settings
+that prompt asks for, where each lives, and the one it added — whether a quiet customer gets
+the follow-up, and how long after the first text.
+
 ---
 
 ## 2. Immediate next step
@@ -52,6 +59,12 @@ trust and phone forwarding, never for custom engineering.
 `ARC-GO-330` — the live backend and real telephony. It is the first step that touches the
 hosted projects, and every action in it is authorised one at a time. Before any of them, run
 `npm run gate` and see it pass: the whole suite on real SQL, with nothing skipped.
+
+Its repository half is done (`1.41.0`): the gate passed, the check that notices a client gone
+quiet is built, and the incident note is written. Its hosted half has not started. Section 6
+of `docs/architecture/ARC_LEAD_RECOVERY_READINESS.md` says where the live project stands,
+the nine hosted actions in order, and what the business-text registration needs. The first
+one waiting for a yes is deploying the five functions live does not have.
 
 `ARC-GO-320` is done (`1.40.1`). Section 7 of
 `docs/architecture/ARC_LEAD_RECOVERY_READINESS.md` says what the pass proved, the two defects
@@ -99,7 +112,7 @@ automation real. Phase 4 adds the next automations one at a time.
 | `ARC-GO-300` | Lead Recovery readiness map | Read-only | Done |
 | `ARC-GO-310` | Close the readiness gaps | Backend | Done (`1.40.0`) |
 | `ARC-GO-320` | Safety test pass | Tests | Done (`1.40.1`) |
-| `ARC-GO-330` | Live backend and real telephony | Hosted, each action authorised | Next |
+| `ARC-GO-330` | Live backend and real telephony | Hosted, each action authorised | Repository half done (`1.41.0`); hosted actions waiting |
 | `ARC-GO-340` | First HVAC pilot | Pilot | To do |
 | **Phase 4 — the next automations** | | | |
 | `ARC-AUTO-400` | Quiet estimate follow-up | Automation | After the pilot |
@@ -135,6 +148,11 @@ say what ARC does, what it costs, and when they pay.
 - The four places jobs slip away stay as a staged map, each with its real status: missed calls
   (launch), quiet estimates (next), missing reviews (later), past customers (blocked). Nothing
   past the first is shown as live.
+- Since `1.42.0` the first leak says what it covers, as three lines under the map: a missed
+  call texted back, a website request texted back, and the questions asked before the owner
+  calls back. They are the old menu's front three in an owner's words and one system — the
+  website form and the missed call are the same lead from the first text on — so none is a
+  stage of its own and the map is still four.
 - The three-route section and its quiz leave the public homepage. The route model and operator
   onboarding are kept; cold visitors are no longer asked to choose a route.
 - The nine extra services stop rendering and are kept as parked data.
@@ -320,6 +338,10 @@ time.
 
 **Done when.** A test number completes the loop in production and the ledger shows it.
 
+**So far** (`1.41.0`). The gate passed. The quiet-client check is built (`_shared/watch/`, an
+hourly schedule on `dispatch`) and the incident note is `ARC_INCIDENT_NOTE.md`. Nothing hosted
+has been changed. The readiness map's section 6 lists the hosted actions in order.
+
 ### ARC-GO-340 — First HVAC Pilot
 
 **Goal.** One approved HVAC company, one line, 30 to 60 days.
@@ -434,7 +456,7 @@ The Lead Recovery engine itself predates these IDs (migration `0010`).
 | Real telephony | Verification against a live Twilio account | `ARC-GO-330` |
 | Business-text registration | An approved registration per client | `ARC-GO-340` |
 | Live backend | Remaining functions deployed, staging level with live | `ARC-GO-330` |
-| Silent-client detection | An automatic check; alerts are raised by hand today | `ARC-GO-330` |
+| Silent-client detection | Built (`1.41.0`); closed once its hourly schedule exists on the live project | `ARC-GO-330` |
 | Provider connections in production | The hosted Vault checklist | Paused connectors only |
 | n8n bridge in production | A recorded licensing decision | Nothing on this roadmap |
 

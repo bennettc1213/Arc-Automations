@@ -62,7 +62,7 @@ import { assessSafety } from './rules.ts';
 import { classifyReply } from './rules.ts';
 import {
   decideFirstResponse,
-  followupAt,
+  followupDueAt,
   renderFollowup,
   renderHandoffAck,
   renderReplyAck,
@@ -108,12 +108,10 @@ function validateConfig(input: unknown) {
   return validate(input);
 }
 
-/**
- * How long after the first response we chase, if nothing came back. One follow-up, once —
- * and never outside the business's opening hours: this is the earliest it may go, and
- * `followupAt` moves it to the next opening when that moment is out of hours (ARC-GO-310).
- */
-export const FOLLOWUP_AFTER_MINUTES = 60;
+/* How long after the first response we chase, if nothing came back, is the client's own
+   setting (`followup`, ARC-SAAS-020), as is whether we chase at all. What is not a setting:
+   one follow-up, once, and never outside the business's opening hours — `followupDueAt`
+   moves it to the next opening when that moment is out of hours (ARC-GO-310). */
 
 /** How long a lead with no reply and no handoff stays open before it closes itself. */
 export const CLOSE_AFTER_HOURS = 72;
@@ -1099,7 +1097,8 @@ export async function handleInboundMessage(deps: EngineDeps, input: InboundMessa
       expiresAt: null,
     });
 
-    const cancelled = run ? await store.cancelPendingActions(input.tenantId, run.id, `customer ${verdict.intent}`) : 0;
+    const stopped = run ? await stopFollowup(deps, lead, run, verdict.intent, now) : 0;
+    const cancelled = stopped + (run ? await store.cancelPendingActions(input.tenantId, run.id, `customer ${verdict.intent}`) : 0);
     await store.updateLead(input.tenantId, lead.id, { status: 'suppressed' });
     if (run) await stopRun(deps, lead, run, 'opted_out', `customer replied ${verdict.intent}`);
 
@@ -1127,14 +1126,15 @@ export async function handleInboundMessage(deps: EngineDeps, input: InboundMessa
      qualify, but it is absolutely something to stop talking over. the self-closing deadline
      goes too, and is put back from this message further down — except on a redelivery,
      where the deadline on the queue may already be this message's own. */
-  const cancelled = run
+  const stopped = run ? await stopFollowup(deps, lead, run, 'customer_replied', now) : 0;
+  const cancelled = stopped + (run
     ? await store.cancelPendingActions(
         input.tenantId,
         run.id,
         'the customer replied',
-        redelivered ? ['send_followup', 'send_first_response'] : ['send_followup', 'send_first_response', 'close_run'],
+        redelivered ? ['send_first_response'] : ['send_first_response', 'close_run'],
       )
-    : 0;
+    : 0);
 
   if (safety?.requiresHuman) {
     const flags = [...new Set([...(lead.safetyFlags ?? []), ...safety.flags])];
@@ -1684,8 +1684,9 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
           /* one follow-up, and a self-closing deadline. both are rows on the queue rather
              than timers, so a restarted worker loses nothing. the follow-up is unprompted,
              so it waits for opening hours (ARC-GO-310) — a call missed at 10:30pm is not
-             chased at 11:30pm — and the deadline runs from when it will actually go. */
-          const chaseAt = followupAt(config, new Date(now.getTime() + FOLLOWUP_AFTER_MINUTES * 60_000));
+             chased at 11:30pm — and the deadline runs from when it will actually go. a
+             client that has turned the follow-up off has none queued (ARC-SAAS-020). */
+          const chaseAt = followupDueAt(config, now);
           if (chaseAt) await queue(deps, run, 'send_followup', chaseAt, {});
           await queue(deps, run, 'close_run', new Date((chaseAt ?? now).getTime() + CLOSE_AFTER_HOURS * 3_600_000), {});
         } else {
@@ -1956,7 +1957,7 @@ async function dispatchEffect(
     to: string;
     now: Date;
     /** emitted only on acceptance, and only for customer-facing messages. */
-    evidence?: { eventKey: string; template?: string | null; latencyFrom?: string | null; unmeasured?: boolean } | null;
+    evidence?: { eventKey: string; template?: string | null; purpose?: string | null; latencyFrom?: string | null; unmeasured?: boolean } | null;
     recordMessage?: boolean;
   },
 ): Promise<{ sent: boolean; sid: string | null; permanent: boolean; ambiguous: boolean; detail: string }> {
@@ -2101,6 +2102,7 @@ async function dispatchEffect(
           body: body.slice(0, 320),
           provider_message_id: result.sid,
           ...(args.evidence.template ? { template: args.evidence.template } : {}),
+          ...(args.evidence.purpose ? { purpose: args.evidence.purpose } : {}),
         },
       }),
     ]);
@@ -2161,6 +2163,7 @@ async function sendMessage(
     evidence: {
       eventKey: args.effect?.eventKey ?? eventKey('lr', 'sms', action.idempotencyKey),
       template: args.effect?.template ?? (typeof action.payload.template === 'string' ? action.payload.template : null),
+      purpose: args.effect?.template === 'reply_ack' ? 'reply_ack' : action.actionType === 'send_first_response' ? 'first_response' : action.actionType === 'send_followup' ? 'followup' : null,
       latencyFrom: typeof action.payload.lead_at === 'string' ? action.payload.lead_at : null,
       unmeasured: Boolean(args.effect),
     },
@@ -2198,6 +2201,22 @@ async function classifyLead(
     config: args.config,
     requestedService: args.lead.serviceRequest,
   });
+}
+
+/** One accepted staff SMS is one owner-visible proof row; retries keep its attempt id. */
+async function recordOwnerAlert(deps: EngineDeps, lead: LeadRow, attempt: EffectAttemptRow, recipientName: string | null) {
+  await deps.store.emit(lead.tenantId, [
+    baseEvent(lead, {
+      event_type: 'owner_alerted',
+      occurred_at: attempt.acceptedAt ?? attempt.dispatchStartedAt ?? attempt.reservedAt,
+      event_key: eventKey('lr', 'owner_alerted', attempt.id),
+      payload: {
+        channel: 'sms',
+        recipient_name: recipientName,
+        provider_message_id: attempt.providerMessageId,
+      },
+    }),
+  ]);
 }
 
 async function notifyStaff(
@@ -2277,7 +2296,12 @@ async function notifyStaff(
       if (error instanceof LifecycleStoreError) return sent;
       throw error;
     }
-    if (!reservation.reserved) continue;
+    if (!reservation.reserved) {
+      if (reservation.attempt.state === 'accepted' || reservation.attempt.state === 'confirmed') {
+        await recordOwnerAlert(deps, lead, reservation.attempt, recipient.name);
+      }
+      continue;
+    }
 
     const result = await sender.send({
       to: recipient.address,
@@ -2297,7 +2321,10 @@ async function notifyStaff(
       retryable: result.ok ? null : !result.ambiguous && !result.permanent,
       nowIso: iso(now),
     });
-    if (result.ok) sent += 1;
+    if (result.ok) {
+      await recordOwnerAlert(deps, lead, { ...reservation.attempt, providerMessageId: result.sid, acceptedAt: iso(now) }, recipient.name);
+      sent += 1;
+    }
   }
   return sent;
 }
@@ -2337,7 +2364,10 @@ async function openHandoffFor(
   await store.updateLead(lead.tenantId, lead.id, { status: 'handoff_required' });
 
   /* every scheduled message stops the moment a person is involved. */
-  if (run) await store.cancelPendingActions(lead.tenantId, run.id, 'handed to a person', ['send_followup', 'send_first_response']);
+  if (run) {
+    await stopFollowup(deps, lead, run, 'human_handoff', args.at);
+    await store.cancelPendingActions(lead.tenantId, run.id, 'handed to a person', ['send_first_response']);
+  }
 
   if (opened.created) {
     await store.emit(lead.tenantId, [
@@ -2459,7 +2489,7 @@ async function openHandoffFor(
               occurred_at: iso(args.at),
               status: 'success',
               event_key: ackKey,
-              payload: { to: lead.phone, body: body.slice(0, 320), template: 'handoff_ack' },
+              payload: { to: lead.phone, body: body.slice(0, 320), template: 'handoff_ack', purpose: 'handoff_ack' },
             }),
           ]);
         }
@@ -2487,6 +2517,24 @@ async function moveRun(deps: EngineDeps, _lead: LeadRow, run: RunRow, to: RunSta
   const updated = await deps.store.updateRun(run.tenantId, run.id, { state: to });
   run.state = to;
   return updated;
+}
+
+async function recordFollowupStopped(deps: EngineDeps, lead: LeadRow, run: RunRow, reason: string, at: Date) {
+  await deps.store.emit(lead.tenantId, [
+    baseEvent(lead, {
+      event_type: 'followup_stopped',
+      occurred_at: iso(at),
+      event_key: eventKey('lr', 'followup_stopped', run.id),
+      payload: { reason },
+    }),
+  ]);
+}
+
+/** Record a queued follow-up only if it was actually cancelled. */
+async function stopFollowup(deps: EngineDeps, lead: LeadRow, run: RunRow, reason: string, at: Date): Promise<number> {
+  const cancelled = await deps.store.cancelPendingActions(lead.tenantId, run.id, reason, ['send_followup']);
+  if (cancelled > 0) await recordFollowupStopped(deps, lead, run, reason, at);
+  return cancelled;
 }
 
 async function stopRun(deps: EngineDeps, lead: LeadRow, run: RunRow, reason: StopReason, detail: string): Promise<void> {
@@ -2599,7 +2647,8 @@ export async function takeOverLead(
   if (!lead) return { ok: false, outcome: 'no lead with that id for this client' };
 
   const run = await store.getRunForLead(args.tenantId, lead.id, MODULE_KEY);
-  const cancelled = run ? await store.cancelPendingActions(args.tenantId, run.id, 'a person took this lead over') : 0;
+  const stopped = run ? await stopFollowup(deps, lead, run, 'human_takeover', now) : 0;
+  const cancelled = stopped + (run ? await store.cancelPendingActions(args.tenantId, run.id, 'a person took this lead over') : 0);
 
   const opened = await store.openHandoff({
     tenantId: args.tenantId,
@@ -2631,6 +2680,13 @@ export async function takeOverLead(
       actor: 'human',
       event_key: eventKey('lr', 'takeover', lead.correlationId, opened.handoff.id),
       payload: { reason: args.note?.slice(0, 300) ?? 'taken over by a person', assigned_to: args.actor ?? null, reason_code: 'staff_request' },
+    }),
+    baseEvent(lead, {
+      event_type: 'handoff_accepted',
+      occurred_at: iso(now),
+      actor: 'human',
+      event_key: eventKey('lr', 'handoff_accepted', opened.handoff.id),
+      payload: { handoff_id: opened.handoff.id, accepted_by: args.actor ?? null },
     }),
   ]);
 
@@ -2693,7 +2749,10 @@ export async function markBooked(
   }
 
   const run = await store.getRunForLead(args.tenantId, lead.id, MODULE_KEY);
-  if (run) await store.cancelPendingActions(args.tenantId, run.id, 'the lead was booked');
+  if (run) {
+    await stopFollowup(deps, lead, run, 'booked', now);
+    await store.cancelPendingActions(args.tenantId, run.id, 'the lead was booked');
+  }
 
   const booking = args.outcome ?? 'booked';
   await store.updateLead(args.tenantId, lead.id, {
@@ -2949,13 +3008,13 @@ export async function settleUnknownSend(
     const action = attempt.runId && attempt.actionId
       ? (await store.listActionsForRun(args.tenantId, attempt.runId)).find((row) => row.id === attempt.actionId) ?? null
       : null;
-    let evidence: { key: string; template: string | null } | null = null;
+    let evidence: { key: string; template: string | null; purpose: string | null } | null = null;
     if (lead && action && attempt.effectKey === eventKey('lr', 'effect', action.idempotencyKey)) {
-      evidence = { key: eventKey('lr', 'sms', action.idempotencyKey), template: typeof action.payload.template === 'string' ? action.payload.template : null };
+      evidence = { key: eventKey('lr', 'sms', action.idempotencyKey), template: typeof action.payload.template === 'string' ? action.payload.template : null, purpose: action.actionType === 'send_first_response' ? 'first_response' : action.actionType === 'send_followup' ? 'followup' : null };
     } else if (lead && attempt.effectKey === eventKey('lr', 'reply_ack', lead.correlationId)) {
-      evidence = { key: eventKey('lr', 'sms', 'reply_ack', lead.correlationId), template: 'reply_ack' };
+      evidence = { key: eventKey('lr', 'sms', 'reply_ack', lead.correlationId), template: 'reply_ack', purpose: 'reply_ack' };
     } else if (lead && attempt.effectKey === eventKey('lr', 'ack', lead.correlationId)) {
-      evidence = { key: attempt.effectKey, template: 'handoff_ack' };
+      evidence = { key: attempt.effectKey, template: 'handoff_ack', purpose: 'handoff_ack' };
     }
     if (lead && evidence) {
       await store.emit(args.tenantId, [
@@ -2968,6 +3027,7 @@ export async function settleUnknownSend(
             to: lead.phone,
             provider_message_id: providerMessageId,
             ...(evidence.template ? { template: evidence.template } : {}),
+            ...(evidence.purpose ? { purpose: evidence.purpose } : {}),
             reconciled: true,
             reconciled_by: args.actorId ?? null,
           },

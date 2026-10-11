@@ -47,13 +47,15 @@ export const site = {
     // one short line each: the headline is sized so its longest line fills the column
     lines: ['missed calls', 'become', 'missed jobs.'],
     accent: ['arc texts', 'them back.'],
-    sub: 'for small hvac companies that cannot answer every call. arc texts the caller back, books the job or hands it to you, and shows you every step. a small monthly base, plus a fee only for jobs we can prove we brought back. the missed-call count is free.',
+    sub: 'for small hvac companies that cannot answer every call or website request. arc texts the caller back, books the job or hands it to you, and shows you every step. a small monthly base, plus a fee only for jobs we can prove. the missed-call count is free.',
     stageCaption: 'the owner portal, on example data — open the demo →',
   },
 
   marqueeA: [
     'missed call',
+    'website request',
     'text back',
+    'questions asked',
     'customer replied',
     'booked job',
     'handed to you',
@@ -109,6 +111,30 @@ export const site = {
         status: 'blocked — waiting on consent records',
       },
     ],
+    /* what the first leak covers at launch: two ways a job arrives and what arc asks
+       once it has. three lines an owner would call three services, and one system
+       behind them — a website request and a missed call are the same lead from the
+       first text on. nothing here is a stage of its own; it opens with the pilot. */
+    covers: {
+      title: 'the first one covers three things.',
+      items: [
+        {
+          key: 'missed-call',
+          name: 'a missed call gets a text back',
+          what: 'a call nobody picks up gets a text from your company.',
+        },
+        {
+          key: 'web-request',
+          name: 'a website request gets one too',
+          what: 'a request sent from your website is answered by the same text. the customer ticks a box agreeing to texts before anything is sent.',
+        },
+        {
+          key: 'questions',
+          name: 'the questions are asked before you call back',
+          what: 'arc asks what is wrong and where, checks the job is in your area, and sends you the answers. anything that sounds unsafe goes straight to a person.',
+        },
+      ],
+    },
   },
 
   /* the proof ledger, shown as three made-up leads and labelled as made up. no clock
@@ -499,11 +525,11 @@ export const site = {
       },
       {
         q: 'we set it up with you on a call',
-        a: 'your hours, your service area, what counts as an emergency, and who gets the alert. then your unanswered calls are forwarded to arc. every company runs the same system; only the settings are yours.',
+        a: 'your hours, your service area, what counts as an emergency, and who gets the alert. then your unanswered calls are forwarded to arc, and a request form goes on your website if you want one. every company runs the same system; only the settings are yours.',
       },
       {
-        q: 'a missed call gets a text back',
-        a: 'arc asks what is wrong and where, then books the job or hands it to you. it stops the moment the customer says stop, and a person takes over when something sounds unsafe. every text is written and reviewed ahead of time — nothing is made up on the spot.',
+        q: 'a missed call or a website request gets a text back',
+        a: 'arc asks what is wrong and where, checks the job is in your area, then books the job or hands it to you. it stops the moment the customer says stop, and a person takes over when something sounds unsafe. every text is written and reviewed ahead of time — nothing is made up on the spot.',
       },
       {
         q: 'you see every step, and say what happened',

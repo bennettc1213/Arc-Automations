@@ -76,6 +76,11 @@ export const LEAD_CAPTURE_EVENT_TYPES = [
 
   /* an operator's decision on an answer that said the job should not count. */
   'lead_dispute_settled',
+  /* Lead-action proof. These describe completed effects or a stopped queued follow-up,
+     not another copy of a fact already carried by sms_sent or reply_received. */
+  'owner_alerted',
+  'handoff_accepted',
+  'followup_stopped',
 ];
 
 /* ── estimate recovery ─────────────────────────────────────

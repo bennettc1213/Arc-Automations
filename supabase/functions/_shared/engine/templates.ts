@@ -175,6 +175,18 @@ export function followupAt(config: LeadRecoveryConfig, earliest: Date): Date | n
 }
 
 /**
+ * When the follow-up to a first text sent at `sentAt` is due (ARC-SAAS-020).
+ *
+ * The client's own limits: whether there is a follow-up at all, and how long after the first
+ * text. Null when they have turned it off, and null as `followupAt` is when there are no
+ * opening hours to send it in. There is still only ever one.
+ */
+export function followupDueAt(config: LeadRecoveryConfig, sentAt: Date): Date | null {
+  if (!config.followup.enabled) return null;
+  return followupAt(config, new Date(sentAt.getTime() + config.followup.after_minutes * 60_000));
+}
+
+/**
  * The internal alert to the contractor's own staff.
  *
  * Not a template in `config.templates`, because it is not customer-facing and a client

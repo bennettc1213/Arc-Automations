@@ -91,6 +91,12 @@ const LEAD_RECOVERY_LAYOUT: Readonly<Record<string, FieldLayout>> = Object.freez
       { key: 'callback_window', label: 'callback window', control: 'text' },
     ],
   },
+  followup: {
+    parts: [
+      { key: 'enabled', label: 'send one follow-up when nobody replies', control: 'toggle' },
+      { key: 'after_minutes', label: 'minutes after the first text', control: 'number' },
+    ],
+  },
   safety: {
     parts: [
       { key: 'emergency_keywords', label: 'emergency keywords', control: 'lines' },

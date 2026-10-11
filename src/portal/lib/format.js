@@ -192,18 +192,24 @@ export function eventLabel(eventType, payload = {}) {
             : payload.source === 'gbp_message'
               ? 'google message'
               : 'unknown source';
-      return `lead received via ${via}`;
+      return payload.source === 'web_form' ? 'website request submitted' : `lead received via ${via}`;
     }
     case 'call_missed':
       return 'call missed';
     case 'sms_sent':
-      return 'text sent';
+      return payload.purpose === 'first_response' ? 'first response sent'
+        : payload.purpose === 'followup' ? 'follow-up sent'
+          : payload.purpose === 'reply_ack' ? 'reply acknowledgement sent'
+            : payload.purpose === 'handoff_ack' ? 'handoff acknowledgement sent'
+              : 'text sent';
     case 'routed':
       return `routed to ${payload.tech ?? 'on-call tech'}`;
     case 'reply_received':
       return 'customer replied';
     case 'lead_qualified':
-      return payload.outcome === 'qualified' ? 'lead qualified' : 'lead did not qualify';
+      return payload.outcome === 'qualified' ? 'lead qualified'
+        : payload.outcome === 'needs_human' ? 'qualification needs a person'
+          : 'lead did not qualify';
     case 'handoff_requested':
       return `handed to a person${payload.reason ? ` — ${payload.reason}` : ''}`;
     /* the execution layer (0010). "sent" and "delivered" are deliberately different
@@ -235,6 +241,12 @@ export function eventLabel(eventType, payload = {}) {
           : `job disputed${payload.reason ? ` — ${String(payload.reason).replace(/_/g, ' ')}` : ''}`;
     case 'lead_dispute_settled':
       return payload.decision === 'accepted' ? 'dispute accepted — not billed' : 'dispute not accepted — the job counts';
+    case 'owner_alerted':
+      return 'owner alert sent';
+    case 'handoff_accepted':
+      return 'a person took over this lead';
+    case 'followup_stopped':
+      return `follow-up stopped${payload.reason ? ` — ${String(payload.reason).replace(/_/g, ' ')}` : ''}`;
     case 'pilot_terms_recorded':
       return 'pilot terms agreed and recorded';
     case 'estimate_created':

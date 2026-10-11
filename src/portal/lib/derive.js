@@ -124,6 +124,8 @@ export function buildThreads(events, limit = 150) {
       name: payload.caller ?? null,
       phone: payload.phone ?? payload.from ?? null,
       lossType: payload.loss_type ?? routed?.payload?.loss_type ?? null,
+      /* what a website request stated itself, before anybody replied to anything. */
+      zip: payload.zip ?? null,
       latencyMs: sms && !failed ? sms.latencyMs : null,
       failed,
       failureReason: failed ? (sms.payload?.error ?? null) : null,

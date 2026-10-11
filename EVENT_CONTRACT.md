@@ -70,13 +70,14 @@ can produce several of them. `buildThreads` groups by the first;
 
 ## 3. The vocabulary
 
-46 types, grouped by module. The grouping in `types.js` **is** the module
+49 types, grouped by module. The grouping in `types.js` **is** the module
 definition.
 
-### lead capture (17)
+### lead capture (20)
 
 The original five, plus qualification and handoff (0009), plus the six the
-execution layer added (0010), plus the four the proof ledger added (ARC-MK-210).
+execution layer added (0010), plus the four the proof ledger added (ARC-MK-210),
+plus three lead-action proof events (ARC-SAAS-040).
 
 | type | what it claims |
 |---|---|
@@ -97,6 +98,15 @@ execution layer added (0010), plus the four the proof ledger added (ARC-MK-210).
 | `lead_outcome_requested` | Arc asked the owner whether the job happened. A job nobody answered about only counts after the dispute window once this is on record. Written once per lead by the `ledger` function (ARC-MK-220) when the question is shown to a signed-in member of the client, and only with pilot terms on record and the visit time passed. `payload.asked_via` is `portal`; `payload.shown_to` is that person's user id. |
 | `lead_outcome_recorded` | a person's answer, `actor: human`. `payload.outcome` ∈ `happened │ quoted │ not_counted`; `not_counted` carries `payload.reason` ∈ `spam │ wrong_number │ out_of_area │ customer_cancelled │ did_not_happen │ owner_first │ duplicate`. `payload.answered_by` ∈ `owner │ operator`. Appended: a changed mind is a new row. |
 | `lead_dispute_settled` | an operator's decision on a `not_counted` answer. `payload.decision` ∈ `accepted │ rejected`, `payload.dispute_id` is the answer's id; a rejection carries `payload.note`. |
+| `owner_alerted` | a staff SMS was accepted by the provider. One event per accepted recipient effect; no phone number or message body in its payload. It does not claim delivery. |
+| `handoff_accepted` | a person took the lead over through `takeOverLead`. A handoff request alone does not make this claim. |
+| `followup_stopped` | a queued follow-up was actually cancelled. `payload.reason` explains why; an absent or already completed follow-up creates no stop event. |
+
+`sms_sent.payload.purpose` identifies `first_response`, `followup`, `reply_ack`, or
+`handoff_ack` when the engine knows it. The send and carrier delivery remain separate
+events. The owner job card shows these rows in time order with their event IDs; the billing
+verdict remains a derivation, never a stored `billable` event. See
+[lead-action proof](docs/architecture/ARC_LEAD_ACTION_PROOF.md).
 
 ### the proof ledger (ARC-MK-210)
 
