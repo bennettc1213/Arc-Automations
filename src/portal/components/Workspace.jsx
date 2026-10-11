@@ -35,6 +35,7 @@ import { isLaunchClient, ownerNeeds } from '../lib/owner';
 import { downloadCsv, threadsToCsv } from '../lib/csv';
 import { PAGE_ID, skipToPage } from '../lib/a11y';
 import '../workspace.css';
+import PortalProduct from '../product/PortalProduct';
 
 /**
  * the frame every dashboard page renders inside, and the single implementation the
@@ -59,7 +60,7 @@ function readCollapsed() {
   }
 }
 
-export default function Workspace({ data, base, email, onSignOut, banner, live = true, owner: ownerProp, onReload }) {
+export function LegacyWorkspace({ data, base, email, onSignOut, banner, live = true, owner: ownerProp, onReload }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -241,6 +242,8 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
               <Route path="needs-you" element={<NeedsYou {...pageProps} onChanged={onReload} />} />
               <Route path="account" element={<OwnerAccount {...pageProps} />} />
               <Route path="account/details" element={<Account {...pageProps} />} />
+              <Route path="account/records" element={<Inbox {...pageProps} />} />
+              <Route path="account/summary" element={<ThisMonth {...pageProps} />} />
               <Route path="overview" element={<Overview {...pageProps} />} />
               <Route path="inbox" element={<Inbox {...pageProps} />} />
               <Route path="leads" element={<Leads {...pageProps} />} />
@@ -270,6 +273,8 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
             <Route path="reliability" element={<Reliability {...pageProps} />} />
             <Route path="reports" element={<Reports {...pageProps} />} />
             <Route path="account" element={<Account {...pageProps} />} />
+            <Route path="account/records" element={<Inbox {...pageProps} />} />
+            <Route path="account/summary" element={<ThisMonth {...pageProps} />} />
             <Route path="support" element={<Support {...pageProps} />} />
             <Route path="*" element={ledgerHome ? <ProofLedger {...pageProps} /> : <Overview {...pageProps} />} />
           </Routes>
@@ -289,4 +294,8 @@ export default function Workspace({ data, base, email, onSignOut, banner, live =
       />
     </div>
   );
+}
+
+export default function Workspace(props) {
+  return <PortalProduct {...props} renderLegacy={() => <LegacyWorkspace {...props} />} />;
 }

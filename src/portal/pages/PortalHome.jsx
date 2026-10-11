@@ -23,18 +23,18 @@ import './PortalHome.css';
 const PANELS = [
   {
     tag: '01',
-    title: 'the live feed',
-    body: 'every run as it fires — the call that came in, the text that went back out, the job that got booked. timestamped, in order, no summarising.',
+    title: 'a guided start',
+    body: 'your business details, a first campaign, and the connections it needs. see what is ready and what still needs a check.',
   },
   {
     tag: '02',
-    title: 'speed to lead',
-    body: 'median response time, hour by hour. it is the number the whole system exists to move, so it is the number the portal opens on.',
+    title: 'one conversation',
+    body: 'from an eligible missed call or website inquiry to a useful reply, a few questions, and a clear handoff to you.',
   },
   {
     tag: '03',
-    title: 'when it breaks',
-    body: 'failed runs surface here first, with the error attached. you find out from the dashboard, not from a customer who never got a call back.',
+    title: 'results with evidence',
+    body: 'see what was sent, what was delivered, and who replied. a conversation is a conversation; a booking needs its own evidence.',
   },
 ];
 
@@ -81,13 +81,13 @@ export default function PortalHome() {
             <ArcMark className="ph__crest" size={58} />
             <p className="ph__eyebrow">client portal</p>
             <h1 className="ph__title">
-              your automations,
+              your next inquiry,
               <br />
-              on the record.
+              a clearer next step.
             </h1>
             <p className="ph__sub">
-              every lead caught, every reply sent, every job booked — logged the moment it happens.
-              no monthly summary, no taking our word for it.
+              set up your response, follow the conversation, and know when to step in.
+              explore the working demo with sample data before connecting your business.
             </p>
 
             <div className="ph__actions">
@@ -103,7 +103,7 @@ export default function PortalHome() {
                 </GlowButton>
               )}
               <GlowButton to="/demo" variant="ghost">
-                open the live demo
+                try the interactive demo
               </GlowButton>
               <GlowButton to="/" variant="ghost">
                 back to the site

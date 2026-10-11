@@ -7,6 +7,33 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.44.0] - 2026-10-11
+
+### Added
+
+- Shared client/demo product shell with Overview, Leads, Campaigns and Inbox; secondary
+  setup, lead sources, connections, business settings, subscription information and help.
+- Guided business setup and campaign previews for missed calls, incoming inquiries and
+  follow-up. Separate configuration drafts, review, readiness blockers and sample runtime.
+- Isolated interactive demo with qualification, permission checks, no-response follow-up
+  cancellation, owner takeover, opt-out, owner-reported booking and resettable scenarios.
+- Local contact-list mapping and validation using the existing intake parser; deduplication
+  preview and unverified eligibility, with production import explicitly unavailable.
+- Frontend contracts and backend handoff document, focused policy tests and responsive
+  browser journey checks with an external-request boundary assertion.
+
+### Changed
+
+- Portal entry guidance now introduces setup, conversations and evidence. Existing account
+  tools retain compatibility routes and production Inbox reuses authenticated conversations.
+- Missing client save/activation/connection capabilities remain truthful blocked states;
+  arbitrary demo input and real contact data are never written to browser storage.
+- Client event and alert reads now filter to the selected business as well as retaining
+  server RLS, so users with several memberships do not see mixed-business records.
+- Paused the old prompt-ID sequence and reopened frontend product scope under the new brief.
+  Public homepage, public navigation, global cursor, server authorization and execution
+  behavior are unchanged. Pages deployment does not activate live campaigns.
+
 ## [1.43.0] - 2026-10-11
 
 **ARC-SAAS-020: what one client can change, and one setting it could not.** The settings

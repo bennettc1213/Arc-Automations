@@ -102,12 +102,14 @@ export async function getDashboardForUser() {
   const tenant = toTenant(tenantRows[0]);
   const since = DateTime.now().minus({ days: WINDOW_DAYS }).toUTC().toISO();
 
-  // rls already scopes this to the caller's tenant, so no tenant filter is needed here.
+  // RLS authorizes membership; this filter selects the business being displayed when the
+  // same user belongs to several tenants. It never substitutes for server authorization.
   const events = await fetchEventWindow(
     (columns, from, to) =>
       supabase
         .from('events')
         .select(columns)
+        .eq('tenant_id', tenant.id)
         .gte('occurred_at', since)
         .order('occurred_at', { ascending: false })
         .range(from, to),
@@ -122,6 +124,7 @@ export async function getDashboardForUser() {
   const { data: alertRows, error: alertError } = await supabase
     .from('alerts')
     .select('id, tenant_id, check_type, severity, message, fired_at, acknowledged_at, resolved_at')
+    .eq('tenant_id', tenant.id)
     .gte('fired_at', since)
     .order('fired_at', { ascending: false })
     .limit(200);

@@ -1,5 +1,12 @@
 # ARC Roadmap — Missed-Job Recovery First
 
+> **October 11, 2026 direction update:** The old prompt-ID sequence below is paused,
+> with its history retained. `ARC_PORTAL_REBUILD_MASTER_PROMPT.md` authorizes the
+> client/demo frontend rebuild and supersedes conflicting product assumptions.
+> No live activation, backend rollout or deployment is authorized by this frontend work.
+> See [the portal handoff](ARC_PORTAL_REBUILD_HANDOFF.md) for implemented surfaces,
+> existing backend capabilities and remaining integration contracts. No new prompt IDs.
+
 **Roadmap revision date:** October 9, 2026  
 **Project:** ARC / Arc Automations  
 **Owner:** Bennett Church  

@@ -1,5 +1,14 @@
 # ARC Lead Recovery — Launch Scope
 
+> **Scope reopened October 11, 2026:** The owner-approved
+> `ARC_PORTAL_REBUILD_MASTER_PROMPT.md` supersedes this document's four-screen,
+> operator-led product direction for the client/demo frontend. The new primary views
+> are Overview, Leads, Campaigns and Inbox, with guided setup and an isolated interactive
+> demo. The old decisions below remain historical context. Server authorization,
+> reviewed-message restrictions, provider readiness and execution safety remain binding.
+> Client campaign persistence, real activation, bulk outreach and deployment are not
+> implemented or authorized by this frontend phase. See `ARC_PORTAL_REBUILD_HANDOFF.md`.
+
 **Prompt:** `ARC-SAAS-010` · **Frozen:** October 11, 2026, against the working tree at `1.42.0`
 **Kind:** a decision document. No code, table or hosted project was changed.
 

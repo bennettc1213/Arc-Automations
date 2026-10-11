@@ -41,13 +41,10 @@ export default function Portal() {
   }, []);
 
   useEffect(() => {
-    /* dev-only preview of the signed-in view, reached with ?preview=1.
-       import.meta.env.DEV is replaced with a literal false at build time, so the whole
-       branch — and the import below — is dropped from production. on a product sold on being
-       believable, a sign-in that could be skipped in production would be the one
-       unrecoverable bug. */
+    /* Development previews use the isolated demo adapter. Production never treats a URL
+       flag as authentication, nor falls back to generated records. */
     if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === '1') {
-      import('../demo/demo-data.json').then((mod) => setState({ kind: 'preview', data: mod.default }));
+      navigate('/demo', { replace: true });
       return undefined;
     }
 
@@ -79,25 +76,6 @@ export default function Portal() {
       cancelled = true;
     };
   }, [navigate]);
-
-  /* kept as its own DEV-gated return rather than a branch inside the real one, so the whole
-     block including its markup is dead code in a production build. */
-  if (import.meta.env.DEV && state.kind === 'preview') {
-    return (
-      <Workspace
-        data={state.data}
-        base={BASE}
-        live={false}
-        email="dev@preview"
-        banner={
-          <div className="pt-banner">
-            <span className="pt-banner__tag">dev preview</span>
-            <p>signed-in layout rendered with generated data. not present in a production build.</p>
-          </div>
-        }
-      />
-    );
-  }
 
   if (state.kind === 'ready') {
     return <Workspace data={state.data} base={BASE} email={state.email} onSignOut={signOut} onReload={reload} />;

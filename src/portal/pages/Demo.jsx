@@ -3,6 +3,7 @@ import Workspace from '../components/Workspace';
 import demoData from '../demo/demo-data.json';
 import { buildProofLedger } from '../demo/proof-ledger';
 import { buildDemoAccountSettings } from '../demo/owner-account';
+import { demoAction, readDemoSession, saveDemoSession } from '../demo/product-demo';
 
 /**
  * the public demo.
@@ -21,6 +22,11 @@ import { buildDemoAccountSettings } from '../demo/owner-account';
 /* built once: the seven are the same on every visit. the ledger rides beside the generated
    dashboard rather than inside it, because it is not derived from the generated events. */
 const data = { ...demoData, proofLedger: buildProofLedger(), accountSettings: buildDemoAccountSettings() };
+const demoAdapter = {
+  initial: () => readDemoSession(window.sessionStorage),
+  reduce: demoAction,
+  persist: state => saveDemoSession(window.sessionStorage, state),
+};
 
 export default function Demo() {
   return (
@@ -28,6 +34,7 @@ export default function Demo() {
       data={data}
       base="/demo"
       owner
+      demoAdapter={demoAdapter}
       live={false}
       banner={
         <div className="pt-banner">
