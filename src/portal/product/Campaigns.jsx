@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { KINDS, QUESTIONS, newCampaign, previewMessage, readiness, validateCampaign } from './model';
 import { KIND_HELP, applyRecommended, businessHours, delayWords, guideSteps, hoursWords, isRecommended, journey, messageTemplates, oneLine, questionHelp, readinessItems, recommend, recommendKind, templateOf } from './guide';
+import PublishDialog from './Publish';
+import { CAMPAIGN_FIRST_TEXT } from '../../../supabase/functions/_shared/campaigns/model.ts';
 import { Badge, Button, Checklist, Choice, Choices, Dialog, Field, Notice, PageHead, Progress, Section, dateLabel, stateLabel, stateTone } from './ui';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-export function Campaigns({ state, dispatch, base }) {
+export function Campaigns({ state, dispatch, base, onReload }) {
   const [review, setReview] = useState(null);
+  const [publishing, setPublishing] = useState(null);
   const running = review?.runtime === 'simulated';
   return (
     <>
@@ -16,18 +19,19 @@ export function Campaigns({ state, dispatch, base }) {
       </PageHead>
       {state.mode !== 'demo' && (
         <Notice>
-          Campaigns save as drafts. Switching one on from this page is not available yet, so nothing here changes what ARC sends today.{' '}
+          A campaign you save is a draft. When you switch one on, its texts become the ones ARC sends, and you can change them and switch it on again at any time.{' '}
           <Link to={`${base}/automations`}>See what is running now</Link>
         </Notice>
       )}
       <div className="ap-campaign-list">
-        {state.campaigns.map(c => <CampaignCard key={c.id} c={c} state={state} base={base} dispatch={dispatch} onReview={setReview} />)}
+        {state.campaigns.map(c => <CampaignCard key={c.id} c={c} state={state} base={base} dispatch={dispatch} onReview={setReview} onPublish={setPublishing} />)}
       </div>
       {!state.campaigns.length && (
         <Section title="Start with the inquiries you already get" note="Pick the one that matches how customers reach you. You can add the others later.">
           <CampaignChoices base={base} state={state} />
         </Section>
       )}
+      {publishing && <PublishDialog state={state} campaign={publishing} base={base} onClose={() => setPublishing(null)} onPublished={onReload} />}
       {review && (
         <Dialog title={running ? 'Pause this campaign?' : 'Start this campaign?'} onClose={() => setReview(null)}>
           <p>{oneLine(review)}</p>
@@ -47,7 +51,7 @@ export function Campaigns({ state, dispatch, base }) {
   );
 }
 
-function CampaignCard({ c, state, base, dispatch, onReview }) {
+function CampaignCard({ c, state, base, dispatch, onReview, onPublish }) {
   const items = readinessItems(c, state);
   const done = items.filter(item => item.done).length;
   const next = items.find(item => !item.done);
@@ -73,6 +77,9 @@ function CampaignCard({ c, state, base, dispatch, onReview }) {
         <Link className="ap-button" to={`${base}/campaigns/${c.id}`}>Open</Link>
         <Button onClick={() => dispatch({ type: 'saveCampaign', campaign: c, duplicate: true })}>Duplicate</Button>
         {state.mode === 'demo' && <Button onClick={() => onReview(c)}>{c.runtime === 'simulated' ? 'Pause' : 'Start'}</Button>}
+        {state.mode !== 'demo' && CAMPAIGN_FIRST_TEXT[c.kind] && (
+          <Button primary={c.runtime !== 'live'} onClick={() => onPublish(c)}>{c.runtime === 'live' ? 'See what is live' : c.runtime === 'live_edited' ? 'Switch on your changes' : 'Switch on'}</Button>
+        )}
       </div>
     </article>
   );

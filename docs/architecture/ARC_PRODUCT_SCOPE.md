@@ -163,7 +163,7 @@ are not read as still holding where they no longer do. Where the work stands is
 | --- | --- | --- |
 | No self-serve sign-up (5.2, section 3) | A business may create its own account and save its own setup. | Yes, not deployed. The sign-up door stays off the live site until the database has it. |
 | Payments out (section 3) | A subscription, through Stripe, decides whether a self-signed-up business may send. Invoicing a customer's customers is still out. | Yes, test mode only, not deployed. |
-| An owner reads settings and edits none (item 8) | A campaign an owner publishes is what gets sent, and they may edit it at any time. | No. Drafts save; nothing an owner writes is sent yet. |
+| An owner reads settings and edits none (item 8) | A campaign an owner publishes is what gets sent, and they may edit it at any time. | Yes, for wording only: the first text and the one check-in (`config/owner-wording.ts`, 0034). Every other setting is still an operator's. Not deployed. |
 | A voice call was implied consent, then (in the first draft of this work) no consent at all | A missed call may be texted back about that call. A website form still needs the box ticked. | Yes. |
 
 **Not reopened.** 5.1 stands: launch runs on ARC's dispatcher, and n8n is not in the path. The

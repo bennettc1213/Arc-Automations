@@ -91,7 +91,7 @@ export function readiness(campaign, state) {
   if (!source || source.state !== 'connected') blockers.push('Verify the source connection.');
   if (campaign.kind === 'missed' && !source?.routingTested) blockers.push('Test unanswered calls, answered calls and voicemail routing.');
   if (!state.connections.find(c => c.id === 'messaging' && c.state === 'connected')) blockers.push('Complete sender registration and messaging approval.');
-  if (state.mode !== 'demo') blockers.push('Publishing a campaign to your live business is not available yet. Your draft is saved.');
+  if (state.mode !== 'demo' && campaign.runtime !== 'live') blockers.push('Switch this campaign on to make its texts the ones ARC sends. Your draft is saved.');
   return blockers;
 }
 export function summary(c) {

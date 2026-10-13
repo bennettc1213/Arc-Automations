@@ -74,7 +74,7 @@ for every client. **Not stored** means it has no home, with the reason in sectio
 | 10 | Backup contact | Stored | `staff_alerts` | A second row. Every row is texted; there is no order. |
 | 11 | Preferred handoff method | Fixed | — | Text only. An email recipient is refused until something sends one. |
 | 12 | Booking link or instructions | Stored | `booking_url`, `templates.reply_ack`, `templates.reply_ack_booking` | The link, and the sentence the customer gets after replying. |
-| 13 | First response template | Stored | `templates.first_response`, `templates.after_hours_response` | The reviewed words of the first text. |
+| 13 | First response template | Stored | `templates.first_response`, `templates.after_hours_response` | The reviewed words of the first text. A website-form lead gets `templates.first_response_form` instead where one is set; it has no default, so its absence means this one. It, this one and the follow-up's words and timing are what an owner may publish themselves (`config/owner-wording.ts`, 0034); every other setting is still an operator's. |
 | 14 | Qualification questions | Stored, as wording | `templates.first_response` | The first text asks what they need and their ZIP. There is no question list. See 5.3. |
 | 15 | Follow-up limits | Stored | `followup`, `templates.followup` | **New.** Section 6. |
 | 16 | Quiet hours | Stored | `after_hours`, `business_hours` | The first text follows `after_hours.behaviour`. The follow-up never leaves opening hours. |

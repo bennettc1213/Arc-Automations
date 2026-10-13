@@ -180,7 +180,12 @@ export function readinessItems(campaign, state) {
     { id: 'source', label: `${source?.name || KINDS[campaign.kind].name + ' source'} is connected`, todo: `Connect ${(source?.name || 'the source').toLowerCase()}`, done: source?.state === 'connected', to: 'connections', action: 'Open connections' },
     ...(campaign.kind === 'missed' ? [{ id: 'routing', label: 'Call forwarding is tested: answered, unanswered and voicemail', todo: 'Test call forwarding', done: Boolean(source?.routingTested), to: 'connections', action: 'Open connections' }] : []),
     { id: 'messaging', label: 'Texting is approved for your business number', todo: 'Get texting approved for your number', done: state.connections.some(c => c.id === 'messaging' && c.state === 'connected'), to: 'connections', action: 'Open connections' },
-    ...(state.mode !== 'demo' ? [{ id: 'publish', label: 'Switching a campaign on from this page', todo: 'Switching on from this page is not available yet', done: false, detail: 'Not available yet. Your draft is saved, and nothing here changes what ARC sends today.' }] : []),
+    /* a draft changes nothing ARC sends. only the version an owner switched on does, and an
+       edit made since is a draft again until they switch it on (0034). */
+    ...(state.mode !== 'demo' ? [{ id: 'publish', label: 'This campaign is switched on', todo: campaign.runtime === 'live_edited' ? 'Switch on your changes' : 'Switch this campaign on', done: campaign.runtime === 'live',
+      detail: campaign.runtime === 'live_edited'
+        ? 'ARC is still sending the version you switched on before. Your changes are saved and are not being used yet.'
+        : 'Your draft is saved, and it changes nothing ARC sends until you switch it on from the campaigns page.' }] : []),
   ];
   return items;
 }

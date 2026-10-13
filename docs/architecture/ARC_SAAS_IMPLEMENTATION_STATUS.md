@@ -6,7 +6,7 @@ has to happen outside this repository. It replaces nothing: the order of work is
 `ARC_IMPLEMENTATION_ROADMAP.md`, and what the launch product is is still
 `ARC_PRODUCT_SCOPE.md` (section 7 there records what this work reopened).
 
-Last checked: 2026-10-13 (`1.46.0`). The code is on `main`, except the sign-up door
+Last checked: 2026-10-13 (`1.47.0`). The code is on `main`, except the sign-up door
 (`/signup`, `Signup.jsx`, `CreateBusiness.jsx` and their routes), which is held in the working
 tree until a hosted database has the migrations.
 
@@ -14,7 +14,7 @@ tree until a hosted database has the migrations.
 or a hosted database. "Locally tested" means the repository's own test suite on real SQL
 (PGlite), with a recording sender in place of the carrier, a fake classifier in place of the
 model and a Stripe snapshot written by the same SQL function the webhook calls. No delivery has
-been observed. Migrations `0029` to `0033` and the `billing` function are not deployed.
+been observed. Migrations `0029` to `0034` and the `billing` function are not deployed.
 
 ## 1. Status by capability
 
@@ -32,7 +32,8 @@ Stages: **planned** (not written) → **implemented** (written, no test of its o
 | Qualification | `engine/rules.ts`, `classify_reply`: one reply read against services, area and safety rules | **Not the brief's design.** No second question is ever asked; the question list an owner writes in a campaign draft is stored and unread. See section 3. | Locally tested as built | Gate suite |
 | Follow-up | One follow-up, `followup.enabled` / `after_minutes`, waits for opening hours, stops on reply, opt-out, booking, takeover | A campaign draft's follow-up fields are unread. One follow-up, never a sequence. | Locally tested | Gate suite |
 | Owner takeover | `crm` action `lead-takeover` → engine `takeOverLead` | No resume. No owner-written reply: no channel adapter exists (`PRODUCTION_CHANNEL_ADAPTERS` is empty). | Locally tested (engine path); the HTTP door has no test of its own | Journey test |
-| Campaigns | `0029` drafts (`self_service_save_campaign`), guided builder in the portal | **A draft changes nothing ARC sends.** Publishing one to live is decided (2026-10-13) and not built. No owner pause or resume. See section 3. | Drafts locally tested; publish planned | `tests/self-service-db.test.js`, `tests/campaign-guide.test.js` |
+| Campaigns: drafts | `0029` drafts (`self_service_save_campaign`), guided builder in the portal | A draft changes nothing ARC sends until its owner switches it on. | Locally tested | `tests/self-service-db.test.js`, `tests/campaign-guide.test.js` |
+| Campaigns: an owner publishing | `0034`, `config/owner-wording.ts`, `publishOwnerWording`, `_shared/campaigns/`, `crm` `campaign-preview` / `campaign-publish`, `Publish.jsx` | Wording only: the first text (calls and website forms separately) and the one check-in. See section 3 for what a campaign carries that is not applied. Needs an account ARC has already configured. No owner pause, and no undo short of an operator's rollback. The dialog was not looked at in a browser. | Locally tested | `tests/owner-publishing.test.js`: what the owner saved is what the next customer receives; the database refuses anything but wording |
 | Subscriptions | `billing/handler.ts` + `index.ts`, `0031` (accounts, usage, events, the gate) | Test mode only: `billingSettings` refuses a live key. No price is chosen. Past-due has no grace period: it stops new texts at once. | Locally tested | `tests/billing.test.js` (real Stripe SDK signature check), `tests/saas-operations-db.test.js` |
 | Usage cap | `0031`: one unit per text reserved, counted per paid period, refused at the cap | The unit is a message, not a carrier segment; the billing page says so. Two workers at once are serialised by a row lock that the in-process test database cannot exercise in parallel. | Locally tested, serially | `tests/saas-operations-db.test.js` ("the cap is a ceiling") |
 | Emergency stop and operator view | `0033` (`platform_controls`, `set_platform_sending_stop`), `ops` `platform-*`, `PlatformPanel.jsx` on the console's alerts page | The stop on a person-written message (`crm_message_begin_send`) is written and has no test: no client can send one yet. | Locally tested | `tests/saas-operations-db.test.js` ("the emergency stop", "the operator's platform actions") |
@@ -55,18 +56,12 @@ is not gated on a subscription.
 
 ## 3. Not built, and why
 
-1. **Publishing an owner's campaign to live.** Decided: what an owner publishes is what gets
-   sent, and they can edit it at any time. It is not built because it cannot be a button. Two
-   rules the engine enforces stand in the way and each needs a designed change, not a
-   bypass: publishing configuration is operator-only in both `config/engine.ts` and `0014`'s
-   SQL, and a change of wording is recorded as needing a retest, which holds new texts until an
-   operator records a passing test (`record_test` is operator-only in `0015`'s immutable rule
-   table). The intended build: a closed set of owner-publishable wording fields, validated by
-   the existing template validator, published under the owner's name, followed by an automatic
-   synthetic test that re-authorises sending when it passes. A draft's fields also have to be
-   mapped onto the engine's: `{{business}}`/`{{first_name}}` against `{{company}}`/
-   `{{customer_name}}`, a STOP line the engine already appends, and questions, a repeat-contact
-   limit and a response delay the engine has no setting for.
+1. **Parts of a campaign the engine has no setting for.** Publishing is built (section 1), and
+   it applies the first text, the check-in text, and whether and when the check-in goes. A
+   campaign's questions, its wait before the first text, its out-of-hours choice and its
+   repeat-contact limits are saved and unused, and the owner is told so before they confirm.
+   A check-in campaign to existing contacts cannot be published at all. An owner cannot pause
+   their own campaign or undo a publication; an operator can roll the configuration back.
 2. **n8n as the execution layer.** The brief asks for five workflow exports. Lead Recovery is
    registered `direct` with n8n `prohibited`, the bridge refuses production until a licensing
    decision is recorded, and `ARC_PRODUCT_SCOPE.md` §5.1 freezes launch on ARC's own
@@ -87,7 +82,7 @@ Each is one action, in order. Nothing here was done by this work.
 
 | Needed | For | Tested so far | Smallest next action |
 | --- | --- | --- | --- |
-| `0029`–`0033` on a hosted database | Everything in section 1 | All five apply cleanly on PGlite in `npm test` | `supabase db push` to staging |
+| `0029`–`0034` on a hosted database | Everything in section 1 | All six apply cleanly on PGlite in `npm test` | `supabase db push` to staging |
 | `billing`, `twilio`, `lead-intake`, `crm`, `ops` redeployed | Sign-up, billing, takeover, the emergency stop | Handlers under `node --test` | `supabase functions deploy` each; `billing`, `twilio` and `lead-intake` take `--no-verify-jwt` (each file's header says why) |
 | Stripe test-mode product and price | Checkout | The handler against the real SDK's signature check, no API call | Create a price; set `STRIPE_SECRET_KEY`, `ARC_STRIPE_WEBHOOK_SECRET`, `ARC_STRIPE_PRICE_ID`, `ARC_STRIPE_MONTHLY_ACTION_CAP`, `ARC_SITE_URL` on `billing`; point a webhook at `…/billing/webhook` |
 | A Twilio number with A2P registration | Any real text | Nothing | The hosted actions in `ARC_LEAD_RECOVERY_READINESS.md` §6.3 |
@@ -121,9 +116,10 @@ npm run build
 ```
 
 Without `ARC_PGLITE_DIR` the database suites are skipped and `npm test` still reads green,
-which proves nothing about `0029`–`0033`. `npm run gate` fails unless every test ran.
+which proves nothing about `0029`–`0034`. `npm run gate` fails unless every test ran.
 
 ## 7. What stops a first paying customer
 
 Not code in this list alone: no text has reached a real handset, the migrations and functions
-are not deployed, no price exists, and a campaign an owner writes does not change what is sent.
+are not deployed, and no price exists. An owner's campaign can only be switched on after ARC has
+configured the account (number, hours, compliance), which is still an operator's work per client.

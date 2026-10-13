@@ -114,6 +114,9 @@ function toForm(config) {
     alerts: (base.staff_alerts ?? []).map((a) => `${a.channel}:${a.address}${a.name ? `:${a.name}` : ''}`).join('\n'),
     booking_url: base.booking_url ?? '',
     first_response: base.templates?.first_response ?? '',
+    /* the owner's own words for a website-form lead, published from their portal. this form
+       has no box for it; it is carried so that saving here does not erase it. */
+    first_response_form: base.templates?.first_response_form ?? '',
     after_hours_response: base.templates?.after_hours_response ?? '',
     followup: base.templates?.followup ?? '',
     handoff_ack: base.templates?.handoff_ack ?? '',
@@ -169,6 +172,7 @@ function toConfig(form) {
     booking_url: form.booking_url.trim() || null,
     templates: {
       first_response: form.first_response.trim(),
+      ...(form.first_response_form ? { first_response_form: form.first_response_form } : {}),
       after_hours_response: form.after_hours_response.trim(),
       followup: form.followup.trim(),
       handoff_ack: form.handoff_ack.trim(),

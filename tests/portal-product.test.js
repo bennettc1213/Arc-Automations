@@ -69,7 +69,10 @@ test('readiness requires verified routing and never authorizes production activa
   const s=demoState(),c=s.campaigns[0];
   assert.deepEqual(readiness(c,s),[]);
   s.connections[0].routingTested=false;assert.match(readiness(c,s).join(' '),/voicemail/);
-  s.mode='production';assert.match(readiness(c,s).join(' '),/Publishing a campaign to your live business is not available yet/);
+  s.mode='production';assert.match(readiness(c,s).join(' '),/Switch this campaign on to make its texts the ones ARC sends/);
+  // a draft is never ready on a real account; only the version the owner switched on is
+  assert.doesNotMatch(readiness({...c,runtime:'live'},s).join(' '),/Switch this campaign on/);
+  assert.match(readiness({...c,runtime:'live_edited'},s).join(' '),/Switch this campaign on/);
 });
 test('demo reducer refuses a real tenant or production mode',()=>{
   assert.throws(()=>demoAction({...demoState(),tenantId:'real-tenant'},{type:'reset'}),/synthetic tenant/);

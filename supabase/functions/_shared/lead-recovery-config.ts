@@ -87,6 +87,10 @@ export const TEMPLATE_PLACEHOLDERS = [
 
 export const TEMPLATE_KEYS = [
   'first_response',
+  /* the first text to somebody who filled in the website form, when the business wants
+     different words for it than for a missed call. it has no default on purpose: where it
+     is absent a form lead gets `first_response`, exactly as before this key existed. */
+  'first_response_form',
   'after_hours_response',
   'followup',
   'handoff_ack',

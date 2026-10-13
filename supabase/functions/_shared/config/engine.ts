@@ -51,6 +51,13 @@ import {
   TENANT_SCOPE,
 } from './model.ts';
 import type { ConfigStore } from './store.ts';
+import {
+  applyOwnerWording,
+  OWNER_WORDING_MODULE,
+  type OwnerWording,
+  ownerWordingImpact,
+  ownerWordingViolations,
+} from './owner-wording.ts';
 
 type Ok<T> = { ok: true } & T;
 
@@ -791,6 +798,92 @@ export async function publishEffectiveConfig(
     moduleVersion: moduleHead?.version ?? 0,
     warnings: whole.warnings,
   };
+}
+
+/* ── an owner's own wording (0034) ──────────────────────── */
+
+/**
+ * Publish the wording a business's owner wrote, as the next Lead Recovery version.
+ *
+ * The one publication that is not an operator's, and it can only be wording
+ * (`owner-wording.ts`). It goes through the same draft and the same publish function as
+ * every other version, so there is still one way configuration reaches the database; what
+ * differs is who may call it and what the document may differ in, and 0034 checks both
+ * again. An account ARC has not configured has no version to publish onto and is refused:
+ * an owner's words never create a number, a destination or a compliance status.
+ *
+ * `expectedVersion` is the version the owner's screen was drawn from. A newer one means an
+ * operator published in between, and the owner should see that before overwriting it.
+ */
+export async function publishOwnerWording(
+  store: ConfigStore,
+  args: { tenantId: string; wording: OwnerWording; expectedVersion: number; actor: ConfigActor; note?: string | null },
+): Promise<Ok<PublishOutcome> | ConfigFailure> {
+  if (args.actor.kind !== 'client') {
+    return failure('forbidden', 'this is how an owner publishes their own wording — an operator uses the settings editor');
+  }
+  const mismatch = actorTenantMismatch(args.actor, args.tenantId);
+  if (mismatch) return mismatch;
+  const scope = moduleScope(OWNER_WORDING_MODULE);
+  const resolved = schemaForScope(scope);
+  if (!resolved.ok) return resolved;
+  const { schema } = resolved;
+
+  const head = await store.getConfigHead(args.tenantId, scope);
+  if (!head) {
+    return failure('missing_published_configuration', 'ARC has not finished setting this account up yet, so there is nothing to publish onto');
+  }
+  if (!Number.isInteger(args.expectedVersion) || args.expectedVersion !== head.version) {
+    return failure('publication_conflict', `the settings are at version ${head.version}, not ${args.expectedVersion} — reload before publishing`, {
+      detail: { current_version: head.version },
+    });
+  }
+
+  const validated = await validateScopeDocument(store, args.tenantId, scope, applyOwnerWording(head.config, args.wording));
+  if (!validated.ok) return validated;
+  const violations = ownerWordingViolations(head.config, validated.document);
+  if (violations.length > 0) return permissionFailure(violations, args.actor);
+  if (sameContent(head.config, validated.document)) return failure('no_change', 'this is already what ARC sends');
+
+  const report = analyseChange(schema, head.config, validated.document);
+  const impact = ownerWordingImpact(auditSafeImpact(report));
+  if (!impact.ok) return failure('edit_permission_denied', impact.reason);
+
+  try {
+    /* an open draft in this scope was written against the head this is about to replace.
+       it is closed as superseded — kept, with its content — exactly as a whole-document
+       save does. */
+    const open = await store.getOpenDraft(args.tenantId, scope);
+    if (open) {
+      const closed = await store.closeDraft({
+        tenantId: args.tenantId, scope, draftId: open.id,
+        expectedRevision: open.revision, status: 'superseded', actorId: args.actor.userId,
+      });
+      if (!closed) return failure('draft_conflict', 'the settings changed while publishing — reload');
+    }
+    const draft = await store.insertDraft({
+      tenantId: args.tenantId, scope, schemaKey: schema.key, schemaVersion: schema.version,
+      baseVersionId: head.id, baseVersion: head.version, config: head.config, actorId: args.actor.userId,
+    });
+    const written = await store.updateDraftContent({
+      tenantId: args.tenantId, scope, draftId: draft.id, expectedRevision: draft.revision,
+      config: validated.document, actorId: args.actor.userId,
+    });
+    if (!written) return failure('draft_conflict', 'the settings changed while publishing — reload');
+
+    const version = await store.publishConfigDraft({
+      tenantId: args.tenantId, scope, draftId: written.id,
+      expectedDraftRevision: written.revision, expectedHeadVersion: head.version,
+      configHash: await configHash(validated.document),
+      changeImpact: impact.impact,
+      actorId: args.actor.userId,
+      note: typeof args.note === 'string' ? args.note.slice(0, 300) : null,
+    });
+    const lifecycle = await applyToLifecycle(store, args.tenantId, scope);
+    return { ok: true, version, impact: report, warnings: validated.warnings, lifecycle };
+  } catch (error) {
+    return fromStoreError(error);
+  }
 }
 
 /* ── legacy import (0014 §4) ────────────────────────────── */

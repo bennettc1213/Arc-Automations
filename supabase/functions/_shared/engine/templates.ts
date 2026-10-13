@@ -65,6 +65,17 @@ export function withOptOut(body: string, config: LeadRecoveryConfig): string {
   return `${body} ${optOut}`.trim();
 }
 
+/**
+ * Which first text a lead gets. A website form has its own only where the business has
+ * written one; everything else, and every configuration published before that key existed,
+ * gets `first_response`.
+ */
+export function firstResponseKey(config: LeadRecoveryConfig, source?: string | null): 'first_response' | 'first_response_form' {
+  return source === 'web_form' && typeof config.templates.first_response_form === 'string' && config.templates.first_response_form.trim()
+    ? 'first_response_form'
+    : 'first_response';
+}
+
 export type OutboundDecision =
   | { send: true; body: string; templateKey: string; sendAt: Date; reason: string }
   | { send: false; reason: string; retryAt: Date | null };
@@ -84,7 +95,10 @@ export function decideFirstResponse(
   config: LeadRecoveryConfig,
   now: Date,
   customerName?: string | null,
+  /** how the lead arrived. only a website form has wording of its own, and only when set. */
+  source?: string | null,
 ): OutboundDecision {
+  const firstKey = firstResponseKey(config, source);
   if (config.compliance.status !== 'approved') {
     return {
       send: false,
@@ -99,8 +113,8 @@ export function decideFirstResponse(
   if (open.open || behaviour === 'same_response') {
     return {
       send: true,
-      templateKey: 'first_response',
-      body: withOptOut(render(config.templates.first_response ?? DEFAULT_TEMPLATES.first_response, { config, customerName }), config),
+      templateKey: firstKey,
+      body: withOptOut(render(config.templates[firstKey] ?? DEFAULT_TEMPLATES.first_response, { config, customerName }), config),
       sendAt: now,
       reason: open.open ? 'inside business hours' : 'configured to answer at any hour',
     };
@@ -130,8 +144,8 @@ export function decideFirstResponse(
     }
     return {
       send: true,
-      templateKey: 'first_response',
-      body: withOptOut(render(config.templates.first_response ?? DEFAULT_TEMPLATES.first_response, { config, customerName }), config),
+      templateKey: firstKey,
+      body: withOptOut(render(config.templates[firstKey] ?? DEFAULT_TEMPLATES.first_response, { config, customerName }), config),
       sendAt: opening,
       reason: `${open.reason.replace(/_/g, ' ')} — held until the shop opens`,
     };

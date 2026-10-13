@@ -21,6 +21,7 @@ import {
   scopeModuleKey,
 } from './model.ts';
 import type { ConfigStore, NewDraftInput, PublishDraftInput, RollbackInput } from './store.ts';
+import { OWNER_WORDING_MODULE, ownerWordingViolations } from './owner-wording.ts';
 import type { TenantConfigRow } from '../engine/store.ts';
 
 export interface AdminActionRow {
@@ -71,6 +72,8 @@ export class MemoryConfigStore implements ConfigStore {
   configDrafts: ConfigDraftRow[] = [];
   /** arc_admins. the publish and rollback functions check the actor against it. */
   operators: string[] = [];
+  /** tenant_members rows with role `owner`. 0034's publisher check reads them. */
+  owners: { tenantId: string; userId: string }[] = [];
   /** admin_actions, as the 0014 functions write it. */
   adminActions: AdminActionRow[] = [];
 
@@ -216,6 +219,29 @@ export class MemoryConfigStore implements ConfigStore {
     }
   }
 
+  /**
+   * `config_require_publisher` in 0034: an operator, or the tenant's own owner publishing
+   * wording and only wording onto a version ARC has already published.
+   */
+  private requirePublisher(input: PublishDraftInput) {
+    if (input.actorId && this.operators.includes(input.actorId)) return;
+    const owns = this.owners.some((o) => o.tenantId === input.tenantId && o.userId === input.actorId);
+    if (!owns || input.scope.kind !== 'module' || input.scope.moduleKey !== OWNER_WORDING_MODULE) {
+      throw new ConfigStoreError('forbidden', 'publishing configuration is an operator action');
+    }
+    const head = this.head(input.tenantId, input.scope);
+    if (!head) throw new ConfigStoreError('missing_published_configuration', 'ARC has not set this account up yet');
+    const draft = this.configDrafts.find((d) => d.id === input.draftId && this.inScope(d, input.tenantId, input.scope));
+    if (!draft) throw new ConfigStoreError('draft_not_found', 'no such module draft for this tenant');
+    const violations = ownerWordingViolations(head.config, draft.config);
+    if (violations.length > 0) {
+      throw new ConfigStoreError('edit_permission_denied', `an owner may publish wording only (${violations.join(', ')})`);
+    }
+    if (input.changeImpact.requires_shadow === true || input.changeImpact.requires_reactivation === true) {
+      throw new ConfigStoreError('edit_permission_denied', 'an owner may publish wording only');
+    }
+  }
+
   private requireScope(scope: ConfigScope) {
     if (scope.kind === 'module' && !moduleIsConfigurable(scope.moduleKey)) {
       throw new ConfigStoreError('module_not_found', `${scope.moduleKey} is not a module a tenant can be configured for`);
@@ -263,7 +289,7 @@ export class MemoryConfigStore implements ConfigStore {
 
   // deno-lint-ignore require-await
   async publishConfigDraft(input: PublishDraftInput): Promise<ConfigVersionRow> {
-    this.requireOperator(input.actorId);
+    this.requirePublisher(input);
     this.requireScope(input.scope);
     const draft = this.configDrafts.find((d) => d.id === input.draftId && this.inScope(d, input.tenantId, input.scope));
     if (!draft) throw new ConfigStoreError('draft_not_found', `no such ${input.scope.kind} draft for this tenant`);

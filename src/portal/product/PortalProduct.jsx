@@ -23,7 +23,8 @@ const TOOLS = [['account/records', 'Contact records and tasks'], ['account/summa
 const METRIC_WORDS = { eligible: 'Inquiries ARC could answer', sent: 'Typical time to first text', engaged: 'Missed callers who replied', qualified: 'Leads that look like a fit' };
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-// a real account has no "setup complete" flag yet: the last step with a campaign saved is the same thing
+// a real account's setup is complete when every readiness check passes (0033). until then, reaching
+// the last step with a campaign saved is enough to stop walking the owner through setup
 const settingUp = state => !state.setupComplete && !(state.mode !== 'demo' && state.setupStep >= SETUP_STEPS.length - 1 && state.campaigns.length > 0);
 
 /** The one thing most worth doing now, read off the same state every page shows. */
@@ -265,7 +266,7 @@ export default function PortalProduct({ data, base, live = true, onSignOut, onRe
         setNotice('Saved.');
       } else if (action.type === 'saveCampaign') {
         await saveCampaign(stateRef.current.tenantId, action.duplicate ? { ...action.campaign, id: 'draft', revision: 0 } : action.campaign);
-        setNotice('Draft saved. It is not live, so nothing changes in what ARC sends.');
+        setNotice('Saved. Nothing changes in what ARC sends until you switch this campaign on from the campaigns page.');
       } else { setNotice('That is not available on your account yet. Nothing has changed.'); return false; }
       await onReload?.();
       return true;

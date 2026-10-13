@@ -7,6 +7,43 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.47.0] - 2026-10-13
+
+**An owner can switch their own campaign on.** Decided 2026-10-13: what an owner publishes is
+what gets sent, and they can change it at any time. Not deployed: it needs migration `0034`
+and the `crm` function on a hosted project.
+
+### Added
+
+- **Switch on, on the campaigns page.** Before anything changes the owner is shown the texts
+  as a customer will receive them, exactly what will change, and what their campaign carries
+  that ARC does not use yet. Confirming makes those words the ones ARC sends. Editing a
+  campaign afterwards makes it a draft again until it is switched on again; the page says which
+  version is live.
+- **What it applies:** the first text, and the one check-in text with whether and how long
+  after it goes (24 hours at most). **What it does not, and says so:** a campaign's questions,
+  its wait before the first text, its out-of-hours choice and its repeat-contact limits.
+- **A website-form lead can have its own first text** (`templates.first_response_form`). Until
+  now a form lead got the missed-call wording. It has no default, so nothing changes for a
+  client that has not set one.
+- **The one publication that is not an operator's** (`0034`, `config/owner-wording.ts`): an
+  owner may publish those three templates and the follow-up setting, on their own business,
+  onto a version ARC has already published, and nothing else. The engine checks it and the
+  database checks it again; a test holds the two lists together and holds `0034`'s copy of the
+  publish function to `0014`'s except one marked clause.
+- `tests/owner-publishing.test.js`: what the owner saved is what the next customer receives;
+  the account stays live; a second publish of the same thing changes nothing; another owner, an
+  account ARC has not configured and anything but wording are each refused.
+
+### Changed
+
+- A wording change an owner publishes does not hold new leads for a retest. The registry asks
+  for a retest so that the client approves the words, and here the client wrote them. The
+  version records that the retest was waived and by which rule. An operator's change to the
+  same words still asks for one.
+- The console's older Lead Recovery form keeps a website-form text it has no box for, so an
+  operator saving there does not erase the owner's words.
+
 ## [1.46.0] - 2026-10-13
 
 **The SaaS foundation, in progress.** Built against

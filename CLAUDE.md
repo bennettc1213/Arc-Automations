@@ -455,8 +455,7 @@ docs/architecture/ARC_SAAS_IMPLEMENTATION_STATUS.md, which is also the list of w
 brief asks for and is not built). Self-service is `self_service_accounts` and its
 `self_service_*` functions: the caller's sign-in is the tenant's owner, never a body field, and
 an owner's setup answers and campaign drafts are proposals — **nothing an owner saves is read by
-the engine**, and publishing one to live is decided and not built (it needs a designed change to
-who may publish and re-test, not a bypass). The send gate is still the engine's one reservation,
+the engine** until they publish it (next paragraph). The send gate is still the engine's one reservation,
 now three layers in SQL, outermost first: the emergency stop (`platform_controls`, 0033), the
 subscription and cap (0031, self-signed-up tenants only), the lifecycle (0015). A text refused
 by either of the first two is cancelled and its lead handed to a person (`SEND_STOPPED`), so
@@ -467,6 +466,25 @@ snapshot stored (`saas_apply_stripe_subscription`, newest reading wins, one row 
 `billingSettings` refuses a live key. Readiness is `self_service_readiness` — seven answers
 read off rows, none ticked — and the portal words its closed codes in `guide.js`; no answer
 means nothing is shown as ready. n8n is not in this path (ARC_PRODUCT_SCOPE.md §5.1 and §7).
+
+**An owner may publish wording, and that is the only publication that is not an operator's**
+(`0034`, `_shared/config/owner-wording.ts`, `publishOwnerWording`, `_shared/campaigns/`, `crm`
+`campaign-preview` / `campaign-publish`, `Publish.jsx`, `tests/owner-publishing.test.js`). A
+closed list: three templates (`first_response`, `first_response_form`, `followup`) and the
+`followup` field. `ownerWordingViolations` is asked by the engine and again by 0034's
+`config_owner_wording_violation`, which a test holds together; widen either only with the
+other. It goes through the same draft and the same `publish_config_draft` as everything else —
+0034 redefines that function with **one marked clause** changed, and the test fails if anything
+else differs from 0014, so edit 0014's copy and regenerate rather than hand-editing 0034's. An
+owner publishes only ONTO a version an operator published (their words never create a number or
+a compliance status), the version records `owner_authored` with the retest waived — the
+registry asks for a retest so that the client approves the words, and the client wrote them —
+so a live module's authorisation carries forward, and it never activates anything. A campaign
+draft is translated by `publishPlan` (`campaigns/model.ts`, portal-safe): what it applies and
+what it does not are both listed and shown to the owner before they confirm, and the words are
+read from the saved row, never from the request. `first_response_form` has no default: absent
+means a form lead gets `first_response`, as before. The older `LeadRecoveryPanel` carries it
+through so an operator's save does not erase it.
 
 Requires `supabase/migrations/0003_client_ids_and_ops.sql` plus the
 `client-login` and `ops` edge functions; the console's Supabase page probes for

@@ -47,6 +47,9 @@ import { takeOverLead } from '../_shared/engine/runtime.ts';
 import { RecordingSender } from '../_shared/twilio.ts';
 import { UnavailableClassifier } from '../_shared/classifier.ts';
 
+import { CAMPAIGN_ACTIONS, handleCampaignAction } from '../_shared/campaigns/service.ts';
+import { supabaseCampaignStore } from '../_shared/campaigns/supabase-campaign-store.ts';
+
 /** the owner portal's one read that is not a workspace action. */
 const ACCOUNT_ACTION = 'account-settings';
 const LEAD_TAKEOVER_ACTION = 'lead-takeover';
@@ -103,8 +106,8 @@ Deno.serve(async (request) => {
   }
 
   const action = String(body.action ?? '');
-  if (action === 'capabilities') return json({ ok: true, actions: [...WORKSPACE_ACTIONS, ACCOUNT_ACTION, LEAD_TAKEOVER_ACTION] }, 200);
-  if (action !== ACCOUNT_ACTION && action !== LEAD_TAKEOVER_ACTION && !WORKSPACE_ACTIONS.includes(action)) return json({ error: 'unknown action' }, 400);
+  if (action === 'capabilities') return json({ ok: true, actions: [...WORKSPACE_ACTIONS, ACCOUNT_ACTION, LEAD_TAKEOVER_ACTION, ...CAMPAIGN_ACTIONS] }, 200);
+  if (action !== ACCOUNT_ACTION && action !== LEAD_TAKEOVER_ACTION && !CAMPAIGN_ACTIONS.includes(action) && !WORKSPACE_ACTIONS.includes(action)) return json({ error: 'unknown action' }, 400);
   if (typeof body.tenant_id !== 'string' || !UUID.test(body.tenant_id)) {
     return json({ error: 'tenant_id is required', code: 'invalid' }, 422);
   }
@@ -137,6 +140,29 @@ Deno.serve(async (request) => {
     } catch (failure) {
       console.error('crm lead-takeover failed', failure);
       return json({ error: 'could not take over this inquiry', code: 'failed' }, 500);
+    }
+  }
+
+  /* an owner previewing or publishing their own campaign (0034). the store is the full one,
+     so the lifecycle hears about the new version in the same request; the service reads the
+     words from the saved row, never from this body. */
+  if (CAMPAIGN_ACTIONS.includes(action)) {
+    if (membership?.role !== 'owner') return json({ error: 'owner access required', code: 'forbidden' }, 403);
+    try {
+      const result = await handleCampaignAction(
+        action,
+        { config: supabaseStore(db as never), campaigns: supabaseCampaignStore(db) },
+        { tenantId: body.tenant_id, actor: { kind: 'client', userId, tenantId: body.tenant_id }, body },
+      );
+      return json(result.body, result.status);
+    } catch (failure) {
+      const message = (failure as Error)?.message ?? '';
+      if (/customer_campaign_drafts|published_revision|self_service_mark_campaign_published|config_require_publisher/i.test(message)
+        && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'switching a campaign on is not available on this account yet', code: 'unavailable' }, 501);
+      }
+      console.error(`crm action ${action} failed`, failure);
+      return json({ error: 'the campaign could not be switched on', code: 'failed' }, 500);
     }
   }
 

@@ -844,7 +844,7 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
   }
 
   // ── the first response ──
-  const decision = decideFirstResponse(config, now, lead.customerName);
+  const decision = decideFirstResponse(config, now, lead.customerName, lead.source);
   if (!decision.send) {
     await stopRun(deps, lead, run, 'not_permitted', decision.reason);
     return { ok: false, created: true, lead, run, outcome: decision.reason, queued: [] };
@@ -925,7 +925,7 @@ async function evaluateInShadow(
       detail = 'the safety rules would have handed this to a person';
       extra.safety_flags = safety.flags.length;
     } else {
-      const first = decideFirstResponse(config, now, lead.customerName);
+      const first = decideFirstResponse(config, now, lead.customerName, lead.source);
       if (first.send) {
         wouldHave = 'send_first_response';
         reasonCode = 'first_response';

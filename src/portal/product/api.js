@@ -8,7 +8,7 @@ export async function loadProduct(tenant) {
   const client = getSupabase();
   const [setup, campaigns, billing, form, readiness] = await Promise.all([
     client.from('tenant_setup_answers').select('*').eq('tenant_id', tenant.id).maybeSingle(),
-    client.from('customer_campaign_drafts').select('id,kind,revision,config,created_at,updated_at').eq('tenant_id', tenant.id).order('updated_at', { ascending: false }),
+    client.from('customer_campaign_drafts').select('*').eq('tenant_id', tenant.id).order('updated_at', { ascending: false }),
     client.from('saas_billing_accounts').select('*').eq('tenant_id', tenant.id).maybeSingle(),
     client.rpc('self_service_form_status', { p_tenant: tenant.id }),
     client.rpc('self_service_readiness', { p_tenant: tenant.id }),
@@ -38,7 +38,11 @@ export async function loadProduct(tenant) {
       ownerPhone: row.owner_phone || '',
     } : null,
     campaigns: (campaigns.data || []).map(row => ({ ...row.config, id: row.id, tenantId: tenant.id,
-      kind: row.kind, revision: row.revision, runtime: 'draft',
+      kind: row.kind, revision: row.revision,
+      /* live: this saved version is what ARC sends. live_edited: an earlier version of it is,
+         and the edits since are not. a database from before 0034 has neither column. */
+      runtime: row.published_revision == null ? 'draft' : row.published_revision === row.revision ? 'live' : 'live_edited',
+      publishedAt: row.published_at ?? null,
       createdAt: row.created_at, updatedAt: row.updated_at })),
   };
 }
@@ -81,11 +85,42 @@ export async function saveBusiness(tenantId, revision, business, step) {
   return data;
 }
 
+/* switching a campaign on (0034). the server reads the words from the saved campaign, so
+   these send only which campaign and which versions the owner was looking at. */
+async function campaignAction(action, tenantId, body) {
+  const { data, error } = await getSupabase().functions.invoke('crm', { body: { action, tenant_id: tenantId, ...body } });
+  let answer = data;
+  /* supabase-js puts a non-2xx body on the error's response rather than in `data`. */
+  if (error && !answer && typeof error.context?.json === 'function') {
+    try { answer = await error.context.json(); } catch { answer = null; }
+  }
+  if (!answer?.ok) {
+    const failure = new Error(answer?.error || 'This could not be done just now. Nothing was changed.');
+    failure.code = answer?.code || null;
+    failure.problems = answer?.problems || [];
+    failure.preview = answer?.preview || null;
+    throw failure;
+  }
+  return answer;
+}
+
+export async function previewCampaign(tenantId, campaignId) {
+  return (await campaignAction('campaign-preview', tenantId, { campaign_id: campaignId })).preview;
+}
+
+export async function publishCampaign(tenantId, preview) {
+  return await campaignAction('campaign-publish', tenantId, {
+    campaign_id: preview.campaign_id, expected_revision: preview.revision, expected_version: preview.version,
+  });
+}
+
 export async function saveCampaign(tenantId, campaign) {
   const existing = UUID.test(campaign.id) ? campaign.id : null;
   const { data, error } = await getSupabase().rpc('self_service_save_campaign', {
     p_tenant: tenantId, p_id: existing, p_expected: existing ? campaign.revision : 0,
-    p_config: campaign,
+    /* `publishedAt` is this page's own note about the row; the save function takes a closed
+       list of campaign fields and it is not one. */
+    p_config: Object.fromEntries(Object.entries(campaign).filter(([key]) => key !== 'publishedAt')),
   });
   if (error) throw error;
   return data;

@@ -80,11 +80,20 @@ test('the readiness list and the model agree on when a campaign is ready', () =>
   }
 });
 
-test('a real account is never told that switching a campaign on works', () => {
+test('on a real account a draft is never shown as switched on; only the version the owner switched on is', () => {
   const s = { ...demoState(), mode: 'production' };
-  const publish = readinessItems(newCampaign('missed', s.tenantId), s).find(item => item.id === 'publish');
-  assert.equal(publish.done, false);
-  assert.match(publish.detail, /Not available yet/);
+  const item = campaign => readinessItems(campaign, s).find(entry => entry.id === 'publish');
+  const draft = item(newCampaign('missed', s.tenantId));
+  assert.equal(draft.done, false);
+  assert.match(draft.detail, /changes nothing ARC sends until you switch it on/);
+  assert.equal(item({ ...newCampaign('missed', s.tenantId), runtime: 'live' }).done, true);
+  const edited = item({ ...newCampaign('missed', s.tenantId), runtime: 'live_edited' });
+  assert.equal(edited.done, false);
+  assert.match(edited.detail, /still sending the version you switched on before/);
+  for (const runtime of ['draft', 'live', 'live_edited']) {
+    const c = { ...newCampaign('inbound', s.tenantId), runtime };
+    assert.equal(readinessItems(c, s).every(entry => entry.done), readiness(c, s).length === 0, runtime);
+  }
   assert.equal(readinessItems(newCampaign('missed'), demoState()).some(item => item.id === 'publish'), false);
 });
 
