@@ -17,7 +17,7 @@
  *                      not allow-all — an unconfigured key is a key that does not work yet.
  *   honeypot           a field a person never sees and a bot always fills.
  *   dwell time         a form submitted in under a second was not typed.
- *   rate limits        per key and per IP, in-process.
+ *   rate limits        atomic per-form and per-recipient limits in Postgres.
  *   validation         phone, email, ZIP, consent, length caps.
  *
  * Deploy:  supabase functions deploy lead-intake --no-verify-jwt
@@ -45,25 +45,8 @@ const KEY_PATTERN = /^arcw_[a-z0-9]{24,48}$/;
 /** A form nobody could have typed this fast. */
 const MIN_DWELL_MS = 1200;
 
-/* ── in-process rate limits ──
-   Bounds one edge instance rather than the deployment, stated plainly here as it is on the
-   other two public functions. It stops a loop and a crude script; the origin allowlist and
-   the honeypot are what handle the rest. */
-const WINDOW_MS = 60_000;
-const PER_KEY = 60;
-const PER_IP = 12;
-const hits = new Map<string, { count: number; resetAt: number }>();
-
-function rateLimited(bucket: string, ceiling: number): boolean {
-  const now = Date.now();
-  const entry = hits.get(bucket);
-  if (!entry || now > entry.resetAt) {
-    hits.set(bucket, { count: 1, resetAt: now + WINDOW_MS });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > ceiling;
-}
+const DISCLOSURE_VERSION = 'sms-inquiry-v1';
+const MAX_BODY_BYTES = 8192;
 
 function corsFor(origin: string | null, allowed: string[]): Record<string, string> {
   /* echoes the one origin that matched rather than `*`, so a browser will not let another
@@ -134,17 +117,18 @@ function embedScript(publicKey: string): string {
 
   mounted.forEach(function (host) {
     var renderedAt = Date.now();
+    var submissionId = crypto.randomUUID();
     var form = document.createElement('form');
     form.className = 'arc-lf';
     form.noValidate = true;
     form.innerHTML =
       '<label>Your name<input name="name" autocomplete="name" required maxlength="80"></label>' +
-      '<label>Mobile number<input name="phone" type="tel" autocomplete="tel" required maxlength="24"></label>' +
+      '<label>Mobile number (optional if you give an email)<input name="phone" type="tel" autocomplete="tel" maxlength="24"></label>' +
       '<label>Email (optional)<input name="email" type="email" autocomplete="email" maxlength="120"></label>' +
       '<label>ZIP code<input name="zip" inputmode="numeric" pattern="[0-9]{5}" required maxlength="5"></label>' +
       '<label>What do you need?<textarea name="message" required maxlength="1000"></textarea></label>' +
       '<div class="arc-lf__hp" aria-hidden="true"><label>Company website<input name="company_website" tabindex="-1" autocomplete="off"></label></div>' +
-      '<label class="arc-lf__consent"><input type="checkbox" name="consent" value="yes" required>' +
+      '<label class="arc-lf__consent"><input type="checkbox" name="consent" value="yes">' +
       '<span>Text me about this enquiry. Message and data rates may apply. Reply STOP to opt out.</span></label>' +
       '<button type="submit">Send</button>' +
       '<p class="arc-lf__note" role="status" aria-live="polite"></p>';
@@ -164,6 +148,7 @@ function embedScript(publicKey: string): string {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           key: KEY,
+          submission_id: submissionId,
           name: data.get('name'),
           phone: data.get('phone'),
           email: data.get('email'),
@@ -196,7 +181,7 @@ function embedScript(publicKey: string): string {
 
 interface Submission {
   name: string | null;
-  phone: string;
+  phone: string | null;
   email: string | null;
   zip: string | null;
   message: string;
@@ -212,7 +197,7 @@ function validateSubmission(body: Record<string, unknown>): { ok: true; value: S
   };
 
   const phone = normalisePhone(body.phone);
-  if (!phone) return { ok: false, error: 'a valid mobile number is required' };
+  if (typeof body.phone === 'string' && body.phone.trim() && !phone) return { ok: false, error: 'the mobile number is invalid' };
 
   const message = text(body.message, 1000);
   if (!message) return { ok: false, error: 'tell us what you need' };
@@ -220,12 +205,9 @@ function validateSubmission(body: Record<string, unknown>): { ok: true; value: S
   const zip = text(body.zip, 5);
   if (zip && !/^[0-9]{5}$/.test(zip)) return { ok: false, error: 'the ZIP code should be five digits' };
 
-  /* consent is required rather than defaulted. a form that texts somebody because the box
-     was pre-ticked is the compliance failure this whole module is careful about. */
-  if (body.consent !== true) return { ok: false, error: 'please tick the box so we can text you back' };
-
   const emailRaw = text(body.email, 120);
   if (emailRaw && !normaliseEmail(emailRaw)) return { ok: false, error: 'that email address does not look right' };
+  if (!phone && !emailRaw) return { ok: false, error: 'give a phone number or email so the business can reply' };
 
   return {
     ok: true,
@@ -235,7 +217,7 @@ function validateSubmission(body: Record<string, unknown>): { ok: true; value: S
       email: normaliseEmail(emailRaw),
       zip,
       message,
-      consent: true,
+      consent: body.consent === true && Boolean(phone),
       page: text(body.page, 300),
     },
   };
@@ -276,7 +258,10 @@ Deno.serve(async (request) => {
 
   let body: Record<string, unknown>;
   try {
-    body = (await request.json()) as Record<string, unknown>;
+    const raw = await request.text();
+    if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) return json({ error: 'submission is too large' }, 413);
+    body = JSON.parse(raw) as Record<string, unknown>;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return json({ error: 'body must be an object' }, 400);
   } catch {
     return json({ error: 'body is not valid JSON' }, 400);
   }
@@ -284,15 +269,10 @@ Deno.serve(async (request) => {
   const key = typeof body.key === 'string' ? body.key.trim() : '';
   if (!KEY_PATTERN.test(key)) return json({ error: 'unknown form' }, 400);
 
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  if (rateLimited(`key:${key}`, PER_KEY) || rateLimited(`ip:${ip}`, PER_IP)) {
-    return json({ error: 'too many submissions — try again in a minute' }, 429, { 'Retry-After': '60' });
-  }
-
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const deps = depsFor(db);
+  const deps = depsFor(db as never);
 
   const intakeKey = await deps.store.findIntakeKey(key);
   if (!intakeKey) return json({ error: 'unknown form' }, 404);
@@ -323,24 +303,38 @@ Deno.serve(async (request) => {
   const validated = validateSubmission(body);
   if (!validated.ok) return json({ error: validated.error }, 400, cors);
 
+  const externalRef = typeof body.submission_id === 'string' && /^[0-9a-f]{8}-[0-9a-f-]{27,}$/.test(body.submission_id)
+    ? `web:${body.submission_id}`
+    : `web:${validated.value.phone || validated.value.email}:${new Date().toISOString().slice(0, 16)}`;
+
+  const { error: capacityError } = await db.rpc('consume_public_intake_capacity', {
+    p_key: intakeKey.id, p_recipient: validated.value.phone, p_submission: externalRef,
+  });
+  if (capacityError) {
+    if (capacityError.message?.includes('arc_intake:rate_limited'))
+      return json({ error: 'this form has reached its submission limit; contact the business directly' }, 429, { ...cors, 'Retry-After': '3600' });
+    console.error('lead-intake capacity check failed', capacityError.code);
+    return json({ error: 'the form is temporarily unavailable; contact the business directly' }, 503, cors);
+  }
+
   try {
     const result = await intakeLead(deps, {
       tenantId: intakeKey.tenantId,
       source: 'web_form',
-      /* stable across a double-click or a retried fetch: the same person, number and words
-         within the same minute are one submission. it deliberately does not include the
-         message body's full text, so a resend of an identical form is folded rather than
-         duplicated. */
-      externalRef: `web:${validated.value.phone}:${new Date().toISOString().slice(0, 16)}`,
+      /* New embeds hold one UUID through fetch retries. Older cached embeds keep their
+         minute-window fallback until their cache expires. Capacity still applies to both. */
+      externalRef,
       phone: validated.value.phone,
       email: validated.value.email,
       customerName: validated.value.name,
       serviceRequest: validated.value.message,
       zip: validated.value.zip,
-      locationText: validated.value.page,
+      locationText: null,
       intakeRef: origin,
-      consentSms: true,
+      consentSms: validated.value.consent,
       consentSource: 'web_form',
+      permissionEvidence: { disclosure_version: DISCLOSURE_VERSION, affirmative: validated.value.consent,
+        source: 'embedded_form', origin, form_key_id: intakeKey.id, captured_at: new Date().toISOString() },
     });
 
     await deps.store.touchIntakeKey(intakeKey.id);

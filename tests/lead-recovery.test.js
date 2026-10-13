@@ -446,10 +446,12 @@ describe('the telephony boundary', () => {
     assert.equal(safeEqual('abc', 'abcd'), false);
   });
 
-  test('an answered call is not a missed one', () => {
+  test('only no-answer and busy dial legs are confirmed unavailable', () => {
+    for (const status of ['completed', 'failed', 'canceled', 'unknown']) {
+      assert.equal(shouldRecoverCall(status), false, `${status} is uncertain or connected`);
+    }
     assert.equal(isMissedCall('completed'), false);
-    assert.equal(shouldRecoverCall('completed'), false);
-    for (const status of ['no-answer', 'busy', 'failed', 'canceled']) {
+    for (const status of ['no-answer', 'busy']) {
       assert.equal(shouldRecoverCall(status), true, `${status} should be recoverable`);
     }
   });
@@ -605,6 +607,23 @@ describe('a missed call becomes exactly one lead and exactly one response', () =
 });
 
 describe('a website form and a missed call are the same engine', () => {
+  test('an inquiry without SMS permission remains visible for owner follow-up and sends no customer text', async () => {
+    const store = setup();
+    const sender = new RecordingSender();
+    const d = deps(store, { liveSender: sender });
+    const result = await intakeLead(d, {
+      tenantId: TENANT_A, source: 'web_form', externalRef: 'web:unconsented',
+      phone: '+16145559924', email: 'person@example.test', customerName: 'Robin',
+      serviceRequest: 'window repair', consentSms: false, consentSource: 'web_form',
+      permissionEvidence: { disclosure_version: 'sms-inquiry-v1', affirmative: false },
+    });
+    assert.equal(result.lead.status, 'handoff_required');
+    assert.deepEqual(result.queued, ['open_handoff']);
+    await runDueActions(d, { tenantId: TENANT_A });
+    assert.equal(sender.sent.filter(message => message.to === '+16145559924').length, 0);
+    assert.ok(await store.getOpenHandoff(TENANT_A, result.lead.id));
+  });
+
   test('a form produces the same run, the same queue and the same state', async () => {
     const store = setup();
     const d = deps(store);

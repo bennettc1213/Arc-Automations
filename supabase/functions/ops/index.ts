@@ -214,6 +214,7 @@ import { PRODUCTION_CHANNEL_ADAPTERS } from '../_shared/communications/channels.
 import { handleOnboardingAction, ONBOARDING_ACTIONS } from './onboarding.ts';
 import { supabaseOnboardingStore } from '../_shared/onboarding/supabase-onboarding-store.ts';
 import { createRoadmapLimiter, handleRoadmapAction, ROADMAP_ACTIONS } from './roadmap.ts';
+import { handlePlatformAction, PLATFORM_ACTIONS } from './platform.ts';
 import { operatorGate } from '../_shared/operator-gate.ts';
 import { roadmapModelFor } from '../_shared/roadmap/model.ts';
 import { createRoadmapCorpus } from '../_shared/roadmap/source.ts';
@@ -303,6 +304,7 @@ const ACTIONS = [
   ...INTAKE_ACTIONS,
   ...ONBOARDING_ACTIONS,
   ...ROADMAP_ACTIONS,
+  ...PLATFORM_ACTIONS,
 ];
 
 const RESTORE_STATUSES = ['onboarding', 'active', 'paused'];
@@ -711,6 +713,22 @@ Deno.serve(async (request) => {
         return json({ error: 'onboarding needs supabase/migrations/0023_crm_core.sql to 0027_crm_booking.sql applied first', detail: message }, 501);
       }
       console.error(`onboarding action ${action} failed`, error);
+      return json({ error: message }, 500);
+    }
+  }
+
+  // ── the platform: the emergency stop and the self-signup businesses (0031, 0033) ──
+
+  if (PLATFORM_ACTIONS.includes(action)) {
+    try {
+      const result = await handlePlatformAction(action, { db, body: body as unknown as Record<string, unknown>, actorId });
+      return json(result.body, result.status);
+    } catch (error) {
+      const message = (error as Error)?.message ?? 'the action failed';
+      if (/platform_controls|set_platform_sending_stop|self_service_|saas_/i.test(message) && /does not exist|could not find/i.test(message)) {
+        return json({ error: 'this needs supabase/migrations/0029 to 0033 applied first', detail: message }, 501);
+      }
+      console.error(`platform action ${action} failed`, error);
       return json({ error: message }, 500);
     }
   }

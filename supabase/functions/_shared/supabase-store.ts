@@ -379,6 +379,7 @@ export function supabaseStore(db: Db): EngineStore {
           consent_sms: row.consentSms,
           consent_source: row.consentSource,
           consent_at: row.consentAt,
+          ...(row.permissionEvidence ? { permission_evidence: row.permissionEvidence } : {}),
           assigned_to: row.assignedTo,
           booking_outcome: row.bookingOutcome,
           booked_at: row.bookedAt,

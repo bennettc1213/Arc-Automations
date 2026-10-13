@@ -7,6 +7,67 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.46.0] - 2026-10-13
+
+**The SaaS foundation, in progress.** Built against
+`ARC_SAAS_FOUNDATION_IMPLEMENTATION_PROMPT.md`. Where each part stands, what is not built and
+why, and what has to happen outside the repository are in
+`docs/architecture/ARC_SAAS_IMPLEMENTATION_STATUS.md`. Nothing here is deployed: migrations
+`0029` to `0033` and the `billing` function have not reached a hosted project, and the sign-up
+page is held off the live site until they have.
+
+### Added
+
+- **One switch that stops every real text, for every business** (`0033`, `ops`
+  `platform-sending-stop`, the console's alerts page). It needs a reason and is audited. Calls,
+  forms and replies are still recorded while it is on; a text it refuses is cancelled and its
+  lead handed to a person, so resuming sends none of them. A synthetic test still runs.
+- **Readiness read off what is true** (`0033` `self_service_readiness`): seven separate
+  answers — details and campaign saved, an inquiry has reached the form, the number is approved,
+  call forwarding is tested, a test message passed, the subscription is active, ARC is switched
+  on. The owner's setup page lists them in plain words, and a real account's setup can now
+  finish. With no answer the portal shows nothing as ready.
+- **The operator's list of self-signup businesses** (`ops` `platform-self-service`): setup,
+  module state, subscription as Stripe last reported it, and texts used against the cap, flagged
+  from four fifths. No customer's number is on it.
+- The owner's billing page warns when a period's texts are nearly or fully used.
+- `docs/architecture/ARC_SAAS_IMPLEMENTATION_STATUS.md`, and section 7 of
+  `ARC_PRODUCT_SCOPE.md` recording what was reopened and what was not.
+- Tests on real SQL for each subscription state, a paid period that has ended, a late or
+  repeated Stripe event, the cap, the emergency stop and readiness
+  (`tests/saas-operations-db.test.js`, `tests/saas-fixtures.js`); for billing's door against the
+  real Stripe SDK's signature check (`tests/billing.test.js`); and a gate scenario reading each
+  of seven dial results on its own.
+
+- Self-service accounts: one business per login, and an owner's setup answers and campaign
+  drafts saved to the server (`0029`). The `/signup` page that leads to it is written and not
+  in this release.
+- An owner-created website form key, with submission limits held in Postgres and the
+  permission a customer gave recorded with the lead (`0030`, `0032`).
+- Stripe test-mode checkout and billing portal, and a subscription and monthly action cap
+  checked where a text is reserved (`0031`, `billing`).
+- Owner takeover of a conversation from the inbox (`crm` action `lead-takeover`).
+
+### Changed
+
+- The `billing` function is split like the Twilio one: `index.ts` holds only secrets and
+  clients, `handler.ts` decides. A forged webhook is refused before a database client exists.
+- **Decided 2026-10-13: a missed call is texted back.** Somebody who rang the business and
+  was not answered may be sent the text about that call. The lead records why
+  (`consent_source: inbound_call`), it covers that reply only, and STOP still wins. The
+  earlier draft of this work sent every missed call to the owner with no text.
+- **Decided 2026-10-13: a campaign an owner publishes is what gets sent.** Not built yet. A
+  saved draft still changes nothing ARC sends, and the campaigns page now says so.
+- A dial leg that failed or was cancelled is no longer texted; only no-answer and busy are.
+
+### Fixed
+
+- The billing page crashed on opening: its route never handed it the account.
+- A call that connected is counted again (`call_answered`), so the ledger's "calls you picked
+  up" figure keeps moving. The draft had removed the count and its test.
+- The test that a real account never shows sample records now matches the three
+  "unavailable" connection rows the page draws when nothing has loaded.
+
 ## [1.45.0] - 2026-10-13
 
 The client portal, rebuilt to read as a product. It ships ahead of the self-service work it will

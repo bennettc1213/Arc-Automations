@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SETUP_STEPS, validateBusiness, newCampaign } from './model';
-import { TRADES, applyRecommended, readinessItems, suggestedServices } from './guide';
+import { TRADES, accountReadinessItems, applyRecommended, readinessItems, suggestedServices } from './guide';
 import { CampaignChoices, Journey } from './Campaigns';
 import { Badge, Button, Checklist, Field, Notice, PageHead, Progress, stateLabel, stateTone } from './ui';
 import { configureForm } from './api';
@@ -170,6 +170,7 @@ export function Setup({ state, dispatch, base, onReload }) {
   const first = state.campaigns[0];
   const left = first ? readinessItems(first, state) : [];
   const ready = first && left.every(item => item.done);
+  const account = accountReadinessItems(state);
   const advance = async () => {
     if (step === 0) {
       const problems = validateBusiness(business);
@@ -242,6 +243,19 @@ export function Setup({ state, dispatch, base, onReload }) {
                   renderAction={item => item.to ? <Link className="ap-button" to={`${base}/${item.to}`}>{item.action}</Link>
                     : item.step && first ? <Link className="ap-button" to={`${base}/campaigns/${first.id}`}>{item.action}</Link> : null} />
               </div>
+              {/* shown only where the account's own storage exists: on a project that has not
+                  been given it yet, the page head already says setup cannot be saved. */}
+              {!demo && state.setupAvailable && (
+                <div className="ap-card">
+                  <h3 className="ap-subheading">Where your account stands</h3>
+                  {account.length ? (
+                    <>
+                      <p className="ap-muted">{state.setupComplete ? 'Everything below is in place. ARC is answering for your business.' : 'These are read from your account as it is right now. The ones without a button are done for you by ARC.'}</p>
+                      <Checklist items={account} renderAction={item => item.to ? <Link className="ap-button" to={`${base}/${item.to}`}>{item.action}</Link> : null} />
+                    </>
+                  ) : <Notice warning>Your account status could not be read just now, so nothing here is shown as ready. Please try again later.</Notice>}
+                </div>
+              )}
               <div className="ap-actions">
                 {first && <Link className={`ap-button${ready && demo ? '' : ' ap-button--primary'}`} to={`${base}/campaigns/${first.id}`}>Review and test your campaign</Link>}
                 {demo && ready && <Button primary onClick={() => dispatch({ type: 'setup', step: 4, complete: true })}>Finish setup</Button>}

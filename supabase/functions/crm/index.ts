@@ -42,9 +42,14 @@ import { conversationDeps } from '../_shared/communications/wiring.ts';
 import { resolveRuntimeEnvironment } from '../_shared/connections/runtime-env.ts';
 import { supabaseConfigStore } from '../_shared/config/supabase-config-store.ts';
 import { ACCOUNT_ERROR_STATUS, readAccountSettings, supabaseStopList } from '../_shared/account/service.ts';
+import { supabaseStore } from '../_shared/supabase-store.ts';
+import { takeOverLead } from '../_shared/engine/runtime.ts';
+import { RecordingSender } from '../_shared/twilio.ts';
+import { UnavailableClassifier } from '../_shared/classifier.ts';
 
 /** the owner portal's one read that is not a workspace action. */
 const ACCOUNT_ACTION = 'account-settings';
+const LEAD_TAKEOVER_ACTION = 'lead-takeover';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -98,8 +103,8 @@ Deno.serve(async (request) => {
   }
 
   const action = String(body.action ?? '');
-  if (action === 'capabilities') return json({ ok: true, actions: [...WORKSPACE_ACTIONS, ACCOUNT_ACTION] }, 200);
-  if (action !== ACCOUNT_ACTION && !WORKSPACE_ACTIONS.includes(action)) return json({ error: 'unknown action' }, 400);
+  if (action === 'capabilities') return json({ ok: true, actions: [...WORKSPACE_ACTIONS, ACCOUNT_ACTION, LEAD_TAKEOVER_ACTION] }, 200);
+  if (action !== ACCOUNT_ACTION && action !== LEAD_TAKEOVER_ACTION && !WORKSPACE_ACTIONS.includes(action)) return json({ error: 'unknown action' }, 400);
   if (typeof body.tenant_id !== 'string' || !UUID.test(body.tenant_id)) {
     return json({ error: 'tenant_id is required', code: 'invalid' }, 422);
   }
@@ -115,6 +120,25 @@ Deno.serve(async (request) => {
   /* not a member: the same answer whether or not the tenant exists. */
   const actor = clientActor(userId, body.tenant_id, membership);
   if (!actor) return json({ error: 'this account does not belong to that client', code: 'forbidden' }, 403);
+
+  if (action === LEAD_TAKEOVER_ACTION) {
+    if (membership?.role !== 'owner') return json({ error: 'owner access required', code: 'forbidden' }, 403);
+    if (typeof body.lead_id !== 'string' || !UUID.test(body.lead_id)) return json({ error: 'lead_id is required', code: 'invalid' }, 422);
+    try {
+      const recording = new RecordingSender();
+      const result = await takeOverLead({
+        store: supabaseStore(db as never), now: () => new Date(),
+        liveSender: recording, canarySender: recording,
+        classifierFor: () => new UnavailableClassifier('owner action'),
+        uuid: () => crypto.randomUUID(), worker: `owner:${userId}`,
+      }, { tenantId: body.tenant_id, leadId: body.lead_id, actor: userId });
+      return result.ok ? json({ ok: true, outcome: result.outcome }, 200)
+        : json({ error: 'lead not found', code: 'not_found' }, 404);
+    } catch (failure) {
+      console.error('crm lead-takeover failed', failure);
+      return json({ error: 'could not take over this inquiry', code: 'failed' }, 500);
+    }
+  }
 
   if (action === ACCOUNT_ACTION) {
     try {

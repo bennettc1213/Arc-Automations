@@ -201,13 +201,11 @@ export function voiceResponse(
 /* ── dial results ───────────────────────────────────────── */
 
 /**
- * The four DialCallStatus values that mean nobody picked up.
- *
- * `completed` is the one that is *not* here, and the distinction is the whole feature: a
- * completed call was answered by a human and needs no recovery text. Sending one anyway —
- * "sorry we missed you" to somebody who just spoke to you — is worse than sending nothing.
+ * Only a dial leg that rang with no answer or met a busy destination is a confirmed
+ * unavailable business line. `failed` can be transport trouble, `canceled` can mean the
+ * caller abandoned the call, and `completed` can be voicemail. None proves a missed human.
  */
-export const MISSED_DIAL_STATUSES = ['no-answer', 'busy', 'failed', 'canceled'] as const;
+export const MISSED_DIAL_STATUSES = ['no-answer', 'busy'] as const;
 
 export function isMissedCall(dialCallStatus: string | null | undefined): boolean {
   return (MISSED_DIAL_STATUSES as readonly string[]).includes(String(dialCallStatus ?? '').toLowerCase());

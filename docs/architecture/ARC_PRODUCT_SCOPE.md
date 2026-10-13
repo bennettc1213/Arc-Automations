@@ -150,5 +150,25 @@ Nothing in the code. The registry, the launch nav, the homepage's staged map and
 paused list already enforce this boundary. This document is the one place that states it
 whole.
 
+---
+
+## 7. Reopened on 2026-10-12 and 2026-10-13
+
+Bennett reopened part of this boundary with `ARC_SAAS_FOUNDATION_IMPLEMENTATION_PROMPT.md` and
+in two decisions the day after. Each line is a decision, recorded here so the sections above
+are not read as still holding where they no longer do. Where the work stands is
+`ARC_SAAS_IMPLEMENTATION_STATUS.md`.
+
+| Was | Now | Built |
+| --- | --- | --- |
+| No self-serve sign-up (5.2, section 3) | A business may create its own account and save its own setup. | Yes, not deployed. The sign-up door stays off the live site until the database has it. |
+| Payments out (section 3) | A subscription, through Stripe, decides whether a self-signed-up business may send. Invoicing a customer's customers is still out. | Yes, test mode only, not deployed. |
+| An owner reads settings and edits none (item 8) | A campaign an owner publishes is what gets sent, and they may edit it at any time. | No. Drafts save; nothing an owner writes is sent yet. |
+| A voice call was implied consent, then (in the first draft of this work) no consent at all | A missed call may be texted back about that call. A website form still needs the box ticked. | Yes. |
+
+**Not reopened.** 5.1 stands: launch runs on ARC's dispatcher, and n8n is not in the path. The
+brief reports an authorisation from n8n; closing the licensing gate is still its own recorded
+decision. 5.3 stands as a later improvement. 5.4 stands: no speed is claimed.
+
 Related: `ARC_IMPLEMENTATION_ROADMAP.md` (the order of work), `ARC_LEAD_RECOVERY_READINESS.md`
 (what stands between the code and a real phone), `ARC_PROOF_LEDGER.md` (what counts).

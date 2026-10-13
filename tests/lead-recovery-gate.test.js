@@ -27,6 +27,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { DateTime } from 'luxon';
+import twilio from 'twilio';
 
 import { asRole, freshDatabase, loadPglite, postgrestTimestamp, restClient, SKIP_REASON } from './pglite-harness.js';
 import { FIXTURE_OPERATOR, leadRecoveryConfig, seedPublishedConfig } from './config-fixtures.js';
@@ -152,6 +153,7 @@ function doors(world) {
         {
           authToken: token,
           publicBase: PUBLIC_BASE,
+          validateSignature: twilio.validateRequest,
           open: () => {
             world.opened += 1;
             return { deps: engine('twilio-webhook'), messageTenant: world.messageTenant };
@@ -1012,7 +1014,7 @@ function gate(title, makeWorld, options = {}) {
       assert.deepEqual(world.invalid(), []);
     });
 
-    test('where the ARC number is in front, a redelivered dial result is one lead, and an answered call is only a count', async () => {
+    test('where the ARC number is in front, a redelivered no-answer is one lead, and a connected call is only a count', async () => {
       const world = await makeWorld();
       const client = await world.client({ mode: 'arc_first' });
       const customer = customerNumber();
@@ -1032,9 +1034,39 @@ function gate(title, makeWorld, options = {}) {
       await world.twilio('dial-status', answered);
       await world.twilio('dial-status', answered);
       await world.dispatch();
-      assert.equal(world.carrier.to(answered.From).length, 0, 'nobody who was answered is texted "sorry we missed you"');
+      assert.equal(world.carrier.to(answered.From).length, 0, 'nobody whose call connected is texted "sorry we missed you"');
       const events = await world.events(client);
       assert.deepEqual([count(events, 'call_answered'), count(events, 'call_missed')], [1, 1]);
+    });
+
+    /* every result the phone network can report for the ring, one call each. only two of
+       them prove nobody was there. a leg that failed is a line fault, a cancelled one is a
+       caller who hung up while it rang, and a result ARC does not recognise is not a reason
+       to text anybody: each is left alone rather than guessed at. a voicemail pickup reports
+       `completed` like a person does — the stated limit of this setup. */
+    test('where the ARC number is in front, each dial result is read on its own: two are a missed call, one a count, the rest nothing', async () => {
+      const world = await makeWorld();
+      const client = await world.client({ mode: 'arc_first' });
+      const expected = {
+        'no-answer': { texts: 1, lead: true },
+        busy: { texts: 1, lead: true },
+        completed: { texts: 0, lead: false },
+        failed: { texts: 0, lead: false },
+        canceled: { texts: 0, lead: false },
+        'in-progress': { texts: 0, lead: false },
+        '': { texts: 0, lead: false },
+      };
+      for (const [status, want] of Object.entries(expected)) {
+        const caller = customerNumber();
+        const callSid = sid('CA');
+        await world.twilio('dial-status', { CallSid: callSid, From: caller, To: client.number, DialCallStatus: status });
+        await world.dispatch();
+        assert.equal(world.carrier.to(caller).length, want.texts, `${status || 'no status'}: texts`);
+        assert.equal(Boolean(await leadOfCall(world, client, callSid)), want.lead, `${status || 'no status'}: lead`);
+      }
+      const events = await world.events(client);
+      assert.deepEqual([count(events, 'call_missed'), count(events, 'call_answered')], [2, 1]);
+      assert.deepEqual(world.invalid(), []);
     });
 
     /* ── a webhook that failed halfway ──

@@ -30,6 +30,7 @@
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import twilio from 'npm:twilio@6.1.2';
 import { supabaseStore } from '../_shared/supabase-store.ts';
 import type { EngineDeps } from '../_shared/engine/runtime.ts';
 import { classifierFor } from '../_shared/classifier.ts';
@@ -82,12 +83,13 @@ Deno.serve(async (request) => {
     {
       authToken: TWILIO_AUTH_TOKEN,
       publicBase: PUBLIC_BASE,
+      validateSignature: twilio.validateRequest,
       /* reached only by a request whose signature has passed. */
       open() {
         const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
           auth: { persistSession: false, autoRefreshToken: false },
         });
-        return { deps: depsFor(db), messageTenant: messageTenantFrom(db) };
+        return { deps: depsFor(db as never), messageTenant: messageTenantFrom(db as never) };
       },
     },
     {

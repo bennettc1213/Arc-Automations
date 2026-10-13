@@ -6,11 +6,12 @@ const daysForUi = value => String(value || '').replace(/-/g, '\u2013');
 
 export async function loadProduct(tenant) {
   const client = getSupabase();
-  const [setup, campaigns, billing, form] = await Promise.all([
+  const [setup, campaigns, billing, form, readiness] = await Promise.all([
     client.from('tenant_setup_answers').select('*').eq('tenant_id', tenant.id).maybeSingle(),
     client.from('customer_campaign_drafts').select('id,kind,revision,config,created_at,updated_at').eq('tenant_id', tenant.id).order('updated_at', { ascending: false }),
     client.from('saas_billing_accounts').select('*').eq('tenant_id', tenant.id).maybeSingle(),
     client.rpc('self_service_form_status', { p_tenant: tenant.id }),
+    client.rpc('self_service_readiness', { p_tenant: tenant.id }),
   ]);
   if (setup.error || campaigns.error) return { available: false, error: (setup.error || campaigns.error).message };
   const usage = billing.data?.period_start ? await client.from('saas_usage_actions')
@@ -23,6 +24,9 @@ export async function loadProduct(tenant) {
       : { available: true, ...billing.data, used: usage?.error ? null : usage?.count ?? 0 },
     form: form.error ? { available: false, error: form.error.message }
       : { available: true, ...form.data },
+    /* what the database says is true right now (0033). absent means unknown, never "ready". */
+    readiness: readiness.error || !readiness.data ? { available: false, error: readiness.error?.message || 'Readiness has not loaded' }
+      : { available: true, ...readiness.data },
     setupRevision: row?.revision ?? null,
     step: row?.step ?? 0,
     business: row ? {

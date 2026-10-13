@@ -72,6 +72,7 @@ export interface LeadRow {
   consentSms: boolean;
   consentSource: string | null;
   consentAt: string | null;
+  permissionEvidence?: Record<string, unknown> | null;
   assignedTo: string | null;
   bookingOutcome: string | null;
   bookedAt: string | null;
@@ -413,7 +414,7 @@ export interface EngineStore extends ConfigStore, LifecycleStore, ConnectionStor
    * must equal the run's; omitting it lets the database derive it. Queueing against a
    * run with no snapshot is refused (0013).
    */
-  scheduleAction(row: Omit<ActionRow, 'id' | 'status' | 'attempts' | 'lockedAt' | 'lockedBy' | 'leaseToken' | 'fence' | 'lastError' | 'completedAt' | 'configSnapshotId'> & {
+  scheduleAction(row: Omit<ActionRow, 'id' | 'status' | 'attempts' | 'lockedAt' | 'lockedBy' | 'leaseToken' | 'fence' | 'lastError' | 'completedAt' | 'configSnapshotId' | 'maxAttempts'> & {
     maxAttempts?: number;
     configSnapshotId?: string | null;
   }): Promise<{ action: ActionRow; created: boolean }>;
@@ -730,7 +731,7 @@ export class MemoryStore extends MemoryLifecycleStore implements EngineStore {
    * unique index is consulted.
    */
   // deno-lint-ignore require-await
-  async scheduleAction(row: Omit<ActionRow, 'id' | 'status' | 'attempts' | 'lockedAt' | 'lockedBy' | 'leaseToken' | 'fence' | 'lastError' | 'completedAt' | 'configSnapshotId'> & { maxAttempts?: number; configSnapshotId?: string | null }) {
+  async scheduleAction(row: Omit<ActionRow, 'id' | 'status' | 'attempts' | 'lockedAt' | 'lockedBy' | 'leaseToken' | 'fence' | 'lastError' | 'completedAt' | 'configSnapshotId' | 'maxAttempts'> & { maxAttempts?: number; configSnapshotId?: string | null }) {
     const run = this.runs.find((r) => r.id === row.runId && r.tenantId === row.tenantId);
     if (!run) throw new Error(`scheduled_actions: run ${row.runId} does not belong to tenant ${row.tenantId}`);
     if (!run.configSnapshotId) {

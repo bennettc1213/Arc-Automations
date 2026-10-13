@@ -38,11 +38,19 @@ function projectLead(tenantId, thread, row, runtime) {
     messages, steps: thread?.steps || [] };
 }
 
+/** 0033's `self_service_readiness`, in the order an account gets through them. */
+export const READINESS_CHECKS = ['configuration', 'source', 'sender', 'routing', 'test', 'subscription', 'active'];
+
 export function productionState(data) {
   const runtime = data.leadRecovery;
   const form = data.product?.form || { available: false };
   const moduleActive = form.module_state === 'active';
   const health = form.module_health;
+  /* the database's own answers (0033). without them a connection is never drawn as
+     connected: unknown is not ready. */
+  const ready = data.product?.readiness?.available ? data.product.readiness : null;
+  const passed = key => ready?.[key]?.ok === true;
+  const unhealthy = ['failing', 'blocking'].includes(health);
   const rows = runtime?.available ? runtime.leads : [];
   const byCorrelation = new Map(rows.map(row => [row.correlation_id, row]));
   const seen = new Set();
@@ -57,7 +65,7 @@ export function productionState(data) {
     setupStep: data.product?.step ?? 0, setupRevision: data.product?.setupRevision ?? null,
     setupAvailable: data.product?.available === true, setupError: data.product?.error || null,
     billing: data.product?.billing || { available: false, error: 'Billing has not loaded' },
-    setupComplete: false, runtimeAvailable: runtime?.available === true, runtimeError: runtime?.error || null,
+    setupComplete: Boolean(ready) && READINESS_CHECKS.every(passed), runtimeAvailable: runtime?.available === true, runtimeError: runtime?.error || null,
     evidenceComplete: (data.threadTotal ?? data.threads.length) <= data.threads.length,
     eligibilityComplete: false, totalLeadCount: Math.max(data.threadTotal ?? data.threads.length, leads.length),
     campaigns: data.product?.campaigns || [],
@@ -69,16 +77,23 @@ export function productionState(data) {
           ? 'Choose your website origin to create a form key.' : form.last_used_at
           ? 'An inquiry has reached this form.' : 'Form key created. Publish the snippet and send a test inquiry.' },
       { id: 'messaging', name: 'Business messaging', state: !form.available ? 'unavailable'
-        : !moduleActive ? 'pending_review' : ['failing','blocking'].includes(health) ? 'needs_attention' : 'in_progress',
-        detail: !form.available ? 'Messaging status unavailable.' : !moduleActive
-          ? `ARC review and sender testing are required. Module: ${form.module_state}.`
-          : `Lead Recovery is active. Health: ${health || 'unverified'}.` },
-      { id: 'phone', name: 'Business phone', state: !form.available ? 'unavailable'
-        : !moduleActive ? 'pending_review' : ['failing','blocking'].includes(health) ? 'needs_attention' : 'in_progress',
-        detail: !form.available ? 'Phone status unavailable.' : !moduleActive
-          ? 'ARC must verify the number and call topology during activation.'
-          : `Lead Recovery is active. Call routing still needs real-device verification. Health: ${health || 'unverified'}.` },
+        : unhealthy ? 'needs_attention' : passed('sender') && passed('test') ? 'connected'
+          : passed('sender') ? 'in_progress' : !moduleActive ? 'pending_review' : 'in_progress',
+        detail: !form.available ? 'Messaging status unavailable.'
+          : unhealthy ? `ARC found a problem with texting on this account. Health: ${health}.`
+            : passed('sender') && passed('test') ? 'Your number is approved for texting and a test message ran end to end.'
+              : passed('sender') ? 'Your number is approved for texting. ARC still has to run a test message.'
+                : `ARC review and sender testing are required. Module: ${form.module_state}.` },
+      { id: 'phone', name: 'Business phone', routingTested: passed('routing'), state: !form.available ? 'unavailable'
+        : unhealthy ? 'needs_attention' : passed('sender') && passed('routing') ? 'connected'
+          : !moduleActive ? 'pending_review' : 'in_progress',
+        detail: !form.available ? 'Phone status unavailable.'
+          : unhealthy ? `ARC found a problem with this phone line. Health: ${health}.`
+            : passed('sender') && passed('routing') ? 'Call forwarding was tested: a test call was answered and the line responded correctly.'
+              : 'ARC must verify the number and test call forwarding with you.' },
     ], leads,
+    readiness: ready,
+    readinessError: ready ? null : data.product?.readiness?.error || null,
     events: data.threads.flatMap(thread => (thread.steps || []).map((event, index) => ({
       id: `${thread.id}-${index}`, tenantId: data.tenant.id,
       leadId: byCorrelation.get(thread.id)?.id || thread.id, at: event.at,

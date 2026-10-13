@@ -38,6 +38,18 @@ import { normalisePhone } from '../_shared/phone.ts';
 
 export const TWILIO_ROUTES = ['voice', 'dial-status', 'sms', 'message-status'] as const;
 
+/**
+ * Why ARC may text somebody who rang and was not answered: they dialled this business, and
+ * the text is about that call. Recorded with its source rather than assumed silently, and
+ * it is not a tick on a form — `affirmative` stays false so no screen reads it as one. It
+ * covers the reply to this call only; STOP and the suppression list still win.
+ */
+const MISSED_CALL_PERMISSION = {
+  consentSms: true,
+  consentSource: 'inbound_call',
+  permissionEvidence: { source: 'inbound_call', affirmative: false, basis: 'missed_call' },
+} as const;
+
 /** What a signed request is allowed to reach. Built by `open()`, never before the gate. */
 export interface TwilioDoorway {
   deps: EngineDeps;
@@ -57,6 +69,9 @@ export interface TwilioDoor {
    * behind a proxy that rewrote the host is a different string.
    */
   publicBase: string;
+  /** Production injects the official Twilio SDK validator; tests can supply a verifier. */
+  validateSignature?: (authToken: string, signature: string, url: string,
+    params: Record<string, string>) => boolean;
   open(): TwilioDoorway;
 }
 
@@ -116,15 +131,14 @@ export async function handleTwilioWebhook(door: TwilioDoor, request: TwilioReque
      request claims. A failure here is 403 with no detail beyond the reason: a forger does
      not need help. */
   const signedUrl = `${door.publicBase}/twilio/${route}${url.search}`;
-  const signature = await verifyTwilioSignature({
-    authToken: door.authToken,
-    url: signedUrl,
-    params,
-    header: request.signature,
-  });
+  const valid = door.validateSignature
+    ? Boolean(request.signature && door.authToken && door.validateSignature(
+      door.authToken, request.signature, signedUrl, params))
+    : (await verifyTwilioSignature({ authToken: door.authToken, url: signedUrl,
+      params, header: request.signature })).ok;
 
-  if (!signature.ok) {
-    console.warn(`twilio webhook rejected on ${route}: ${signature.reason}`);
+  if (!valid) {
+    console.warn(`twilio webhook rejected on ${route}: invalid signature`);
     return json({ error: 'invalid signature' }, 403);
   }
 
@@ -172,8 +186,7 @@ export async function handleTwilioWebhook(door: TwilioDoor, request: TwilioReque
               phone: caller,
               customerName: null,
               intakeRef: called,
-              consentSms: true,
-              consentSource: 'inbound_call',
+              ...MISSED_CALL_PERMISSION,
             });
             console.log(`voice (forwarded unanswered) for ${tenantConfig.tenantId}: ${result.outcome}`);
           } catch (error) {
@@ -202,11 +215,12 @@ export async function handleTwilioWebhook(door: TwilioDoor, request: TwilioReque
       const dialled = await loadConfig(store, tenantConfig.tenantId);
       if (dialled.ok && dialled.loaded.config.forwarding.mode === 'business_first') return twiml(emptyTwiml());
 
-      /* the branch the whole module hangs off. an answered call produces no lead, no run and
-         no text — only a count (ARC-MK-210), so the ledger can say how many calls the
-         business picked up itself. `completed` is the one status that means a person
-         answered; anything else unrecognised is recorded as nothing. the count must never
-         cost a call its 200, so a failed write is logged and swallowed. */
+      /* the branch the whole module hangs off. a call that connected produces no lead, no run
+         and no text — only a count (ARC-MK-210), so the ledger can say how many calls the
+         business picked up itself. `completed` is the one status counted, and a voicemail
+         pickup reads as `completed` too: a stated limit, warned at validation. a failed or
+         cancelled leg proves neither, so it is recorded as nothing and texts nobody. the
+         count must never cost a call its 200, so a failed write is logged and swallowed. */
       if (!shouldRecoverCall(dialStatus)) {
         if (dialStatus.toLowerCase() === 'completed') {
           try {
@@ -229,10 +243,7 @@ export async function handleTwilioWebhook(door: TwilioDoor, request: TwilioReque
            supplied it is often a carrier label or a town, and it would open the text. */
         customerName: null,
         intakeRef: called,
-        /* somebody who dialled this number has asked to be contacted on it. recorded as
-           implied consent with its source, not assumed silently. */
-        consentSms: true,
-        consentSource: 'inbound_call',
+        ...MISSED_CALL_PERMISSION,
       });
 
       console.log(`dial-status ${dialStatus} for ${tenantConfig.tenantId}: ${result.outcome}`);

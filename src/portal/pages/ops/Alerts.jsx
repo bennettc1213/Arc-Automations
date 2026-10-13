@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { DateTime } from 'luxon';
 import { Empty, Panel, Pill, StatCard } from '../../components/ui';
 import { Field, Notice, SelectInput, TextArea } from '../../components/ops-ui';
+import PlatformPanel from '../../components/PlatformPanel';
 import { acknowledgeAlert, raiseAlert, resolveAlert } from '../../lib/ops';
 import { formatCount, formatSpan, formatStamp } from '../../lib/format';
 import { quietAfterHours } from '../../../../supabase/functions/_shared/watch/model.ts';
@@ -94,6 +95,8 @@ export default function Alerts({ clients, base, reload }) {
 
   return (
     <>
+      <PlatformPanel base={base} />
+
       {unacknowledged.length > 0 && (
         <Notice tone="fail" title={`${unacknowledged.length} open, unacknowledged`}>
           an alert nobody has acknowledged is an alert nobody has looked at. the client can

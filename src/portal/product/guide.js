@@ -184,3 +184,73 @@ export function readinessItems(campaign, state) {
   ];
   return items;
 }
+
+/* ── account readiness (0033) ──
+   What the database says is true for this account right now, said one line at a time. The
+   codes are `self_service_readiness`'s closed list; a code this file does not know is shown
+   as not done with a plain "ARC is checking this", never as done. An account with no
+   readiness loaded gets an empty list, and the page says it could not be read. */
+const READINESS_WORDS = {
+  configuration: {
+    label: 'Your business details and first campaign are saved', todo: 'Finish your business details and pick a campaign',
+    to: 'setup', action: 'Open setup',
+    codes: { business_details_missing: 'Your trade, services or service area are still blank.', no_campaign: 'No campaign has been saved yet.' },
+  },
+  source: {
+    label: 'An inquiry has reached your website form', todo: 'Put the form on your website and send a test inquiry',
+    to: 'connections', action: 'Open connections',
+    codes: { no_form: 'You have not made a form yet.', awaiting_first_inquiry: 'The form exists, and nothing has come through it yet.' },
+  },
+  sender: {
+    label: 'Your number is approved for texting', todo: 'Texting approval for your number',
+    codes: { not_started: 'ARC has not started setting up your number yet.', pending_review: 'ARC is registering your number with the phone carriers. This is done for you and can take a few days.' },
+  },
+  routing: {
+    label: 'Call forwarding is tested', todo: 'A call forwarding test with ARC',
+    codes: { not_started: 'ARC has not started setting up your phone line yet.', not_tested: 'ARC still has to place a test call to your business with you.' },
+  },
+  test: {
+    label: 'A test message ran from start to finish', todo: 'A test message',
+    codes: { not_run: 'ARC has not run the test message yet.', retest_required: 'Something changed since the last test, so ARC is running it again.' },
+  },
+  subscription: {
+    label: 'Your subscription is active', todo: 'Start your subscription',
+    to: 'billing', action: 'Open billing',
+    codes: {
+      none: 'There is no subscription on this account yet.', period_ended: 'The period you paid for has ended.',
+      usage_cap: 'You have used every text in this period. New inquiries still arrive here; no new texts go out until the next period.',
+      past_due: 'A payment is overdue, so new texts are paused.', unpaid: 'A payment is overdue, so new texts are paused.',
+      canceled: 'The subscription was cancelled.', paused: 'The subscription is paused.',
+      incomplete: 'The first payment has not gone through yet.', incomplete_expired: 'The first payment did not go through. Start checkout again.',
+    },
+  },
+  active: {
+    label: 'ARC is switched on for your business', todo: 'ARC switching your account on',
+    codes: {
+      not_active: 'ARC switches your account on once the checks above pass.', paused: 'Your account is paused. No texts go out while it is.',
+      held_for_review: 'A change is waiting for ARC to check it. New inquiries are kept, and no new texts go out until it has.',
+      sending_stopped: 'ARC has paused texting for every business while it fixes a problem. New inquiries are still recorded.',
+    },
+  },
+};
+
+export function accountReadinessItems(state) {
+  if (!state.readiness) return [];
+  return Object.entries(READINESS_WORDS).map(([id, words]) => {
+    const answer = state.readiness[id];
+    const done = answer?.ok === true;
+    return {
+      id: `account-${id}`, label: words.label, todo: words.todo, done,
+      detail: done ? '' : words.codes[answer?.code] || 'ARC is checking this.',
+      ...(words.to ? { to: words.to, action: words.action } : {}),
+    };
+  });
+}
+
+/** How close this period's texts are to the limit. Null when either number is unknown. */
+export function usageWarning(used, cap) {
+  if (used == null || cap == null || !(cap > 0)) return null;
+  if (used >= cap) return { level: 'at', text: `You have used all ${cap} texts for this period. New inquiries still arrive in your inbox; ARC sends no new texts until the next period starts.` };
+  if (used >= Math.ceil(cap * 0.8)) return { level: 'near', text: `You have used ${used} of ${cap} texts for this period. When they run out, new inquiries still arrive but ARC stops texting until the next period.` };
+  return null;
+}

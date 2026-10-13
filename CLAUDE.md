@@ -88,7 +88,11 @@ waits for opening hours (`followupAt`). The customer gets one `reply_ack` after 
 through the same effect gate. `forwarding.mode` says which number customers dial:
 `business_first` (the pilot's — a call reaching ARC is already missed, so `voiceResponse` dials
 nobody and the voice webhook records the lead) or `arc_first` (the dial result decides, and a
-voicemail pickup still reads as answered — a stated limit, warned at validation). A booked
+voicemail pickup still reads as answered — a stated limit, warned at validation; only
+`no-answer` and `busy` are a missed call, and a failed or cancelled leg texts nobody). A missed
+call is its own permission for the text about that call (decided 2026-10-13,
+`MISSED_CALL_PERMISSION` in `twilio/handler.ts`: `consent_source: inbound_call`, never recorded
+as a ticked box), where a website form needs the box ticked and an untick is a handoff. A booked
 visit is the owner's `visit-booked` on the `ledger` function or the console's button, both the
 engine's `markBooked`; an unknown send is settled by `settleUnknownSend`, which resends
 nothing. The webhooks queue and return — only the dispatcher's schedule sends.
@@ -444,6 +448,25 @@ settings and carries its reason (`recommend`); never type one into a component. 
 says the model's `readiness` one item at a time, with where to fix each, and the test holds the
 two together. The client portal's type floor is 14px (body 16) and its words are an owner's;
 what is not built is said once, plainly — switching a campaign on from the page is not available.
+
+**A business can sign itself up, and three things decide whether it may send** (`0029`–`0033`,
+`billing`, `ops` `platform-*`, `tests/saas-*.test.js`, `tests/billing.test.js`;
+docs/architecture/ARC_SAAS_IMPLEMENTATION_STATUS.md, which is also the list of what the SaaS
+brief asks for and is not built). Self-service is `self_service_accounts` and its
+`self_service_*` functions: the caller's sign-in is the tenant's owner, never a body field, and
+an owner's setup answers and campaign drafts are proposals — **nothing an owner saves is read by
+the engine**, and publishing one to live is decided and not built (it needs a designed change to
+who may publish and re-test, not a bypass). The send gate is still the engine's one reservation,
+now three layers in SQL, outermost first: the emergency stop (`platform_controls`, 0033), the
+subscription and cap (0031, self-signed-up tenants only), the lifecycle (0015). A text refused
+by either of the first two is cancelled and its lead handed to a person (`SEND_STOPPED`), so
+nothing is queued to flush later; none of this exists in `MemoryStore`, so test it on SQL with
+`tests/saas-fixtures.js`. Billing never trusts an event or a success page: the webhook's
+signature is checked before `open()`, then the subscription is re-read from Stripe and that
+snapshot stored (`saas_apply_stripe_subscription`, newest reading wins, one row per event id);
+`billingSettings` refuses a live key. Readiness is `self_service_readiness` — seven answers
+read off rows, none ticked — and the portal words its closed codes in `guide.js`; no answer
+means nothing is shown as ready. n8n is not in this path (ARC_PRODUCT_SCOPE.md §5.1 and §7).
 
 Requires `supabase/migrations/0003_client_ids_and_ops.sql` plus the
 `client-login` and `ops` edge functions; the console's Supabase page probes for

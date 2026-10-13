@@ -6,7 +6,7 @@ import OwnerAccount from '../pages/dash/OwnerAccount';
 import { productionState } from './production';
 import { billingSession, saveBusiness, saveCampaign } from './api';
 import { SETUP_STEPS, metrics, validateBusiness } from './model';
-import { oneLine, readinessItems } from './guide';
+import { oneLine, readinessItems, usageWarning } from './guide';
 import { Campaigns, CampaignBuilder } from './Campaigns';
 import { Setup, Connections, BusinessForm } from './Setup';
 import { Leads, Inbox, Timeline } from './LeadsInbox';
@@ -176,6 +176,7 @@ function Billing({ state, base }) {
     catch (failure) { setError(failure.message); setBusy(false); }
   }
   const status = String(account?.status || 'none').replaceAll('_', ' ');
+  const usage = account?.available && account.period_start ? usageWarning(account.used, account.action_cap) : null;
   return (
     <>
       <PageHead title="Billing">Your ARC subscription and how many texts you have used.</PageHead>
@@ -189,6 +190,7 @@ function Billing({ state, base }) {
                   <div><dt>Texts used this period</dt><dd>{account.used == null ? 'Not available' : `${account.used} of ${account.action_cap}`}</dd></div>
                   {account.period_end && <div><dt>Period ends</dt><dd>{dateLabel(account.period_end, state.business.timezone)}{account.cancel_at_period_end ? ' · cancels then' : ''}</dd></div>}
                 </dl>
+                {usage && <Notice warning={usage.level === 'at'}>{usage.text}</Notice>}
                 <Notice>
                   New texts go out only while your subscription is active or in a trial, inside the period you have paid for. If a payment is overdue or you cancel, new texts pause and incoming inquiries still show up here. Every text ARC tries to send to a customer or to you counts once, even when delivery is uncertain. Message segments are billed separately by the messaging provider.
                 </Notice>

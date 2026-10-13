@@ -274,7 +274,7 @@ export async function loadPinnedConfig(
       reason: `the pinned configuration is not valid: ${result.errors.slice(0, 3).join('; ')}`,
     };
   }
-  return { ok: true, config: result.config, snapshot };
+  return { ok: true, config: result.config as LeadRecoveryConfig, snapshot };
 }
 
 /**
@@ -347,6 +347,9 @@ export type EffectDenial =
   | 'no_sender'
   | 'already_attempted'
   | 'ambiguous_outcome'
+  | 'subscription_inactive'
+  | 'usage_cap'
+  | 'sending_stopped'
   | 'config_unpinned'
   | ExecutionDenialCode;
 
@@ -363,6 +366,9 @@ const SEND_STOPPED: EffectDenial[] = [
   'tenant_missing',
   'tenant_archived',
   'tenant_paused',
+  'subscription_inactive',
+  'usage_cap',
+  'sending_stopped',
 ];
 
 export interface EffectPermit {
@@ -528,6 +534,13 @@ export async function authorizeLeadRecoveryEffect(
     });
   } catch (error) {
     if (error instanceof LifecycleStoreError) return deny(error.code as EffectDenial, error.message);
+    const billing = /arc_billing:(access_denied|usage_cap):?\s*(.*)/.exec(String((error as Error)?.message ?? error));
+    if (billing) return deny(billing[1] === 'usage_cap' ? 'usage_cap' : 'subscription_inactive',
+      billing[2] || 'billing access is unavailable');
+    /* 0033's emergency stop: an operator has stopped every real send, for every business. */
+    if (/arc_platform:sending_stopped/.test(String((error as Error)?.message ?? error))) {
+      return deny('sending_stopped', 'ARC has stopped all sending');
+    }
     throw error;
   }
   const { attempt, reserved } = reservation;
@@ -575,6 +588,7 @@ export interface IntakeInput {
   intakeRef?: string | null;
   consentSms?: boolean;
   consentSource?: LeadRow['consentSource'];
+  permissionEvidence?: Record<string, unknown> | null;
   isCanary?: boolean;
   occurredAt?: Date;
 }
@@ -644,6 +658,7 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
     consentSms: input.consentSms === true,
     consentSource: input.consentSource ?? null,
     consentAt: input.consentSms === true ? iso(now) : null,
+    ...(input.permissionEvidence ? { permissionEvidence: input.permissionEvidence } : {}),
     assignedTo: null,
     bookingOutcome: null,
     bookedAt: null,
@@ -780,6 +795,17 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
     await store.updateLead(input.tenantId, lead.id, { status: 'suppressed' });
     await stopRun(deps, lead, run, 'opted_out', why);
     return { ok: false, created: true, lead, run, outcome: why, queued: [] };
+  }
+
+  if (!phone || !lead.consentSms) {
+    const reason = !phone ? 'no usable SMS number; owner follow-up required'
+      : 'SMS permission was not granted; owner follow-up required';
+    await store.updateLead(input.tenantId, lead.id, { status: 'handoff_required' });
+    await moveRun(deps, lead, run, 'handoff_required');
+    await queue(deps, run, 'open_handoff', now, {
+      reason, reason_code: 'other', is_safety: false, send_ack: false,
+    });
+    return { ok: true, created: true, lead, run, outcome: reason, queued: ['open_handoff'] };
   }
 
   // ── the deterministic safety pass, before any model ──
@@ -1644,6 +1670,16 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
              now that every failed send alerts the business (ARC-GO-310), calling one of
              these a failure would tell them a customer was left unanswered who was not. */
           if (result.denial && (SEND_STOPPED as readonly string[]).includes(result.denial)) {
+            /* three refusals where nobody decided this customer should go unanswered: the
+               text is cancelled, never queued for later, and the lead is put in front of a
+               person. no staff text is sent for it — that would be refused the same way. */
+            if (result.denial === 'subscription_inactive' || result.denial === 'usage_cap' || result.denial === 'sending_stopped') {
+              await openHandoffFor(deps, lead, run, {
+                reason: `No automatic reply was sent: ${result.detail}. The owner should review this inquiry.`,
+                reasonCode: 'delivery_failed', isSafety: false, at: now, notifyStaff: false,
+                config, action,
+              });
+            }
             return finish('cancelled', result.detail);
           }
           /* the ambiguous case gets its own branch and never reaches `retryOrGiveUp`.

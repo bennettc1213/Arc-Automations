@@ -1683,6 +1683,20 @@ export async function saveBusinessProfile(tenantId, profile) {
   return (await callOps({ action: 'crm-profile-save', tenant_id: tenantId, profile })).profile;
 }
 
+/* ── the platform: the emergency stop and the self-signup businesses (0031, 0033) ── */
+
+export async function getSendingStatus() {
+  return (await callOps({ action: 'platform-sending-status' })).sending;
+}
+
+export async function setSendingStopped(stopped, reason) {
+  return (await callOps({ action: 'platform-sending-stop', stopped, reason })).sending;
+}
+
+export async function getSelfServiceBusinesses() {
+  return (await callOps({ action: 'platform-self-service' })).businesses;
+}
+
 export async function saveBusinessService(tenantId, service, id) {
   return (await callOps({ action: 'crm-service-save', tenant_id: tenantId, service, ...(id ? { id } : {}) })).service;
 }
