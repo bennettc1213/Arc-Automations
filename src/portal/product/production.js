@@ -48,7 +48,11 @@ export function productionState(data) {
   const health = form.module_health;
   /* the database's own answers (0033). without them a connection is never drawn as
      connected: unknown is not ready. */
-  const ready = data.product?.readiness?.available ? data.product.readiness : null;
+  const answered = data.product?.readiness?.available ? data.product.readiness : null;
+  /* the owner's own pause (0035) is a second true thing about whether ARC is texting: with
+     it on, "switched on for your business" is not the whole answer, so the last check says so. */
+  const sending = data.product?.sending?.available ? data.product.sending : null;
+  const ready = answered && sending?.paused ? { ...answered, active: { ok: false, code: 'paused_by_owner' } } : answered;
   const passed = key => ready?.[key]?.ok === true;
   const unhealthy = ['failing', 'blocking'].includes(health);
   const rows = runtime?.available ? runtime.leads : [];
@@ -93,6 +97,7 @@ export function productionState(data) {
               : 'ARC must verify the number and test call forwarding with you.' },
     ], leads,
     readiness: ready,
+    sending,
     readinessError: ready ? null : data.product?.readiness?.error || null,
     events: data.threads.flatMap(thread => (thread.steps || []).map((event, index) => ({
       id: `${thread.id}-${index}`, tenantId: data.tenant.id,

@@ -6,7 +6,7 @@ has to happen outside this repository. It replaces nothing: the order of work is
 `ARC_IMPLEMENTATION_ROADMAP.md`, and what the launch product is is still
 `ARC_PRODUCT_SCOPE.md` (section 7 there records what this work reopened).
 
-Last checked: 2026-10-13 (`1.47.0`). The code is on `main`, except the sign-up door
+Last checked: 2026-10-13 (`1.48.0`). The code is on `main`, except the sign-up door
 (`/signup`, `Signup.jsx`, `CreateBusiness.jsx` and their routes), which is held in the working
 tree until a hosted database has the migrations.
 
@@ -14,7 +14,7 @@ tree until a hosted database has the migrations.
 or a hosted database. "Locally tested" means the repository's own test suite on real SQL
 (PGlite), with a recording sender in place of the carrier, a fake classifier in place of the
 model and a Stripe snapshot written by the same SQL function the webhook calls. No delivery has
-been observed. Migrations `0029` to `0034` and the `billing` function are not deployed.
+been observed. Migrations `0029` to `0035` and the `billing` function are not deployed.
 
 ## 1. Status by capability
 
@@ -33,10 +33,11 @@ Stages: **planned** (not written) → **implemented** (written, no test of its o
 | Follow-up | One follow-up, `followup.enabled` / `after_minutes`, waits for opening hours, stops on reply, opt-out, booking, takeover | A campaign draft's follow-up fields are unread. One follow-up, never a sequence. | Locally tested | Gate suite |
 | Owner takeover | `crm` action `lead-takeover` → engine `takeOverLead` | No resume. No owner-written reply: no channel adapter exists (`PRODUCTION_CHANNEL_ADAPTERS` is empty). | Locally tested (engine path); the HTTP door has no test of its own | Journey test |
 | Campaigns: drafts | `0029` drafts (`self_service_save_campaign`), guided builder in the portal | A draft changes nothing ARC sends until its owner switches it on. | Locally tested | `tests/self-service-db.test.js`, `tests/campaign-guide.test.js` |
-| Campaigns: an owner publishing | `0034`, `config/owner-wording.ts`, `publishOwnerWording`, `_shared/campaigns/`, `crm` `campaign-preview` / `campaign-publish`, `Publish.jsx` | Wording only: the first text (calls and website forms separately) and the one check-in. See section 3 for what a campaign carries that is not applied. Needs an account ARC has already configured. No owner pause, and no undo short of an operator's rollback. The dialog was not looked at in a browser. | Locally tested | `tests/owner-publishing.test.js`: what the owner saved is what the next customer receives; the database refuses anything but wording |
+| Campaigns: an owner publishing | `0034`, `config/owner-wording.ts`, `publishOwnerWording`, `_shared/campaigns/`, `crm` `campaign-preview` / `campaign-publish`, `Publish.jsx` | Wording only: the first text (calls and website forms separately) and the one check-in. See section 3 for what a campaign carries that is not applied. Needs an account ARC has already configured. No undo short of an operator's rollback. The dialog was not looked at in a browser. | Locally tested | `tests/owner-publishing.test.js`: what the owner saved is what the next customer receives; the database refuses anything but wording |
 | Subscriptions | `billing/handler.ts` + `index.ts`, `0031` (accounts, usage, events, the gate) | Test mode only: `billingSettings` refuses a live key. No price is chosen. Past-due has no grace period: it stops new texts at once. | Locally tested | `tests/billing.test.js` (real Stripe SDK signature check), `tests/saas-operations-db.test.js` |
 | Usage cap | `0031`: one unit per text reserved, counted per paid period, refused at the cap | The unit is a message, not a carrier segment; the billing page says so. Two workers at once are serialised by a row lock that the in-process test database cannot exercise in parallel. | Locally tested, serially | `tests/saas-operations-db.test.js` ("the cap is a ceiling") |
 | Emergency stop and operator view | `0033` (`platform_controls`, `set_platform_sending_stop`), `ops` `platform-*`, `PlatformPanel.jsx` on the console's alerts page | The stop on a person-written message (`crm_message_begin_send`) is written and has no test: no client can send one yet. | Locally tested | `tests/saas-operations-db.test.js` ("the emergency stop", "the operator's platform actions") |
+| An owner pausing their texts | `0035` (`owner_sending_pauses`, `self_service_set_sending_pause`), checked at the send reservation; `Pause.jsx` on the campaigns page | It pauses every text to that business's customers, not one campaign. The owner is still alerted to each lead. The control was not looked at in a browser. | Locally tested | `tests/saas-operations-db.test.js` ("an owner's own pause"), `tests/saas-readiness.test.js` |
 | n8n workflows | Only `arc-runner-error-handler-v1` | **Not built, by a recorded decision.** See section 3. | Blocked on a decision | — |
 | First customer journey | Sign-up → setup → draft → operator publishes and activates → inquiry → text → reply → qualified → owner takeover → portal record | The operator step in the middle is by hand. | **Locally verified, simulated providers.** Staging: not run | `tests/saas-journey-db.test.js` |
 
@@ -61,7 +62,7 @@ is not gated on a subscription.
    campaign's questions, its wait before the first text, its out-of-hours choice and its
    repeat-contact limits are saved and unused, and the owner is told so before they confirm.
    A check-in campaign to existing contacts cannot be published at all. An owner cannot pause
-   their own campaign or undo a publication; an operator can roll the configuration back.
+   one campaign or undo a publication; an operator can roll the configuration back.
 2. **n8n as the execution layer.** The brief asks for five workflow exports. Lead Recovery is
    registered `direct` with n8n `prohibited`, the bridge refuses production until a licensing
    decision is recorded, and `ARC_PRODUCT_SCOPE.md` §5.1 freezes launch on ARC's own
@@ -73,7 +74,8 @@ is not gated on a subscription.
    question.
 4. **An owner replying by text from ARC.** Needs a channel adapter that sends through ARC's
    Twilio; none exists.
-5. **Resuming automation after a takeover**, and **an owner pausing their own campaign**.
+5. **Resuming automation after a takeover.** An owner can pause all their texts (section 1), not
+   one campaign on its own.
 6. **A sixth setup step, a CAPTCHA on the public form, a measured response time.**
 
 ## 4. Outside this repository
@@ -82,7 +84,7 @@ Each is one action, in order. Nothing here was done by this work.
 
 | Needed | For | Tested so far | Smallest next action |
 | --- | --- | --- | --- |
-| `0029`–`0034` on a hosted database | Everything in section 1 | All six apply cleanly on PGlite in `npm test` | `supabase db push` to staging |
+| `0029`–`0035` on a hosted database | Everything in section 1 | All seven apply cleanly on PGlite in `npm test` | `supabase db push` to staging |
 | `billing`, `twilio`, `lead-intake`, `crm`, `ops` redeployed | Sign-up, billing, takeover, the emergency stop | Handlers under `node --test` | `supabase functions deploy` each; `billing`, `twilio` and `lead-intake` take `--no-verify-jwt` (each file's header says why) |
 | Stripe test-mode product and price | Checkout | The handler against the real SDK's signature check, no API call | Create a price; set `STRIPE_SECRET_KEY`, `ARC_STRIPE_WEBHOOK_SECRET`, `ARC_STRIPE_PRICE_ID`, `ARC_STRIPE_MONTHLY_ACTION_CAP`, `ARC_SITE_URL` on `billing`; point a webhook at `…/billing/webhook` |
 | A Twilio number with A2P registration | Any real text | Nothing | The hosted actions in `ARC_LEAD_RECOVERY_READINESS.md` §6.3 |
@@ -93,7 +95,9 @@ Each is one action, in order. Nothing here was done by this work.
 - **Stop everything.** Console → alerts → "stop all sending", with a reason. Every real text
   for every business is refused from then on. Calls, forms and replies are still recorded, each
   refused text is cancelled and its lead handed to a person. Resuming sends none of them.
-- **Stop one business.** Pause its module on its activation page.
+- **Stop one business.** Pause its module on its activation page. An owner can also pause the
+  texts to their own customers from their campaigns page; that is their switch, it is audited
+  (`owner.sending_paused`), and it does not change the module's state.
 - **Cannot be undone:** a text the carrier has already accepted. Stopping does not recall it.
 - **A business says it paid and cannot send.** Console → alerts → self-signup businesses: read
   the subscription status and "used this period". The row is what Stripe last reported; if
@@ -116,7 +120,7 @@ npm run build
 ```
 
 Without `ARC_PGLITE_DIR` the database suites are skipped and `npm test` still reads green,
-which proves nothing about `0029`–`0034`. `npm run gate` fails unless every test ran.
+which proves nothing about `0029`–`0035`. `npm run gate` fails unless every test ran.
 
 ## 7. What stops a first paying customer
 

@@ -45,7 +45,7 @@ export interface CampaignStore {
   getCampaign(tenantId: string, campaignId: string): Promise<CampaignRow | null>;
   markPublished(args: { tenantId: string; campaignId: string; revision: number; version: number; actorId: string }): Promise<void>;
   /** the lifecycle's own state for Lead Recovery, or null where the module was never selected. */
-  moduleState(tenantId: string): Promise<{ state: string; pending: string[] } | null>;
+  moduleState(tenantId: string): Promise<{ state: string; pending: string[]; ownerPaused?: boolean } | null>;
 }
 
 export interface CampaignDeps { config: ConfigStore; campaigns: CampaignStore }
@@ -57,7 +57,10 @@ const fail = (status: number, code: string, error: string, extra: Record<string,
   ({ status, body: { error, code, ...extra } });
 
 /** Where the account stands, in the one distinction an owner needs: is ARC texting for them. */
-function sendingWords(module: { state: string; pending: string[] } | null): { live: boolean; text: string } {
+function sendingWords(module: { state: string; pending: string[]; ownerPaused?: boolean } | null): { live: boolean; text: string } {
+  if (module?.ownerPaused) {
+    return { live: false, text: 'You have paused your texts, so nothing is being sent. These are the words ARC will use when you resume.' };
+  }
   if (!module || module.state === 'unselected' || module.state === 'configuring' || module.state === 'testing' || module.state === 'shadow') {
     return { live: false, text: 'ARC is not switched on for your business yet. Your words are saved as the ones it will use, and nothing is sent until ARC switches your account on.' };
   }

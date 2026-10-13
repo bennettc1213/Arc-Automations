@@ -31,7 +31,12 @@ export function supabaseCampaignStore(db: Db): CampaignStore {
       const { data, error } = await db.from('tenant_modules')
         .select('state,pending_requirements').eq('tenant_id', tenantId).eq('module_key', 'lead_recovery').maybeSingle();
       if (error) throw new Error(error.message);
-      return data ? { state: String(data.state), pending: data.pending_requirements ?? [] } : null;
+      /* the owner's own pause (0035). a database from before it has no such table, and that
+         is "not paused", not a failure to answer. */
+      const pause = await db.from('owner_sending_pauses').select('paused').eq('tenant_id', tenantId).maybeSingle();
+      const ownerPaused = !pause.error && pause.data?.paused === true;
+      if (!data) return ownerPaused ? { state: 'unselected', pending: [], ownerPaused } : null;
+      return { state: String(data.state), pending: data.pending_requirements ?? [], ownerPaused };
     },
   };
 }

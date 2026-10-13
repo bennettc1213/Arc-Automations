@@ -447,7 +447,8 @@ field the model validates and something reads. A recommendation is read off the 
 settings and carries its reason (`recommend`); never type one into a component. `readinessItems`
 says the model's `readiness` one item at a time, with where to fix each, and the test holds the
 two together. The client portal's type floor is 14px (body 16) and its words are an owner's;
-what is not built is said once, plainly — switching a campaign on from the page is not available.
+what is not built is said once, plainly. A campaign is a draft until its owner switches it on
+(two paragraphs down); `readinessItems`' `publish` item is done only for the version that is live.
 
 **A business can sign itself up, and three things decide whether it may send** (`0029`–`0033`,
 `billing`, `ops` `platform-*`, `tests/saas-*.test.js`, `tests/billing.test.js`;
@@ -456,9 +457,11 @@ brief asks for and is not built). Self-service is `self_service_accounts` and it
 `self_service_*` functions: the caller's sign-in is the tenant's owner, never a body field, and
 an owner's setup answers and campaign drafts are proposals — **nothing an owner saves is read by
 the engine** until they publish it (next paragraph). The send gate is still the engine's one reservation,
-now three layers in SQL, outermost first: the emergency stop (`platform_controls`, 0033), the
-subscription and cap (0031, self-signed-up tenants only), the lifecycle (0015). A text refused
-by either of the first two is cancelled and its lead handed to a person (`SEND_STOPPED`), so
+now four checks in SQL, outermost first: the emergency stop (`platform_controls`, 0033), the
+owner's own pause (`owner_sending_pauses`, 0035 — customer texts only, so the owner is still
+alerted; it is not the lifecycle and an operator cannot set it), the subscription and cap (0031,
+self-signed-up tenants only), the lifecycle (0015). A text refused by any of the first three is
+cancelled and its lead handed to a person (`SEND_STOPPED`), so
 nothing is queued to flush later; none of this exists in `MemoryStore`, so test it on SQL with
 `tests/saas-fixtures.js`. Billing never trusts an event or a success page: the webhook's
 signature is checked before `open()`, then the subscription is re-read from Stripe and that

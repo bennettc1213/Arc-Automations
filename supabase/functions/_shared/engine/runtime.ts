@@ -350,6 +350,7 @@ export type EffectDenial =
   | 'subscription_inactive'
   | 'usage_cap'
   | 'sending_stopped'
+  | 'owner_paused'
   | 'config_unpinned'
   | ExecutionDenialCode;
 
@@ -369,6 +370,7 @@ const SEND_STOPPED: EffectDenial[] = [
   'subscription_inactive',
   'usage_cap',
   'sending_stopped',
+  'owner_paused',
 ];
 
 export interface EffectPermit {
@@ -540,6 +542,10 @@ export async function authorizeLeadRecoveryEffect(
     /* 0033's emergency stop: an operator has stopped every real send, for every business. */
     if (/arc_platform:sending_stopped/.test(String((error as Error)?.message ?? error))) {
       return deny('sending_stopped', 'ARC has stopped all sending');
+    }
+    /* 0035: the owner has paused the texts to their own customers. */
+    if (/arc_account:owner_paused/.test(String((error as Error)?.message ?? error))) {
+      return deny('owner_paused', 'the business has paused its texts');
     }
     throw error;
   }
@@ -1677,6 +1683,16 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
               await openHandoffFor(deps, lead, run, {
                 reason: `No automatic reply was sent: ${result.detail}. The owner should review this inquiry.`,
                 reasonCode: 'delivery_failed', isSafety: false, at: now, notifyStaff: false,
+                config, action,
+              });
+            }
+            /* the owner paused their own texts. the customer is not texted, and the owner is
+               still told about the lead: the alert is a text to staff, which the pause does
+               not stop, so a paused business does not also go deaf. */
+            if (result.denial === 'owner_paused') {
+              await openHandoffFor(deps, lead, run, {
+                reason: 'Your texts are paused, so no automatic reply was sent. This inquiry needs you.',
+                reasonCode: 'other', isSafety: false, at: now, notifyStaff: true,
                 config, action,
               });
             }

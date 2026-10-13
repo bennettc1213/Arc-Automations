@@ -6,12 +6,13 @@ const daysForUi = value => String(value || '').replace(/-/g, '\u2013');
 
 export async function loadProduct(tenant) {
   const client = getSupabase();
-  const [setup, campaigns, billing, form, readiness] = await Promise.all([
+  const [setup, campaigns, billing, form, readiness, pause] = await Promise.all([
     client.from('tenant_setup_answers').select('*').eq('tenant_id', tenant.id).maybeSingle(),
     client.from('customer_campaign_drafts').select('*').eq('tenant_id', tenant.id).order('updated_at', { ascending: false }),
     client.from('saas_billing_accounts').select('*').eq('tenant_id', tenant.id).maybeSingle(),
     client.rpc('self_service_form_status', { p_tenant: tenant.id }),
     client.rpc('self_service_readiness', { p_tenant: tenant.id }),
+    client.from('owner_sending_pauses').select('paused,changed_at').eq('tenant_id', tenant.id).maybeSingle(),
   ]);
   if (setup.error || campaigns.error) return { available: false, error: (setup.error || campaigns.error).message };
   const usage = billing.data?.period_start ? await client.from('saas_usage_actions')
@@ -24,6 +25,9 @@ export async function loadProduct(tenant) {
       : { available: true, ...billing.data, used: usage?.error ? null : usage?.count ?? 0 },
     form: form.error ? { available: false, error: form.error.message }
       : { available: true, ...form.data },
+    /* the owner's own pause (0035). no row means never paused; an error means the switch is
+       not available on this account, and the page offers no button it could not honour. */
+    sending: pause.error ? { available: false } : { available: true, paused: pause.data?.paused === true, changedAt: pause.data?.changed_at ?? null },
     /* what the database says is true right now (0033). absent means unknown, never "ready". */
     readiness: readiness.error || !readiness.data ? { available: false, error: readiness.error?.message || 'Readiness has not loaded' }
       : { available: true, ...readiness.data },
@@ -102,6 +106,13 @@ async function campaignAction(action, tenantId, body) {
     throw failure;
   }
   return answer;
+}
+
+/** pause or resume ARC's texts to this business's customers. the owner's own switch (0035). */
+export async function setSendingPaused(tenantId, paused) {
+  const { data, error } = await getSupabase().rpc('self_service_set_sending_pause', { p_tenant: tenantId, p_paused: paused });
+  if (error) throw error;
+  return data;
 }
 
 export async function previewCampaign(tenantId, campaignId) {

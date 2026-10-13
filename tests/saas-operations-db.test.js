@@ -205,6 +205,66 @@ describe('the emergency stop', { skip }, () => {
   });
 });
 
+describe("an owner's own pause", { skip }, () => {
+  const pause = (db, user, tenantId, paused) => asUser(db, user, 'select public.self_service_set_sending_pause($1,$2) as state', [tenantId, paused]);
+
+  test('while it is on no customer is texted, the lead is kept and handed over, and resuming flushes nothing', async () => {
+    const db = await freshDatabase();
+    try {
+      const { tenantId, ...engine } = await liveBusiness(db);
+      assert.equal((await pause(db, OWNER, tenantId, true)).state.paused, true);
+
+      const during = phone();
+      const held = await inquiry(engine, tenantId, during);
+      assert.equal(held.created, true);
+      await dispatch(engine, tenantId);
+      await dispatch(engine, tenantId);
+      assert.equal(sentTo(engine, during), 0, 'the customer is not texted');
+      assert.ok(await handoffs(db, tenantId, held.lead.id) >= 1, 'the lead is in front of the owner');
+      /* the owner is still told: the alert is a text to staff, which the pause does not stop,
+         and it is the only thing that was sent or counted. */
+      const counted = (await db.query('select effect_type from saas_usage_actions where tenant_id=$1', [tenantId])).rows.map((r) => r.effect_type);
+      assert.deepEqual(counted, ['staff_sms']);
+      assert.equal(engine.live.sent.length, 1);
+      assert.notEqual(engine.live.sent[0].to, during);
+      const sentWhilePaused = engine.live.sent.length;
+
+      assert.equal((await pause(db, OWNER, tenantId, false)).state.paused, false);
+      await dispatch(engine, tenantId);
+      await dispatch(engine, tenantId);
+      assert.equal(engine.live.sent.length, sentWhilePaused, 'nothing held during the pause goes out afterwards');
+
+      const after = phone();
+      await inquiry(engine, tenantId, after);
+      await dispatch(engine, tenantId);
+      assert.equal(sentTo(engine, after), 1, 'a new inquiry after resuming is answered');
+    } finally { await db.close(); }
+  });
+
+  test('it is the owner’s alone, it is recorded once per change, and it is not the module’s lifecycle', async () => {
+    const db = await freshDatabase();
+    try {
+      const { tenantId, ...engine } = await liveBusiness(db);
+      await signUp(db, OTHER_OWNER, 'Fictional Screens');
+      await assert.rejects(pause(db, OTHER_OWNER, tenantId, true), /forbidden/);
+      await assert.rejects(pause(db, OPERATOR, tenantId, true), /forbidden/, 'an operator pauses the module, not this');
+      await assert.rejects(pause(db, OWNER, tenantId, null), /invalid/);
+      await assert.rejects(asUser(db, OWNER, 'update owner_sending_pauses set paused=true where tenant_id=$1', [tenantId]), /permission denied/);
+
+      await pause(db, OWNER, tenantId, true);
+      await pause(db, OWNER, tenantId, true);
+      await pause(db, OWNER, tenantId, false);
+      const audit = (await db.query("select action from admin_actions where action like 'owner.sending_%' and target_id=$1", [tenantId])).rows.map((r) => r.action).sort();
+      assert.deepEqual(audit, ['owner.sending_paused', 'owner.sending_resumed']);
+      assert.equal((await asUser(db, OTHER_OWNER, 'select count(*)::int as n from owner_sending_pauses')).n, 0, 'another business cannot read it');
+
+      await pause(db, OWNER, tenantId, true);
+      const lifecycle = await engine.store.getLifecycle(tenantId, 'lead_recovery');
+      assert.equal(lifecycle.state, 'active', 'the operator’s decision is untouched');
+    } finally { await db.close(); }
+  });
+});
+
 describe("the operator's platform actions", { skip }, () => {
   const call = (db, action, body = {}, actorId = OPERATOR) => handlePlatformAction(action, { db: restClient(db), body, actorId });
 

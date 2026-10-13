@@ -54,6 +54,22 @@ describe('readiness in the owner portal', () => {
     assert.equal(untested.routingTested, false);
   });
 
+  test('the owner’s own pause shows as not sending, in their words, even with every check passed', () => {
+    const product = (sending) => productionState({ tenant, generatedFor: '2026-10-13T00:00:00Z', threads: [],
+      product: { available: true, form: { available: true, module_state: 'active' }, readiness: answers(), sending } });
+    const paused = product({ available: true, paused: true, changedAt: '2026-10-12T15:00:00Z' });
+    assert.equal(paused.setupComplete, false);
+    assert.deepEqual(paused.readiness.active, { ok: false, code: 'paused_by_owner' });
+    assert.match(accountReadinessItems(paused).find((item) => item.id === 'account-active').detail, /You paused your texts/);
+    assert.equal(paused.sending.paused, true);
+
+    assert.equal(product({ available: true, paused: false, changedAt: null }).setupComplete, true);
+    /* where the switch does not exist the page is given none, so it draws no button. */
+    const absent = product({ available: false });
+    assert.deepEqual([absent.sending, absent.setupComplete], [null, true]);
+    assert.equal(product(undefined).sending, null);
+  });
+
   test('a health problem outranks every passed check', () => {
     const s = state(answers(), { available: true, public_key: 'arcw_x', last_used_at: null, module_state: 'active', module_health: 'failing' });
     assert.equal(connection(s, 'messaging').state, 'needs_attention');

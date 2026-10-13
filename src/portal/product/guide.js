@@ -234,6 +234,7 @@ const READINESS_WORDS = {
     codes: {
       not_active: 'ARC switches your account on once the checks above pass.', paused: 'Your account is paused. No texts go out while it is.',
       held_for_review: 'A change is waiting for ARC to check it. New inquiries are kept, and no new texts go out until it has.',
+      paused_by_owner: 'You paused your texts. New inquiries still arrive in your inbox, and nobody is texted until you resume.',
       sending_stopped: 'ARC has paused texting for every business while it fixes a problem. New inquiries are still recorded.',
     },
   },

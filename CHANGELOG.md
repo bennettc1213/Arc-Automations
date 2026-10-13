@@ -7,6 +7,22 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.48.0] - 2026-10-13
+
+**An owner can pause and resume their own texts.** Not deployed: it needs migration `0035`.
+
+### Added
+
+- **Pause all texts, on the campaigns page.** One switch for an owner who wants ARC to stop
+  texting their customers for now. While it is on, missed calls and website inquiries still
+  arrive in the inbox, each one is handed to the owner, and the owner is still alerted to it.
+  Resuming sends nothing that came in during the pause. It is recorded with who and when.
+- It is the owner's switch, beside ARC's own: it does not change whether ARC has the account
+  switched on, an operator cannot use it, and the setup page's last check says "you paused your
+  texts" while it is on.
+- Tests on real SQL: no customer is texted, the lead is kept and handed over, the owner's alert
+  still goes, resuming flushes nothing, and another business or an operator is refused.
+
 ## [1.47.0] - 2026-10-13
 
 **An owner can switch their own campaign on.** Decided 2026-10-13: what an owner publishes is

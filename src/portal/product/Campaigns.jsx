@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { KINDS, QUESTIONS, newCampaign, previewMessage, readiness, validateCampaign } from './model';
 import { KIND_HELP, applyRecommended, businessHours, delayWords, guideSteps, hoursWords, isRecommended, journey, messageTemplates, oneLine, questionHelp, readinessItems, recommend, recommendKind, templateOf } from './guide';
 import PublishDialog from './Publish';
+import SendingPause from './Pause';
 import { CAMPAIGN_FIRST_TEXT } from '../../../supabase/functions/_shared/campaigns/model.ts';
 import { Badge, Button, Checklist, Choice, Choices, Dialog, Field, Notice, PageHead, Progress, Section, dateLabel, stateLabel, stateTone } from './ui';
 
@@ -23,6 +24,7 @@ export function Campaigns({ state, dispatch, base, onReload }) {
           <Link to={`${base}/automations`}>See what is running now</Link>
         </Notice>
       )}
+      <SendingPause state={state} onReload={onReload} />
       <div className="ap-campaign-list">
         {state.campaigns.map(c => <CampaignCard key={c.id} c={c} state={state} base={base} dispatch={dispatch} onReview={setReview} onPublish={setPublishing} />)}
       </div>
