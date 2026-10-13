@@ -69,7 +69,7 @@ test('readiness requires verified routing and never authorizes production activa
   const s=demoState(),c=s.campaigns[0];
   assert.deepEqual(readiness(c,s),[]);
   s.connections[0].routingTested=false;assert.match(readiness(c,s).join(' '),/voicemail/);
-  s.mode='production';assert.match(readiness(c,s).join(' '),/authorized server/);
+  s.mode='production';assert.match(readiness(c,s).join(' '),/Publishing a campaign to your live business is not available yet/);
 });
 test('demo reducer refuses a real tenant or production mode',()=>{
   assert.throws(()=>demoAction({...demoState(),tenantId:'real-tenant'},{type:'reset'}),/synthetic tenant/);
@@ -97,8 +97,8 @@ test('client dashboard fetches only the selected business when a member can read
   }};
   try {
     const bundled=await build({entryPoints:[new URL('../src/portal/lib/dashboard.js',import.meta.url).pathname.replace(/^\/([A-Z]:)/i,'$1')],bundle:true,write:false,format:'cjs',platform:'node',packages:'external',plugins:[{name:'test-read-boundary',setup(b){
-      b.onResolve({filter:/^\.\/(supabase|dashboard-data)$/},args=>({path:args.path,namespace:'test-reader'}));
-      b.onLoad({filter:/.*/,namespace:'test-reader'},args=>({contents:args.path==='./supabase'?'export const getSupabase=()=>globalThis.__portalTestClient;':'export const buildDashboardData=(tenant,events,now,alerts)=>({tenant,events,alerts});',loader:'js'}));
+      b.onResolve({filter:/^(\.\/(supabase|dashboard-data)|\.\.\/product\/api)$/},args=>({path:args.path,namespace:'test-reader'}));
+      b.onLoad({filter:/.*/,namespace:'test-reader'},args=>({contents:args.path==='./supabase'?'export const getSupabase=()=>globalThis.__portalTestClient;':args.path==='../product/api'?'export const loadProduct=async()=>({available:false}); export const loadLeadRecovery=async()=>({available:false,leads:[]});':'export const buildDashboardData=(tenant,events,now,alerts)=>({tenant,events,alerts});',loader:'js'}));
     }}]});
     const module={exports:{}};new Function('require','module','exports',bundled.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
     const result=await module.exports.getDashboardForUser();
@@ -147,7 +147,9 @@ test('owner-reported booking never becomes authoritative booking or revenue evid
 });
 test('production projection never fills missing fields with sample records',()=>{
   const p=productionState({tenant:{id:'tenant-a',name:'Real account',timezone:'UTC'},generatedFor:'2026-10-11T00:00:00Z',threads:[]});
-  assert.deepEqual(p.leads,[]);assert.deepEqual(p.campaigns,[]);assert.deepEqual(p.connections,[]);assert.equal(p.business.services,'');
+  assert.deepEqual(p.leads,[]);assert.deepEqual(p.campaigns,[]);assert.equal(p.business.services,'');
+  // with nothing loaded, each connection says it is unavailable; none is drawn as connected
+  assert.deepEqual(p.connections.map(c=>[c.id,c.state]),[['form','unavailable'],['messaging','unavailable'],['phone','unavailable']]);
   assert.equal(p.mode,'production');assert.equal(p.tenantId,'tenant-a');
   assert.doesNotMatch(readFileSync(new URL('../src/portal/product/production.js',import.meta.url),'utf8'),/import.*demo|localStorage|sessionStorage/);
 });

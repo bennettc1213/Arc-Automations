@@ -2,6 +2,7 @@ import { DateTime } from 'luxon';
 import { getSupabase } from './supabase';
 import { buildDashboardData } from './dashboard-data';
 import { isMissingColumn, readEvents, toEvent } from './event-row';
+import { loadProduct, loadLeadRecovery } from '../product/api';
 
 /* days of history fetched. sixty-one rather than thirty-one so the portal can compare the
    last thirty days against the thirty before them — a lead count with no "up or down from
@@ -134,11 +135,11 @@ export async function getDashboardForUser() {
   return {
     signedIn: true,
     email: user.email ?? null,
-    data: buildDashboardData(
+    data: { ...buildDashboardData(
       tenant,
       events,
       DateTime.now().setZone(tenant.timezone),
       (alertRows ?? []).map(toAlert),
-    ),
+    ), product: await loadProduct(tenant), leadRecovery: await loadLeadRecovery(tenant.id) },
   };
 }

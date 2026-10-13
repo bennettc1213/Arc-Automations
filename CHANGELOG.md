@@ -7,6 +7,52 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.45.0] - 2026-10-13
+
+The client portal, rebuilt to read as a product. It ships ahead of the self-service work it will
+sit on: on a real account setup answers and campaign drafts do not save yet, and taking over a
+conversation does not work yet (what they need is not deployed), and the page says so. `/demo`
+has all of it.
+
+### Added
+
+- **A campaign is set up one question at a time, each with a recommendation and its reason**
+  (`src/portal/product/guide.js`, `tests/campaign-guide.test.js`). Six questions and a review:
+  what the first text says, what to ask, when it goes, what happens with no reply, how often
+  one person hears from you. A new campaign opens with ARC's picks already chosen, read off
+  the business's own settings (a missed call has no name, so that wording uses none; an urgent
+  trade is asked how soon). The guide adds no field: every answer writes one the model already
+  validates.
+- The review screen tells the campaign in order as the customer lives it, lists each answer
+  with a way to change it, and shows what is left before it can go live with where to fix each
+  item. The same list is the progress line on every campaign card.
+- Home opens on one recommended next step, read off the same state as every other page.
+- Setup suggests services for the trade, and its first campaign is saved with the recommended
+  settings.
+
+### Changed
+
+- **The client portal's type and wording** (`product.css`, every screen under
+  `src/portal/product/`). Nothing is set below 14px (body 16); the mono micro-labels are gone;
+  panels are cards. Wording an owner would not use is replaced: "eligible inquiries",
+  "simulated live", "authorized server capability", "setup storage unavailable" and the like.
+  What is not built still says so, once and plainly: a saved campaign is a draft, and switching
+  one on from the page is not available.
+- An existing campaign opens on its review instead of the first form step, and its kind cannot
+  be changed after it is saved; a different job is a new campaign.
+- The signed-in inbox is the same two-pane conversation view as the demo.
+- The per-campaign tone, call to action, offer and alert fields are no longer shown. Nothing
+  read them; alerts follow the business setting.
+- The signed-in dashboard also asks for the account's setup answers, campaign drafts and
+  conversations (`product/api.js`). Where those are not deployed it reads as unavailable, never
+  as sample data.
+
+### Fixed
+
+- The billing page crashed on opening: its route never handed it the account.
+- The leads count line printed a stray "?" before the account total.
+- Going back to "first campaign" in setup no longer forces choosing again to continue.
+
 ## [1.44.0] - 2026-10-11
 
 ### Added

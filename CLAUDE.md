@@ -436,6 +436,15 @@ confirmation itself never changes. An icon-only shell button needs an `aria-labe
 that is not available is a dash, a spoken "not available" and the reason. `tests/ux-clarity.test.js`
 holds all of it, including that no page was removed from either nav.
 
+**A campaign is set up one question at a time, and every recommendation is derived**
+(`src/portal/product/guide.js`, `Campaigns.jsx`, `tests/campaign-guide.test.js`). The guide is
+presentation over `product/model.js`: it adds no field to a campaign, so a new question needs a
+field the model validates and something reads. A recommendation is read off the business's own
+settings and carries its reason (`recommend`); never type one into a component. `readinessItems`
+says the model's `readiness` one item at a time, with where to fix each, and the test holds the
+two together. The client portal's type floor is 14px (body 16) and its words are an owner's;
+what is not built is said once, plainly — switching a campaign on from the page is not available.
+
 Requires `supabase/migrations/0003_client_ids_and_ops.sql` plus the
 `client-login` and `ops` edge functions; the console's Supabase page probes for
 all of it and says what is missing. Deboarding and restore need `0007`; service

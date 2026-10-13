@@ -12,13 +12,14 @@ export const QUESTIONS = [
 ];
 export const SETUP_STEPS = ['Business details', 'First campaign', 'Connections', 'Preview', 'Readiness'];
 export function blankBusiness(tenant = {}) {
-  return { name: tenant.name || '', trade: '', services: '', area: '', timezone: tenant.timezone || 'America/Los_Angeles', open: '08:00', close: '17:00', days: 'Monday–Friday', alerts: 'Inbox and owner text' };
+  return { name: tenant.name || '', trade: '', services: '', area: '', timezone: tenant.timezone || 'America/Los_Angeles', open: '08:00', close: '17:00', days: 'Monday–Friday', alerts: 'Inbox only', ownerPhone: '' };
 }
 export function validateBusiness(b) {
   const errors = {};
   for (const key of ['name', 'trade', 'services', 'area', 'days', 'alerts']) if (!b[key]?.trim()) errors[key] = 'Please fill this in.';
   try { new Intl.DateTimeFormat('en', { timeZone: b.timezone }).format(); } catch { errors.timezone = 'Choose a valid timezone.'; }
   if (!/^\d{2}:\d{2}$/.test(b.open) || !/^\d{2}:\d{2}$/.test(b.close) || b.open >= b.close) errors.close = 'Closing time must be after opening time.';
+  if (b.ownerPhone && !/^\+[1-9]\d{7,14}$/.test(b.ownerPhone)) errors.ownerPhone = 'Include country code, for example +15551234567.';
   return errors;
 }
 export function newCampaign(kind = 'missed', tenantId = null, id = 'draft') {
@@ -39,9 +40,9 @@ export function validateCampaign(c, business) {
   const errors = [];
   if (!c.name.trim()) errors.push('Name your campaign.');
   if (!c.message.trim()) errors.push('Add a first message.');
-  if (!c.message.includes('{{business}}') || !/\bstop\b/i.test(c.message)) errors.push('Include {{business}} and the STOP instruction.');
+  if (!c.message.includes('{{business}}') || !/\bstop\b/i.test(c.message)) errors.push('Your message needs {{business}} in it and the line “Reply STOP to opt out”.');
   const missing = previewMessage(c.message, business).missing;
-  if (missing.length) errors.push(`Missing message facts: ${missing.join(', ')}.`);
+  if (missing.length) errors.push(`ARC has nothing to put in place of ${missing.map(m => `{{${m}}}`).join(', ')}. Take it out of your message.`);
   if (!Number.isFinite(c.cooldown) || c.cooldown < 1 || c.cooldown > 720) errors.push('Contact cooldown must be 1–720 hours.');
   if (!Number.isFinite(c.delay) || c.delay < 0 || c.delay > 60) errors.push('Response delay must be 0–60 minutes.');
   if (!Number.isFinite(c.followupHours) || c.followupHours < 24) errors.push('Leave at least 24 hours before a follow-up.');
@@ -59,15 +60,16 @@ export function eligibility(lead, campaign, now) {
   if (lead.lastSentAt && now - Date.parse(lead.lastSentAt) < campaign.cooldown * 3600000) return { ok: false, reason: 'Contact cooldown is still in effect.' };
   return { ok: true, reason: 'Recorded permission covers this inquiry response.' };
 }
+const ASKED = { service: 'what they need', location: 'where the job is', urgency: 'how soon', timing: 'when to reach them' };
 export function qualify(answers, business, questions = QUESTIONS) {
   const list = text => text.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-  if (answers.urgency && /urgent|emergency|gas|smoke/i.test(answers.urgency)) return { state: 'Needs Owner Review', reason: 'Urgency needs a person. No emergency assessment is made.' };
-  if (answers.location && !list(business.area).includes(answers.location.trim().toLowerCase())) return { state: 'Outside Service Area', reason: `The supplied location (${answers.location}) is outside the configured area.` };
-  if (answers.service && !list(business.services).includes(answers.service.trim().toLowerCase())) return { state: 'Unsupported Service', reason: `The requested service (${answers.service}) is not in the business service list.` };
+  if (answers.urgency && /urgent|emergency|gas|smoke/i.test(answers.urgency)) return { state: 'Needs Owner Review', reason: 'They said it is urgent, so this comes straight to you. ARC does not judge emergencies.' };
+  if (answers.location && !list(business.area).includes(answers.location.trim().toLowerCase())) return { state: 'Outside Service Area', reason: `${answers.location} is outside your service area.` };
+  if (answers.service && !list(business.services).includes(answers.service.trim().toLowerCase())) return { state: 'Unsupported Service', reason: `${answers.service} is not on your list of services.` };
   const missing = questions.filter(q => q.required && !answers[q.key]);
-  if (missing.length) return { state: 'Needs Information', reason: `Still needed: ${missing.map(q => q.key).join(', ')}. Missing information is not rejection.` };
-  if (!answers.service || !answers.location) return { state: 'Needs Owner Review', reason: 'Service or location fit has not been established. Ask the owner to review.' };
-  return { state: 'Qualified', reason: 'The supplied service and location meet the configured required rules.' };
+  if (missing.length) return { state: 'Needs Information', reason: `Still waiting to hear: ${missing.map(q => ASKED[q.key] || q.key).join(', ')}.` };
+  if (!answers.service || !answers.location) return { state: 'Needs Owner Review', reason: 'ARC could not confirm the service or the area, so this one is yours to check.' };
+  return { state: 'Qualified', reason: 'They want a service you offer, in your area.' };
 }
 export function followupDecision(lead, campaign, business, now) {
   if (lead.suppressed) return { ok: false, reason: 'Opt-out suppression: no message.' };
@@ -89,7 +91,7 @@ export function readiness(campaign, state) {
   if (!source || source.state !== 'connected') blockers.push('Verify the source connection.');
   if (campaign.kind === 'missed' && !source?.routingTested) blockers.push('Test unanswered calls, answered calls and voicemail routing.');
   if (!state.connections.find(c => c.id === 'messaging' && c.state === 'connected')) blockers.push('Complete sender registration and messaging approval.');
-  if (state.mode !== 'demo') blockers.push('Client campaign saving and activation require an authorized server capability.');
+  if (state.mode !== 'demo') blockers.push('Publishing a campaign to your live business is not available yet. Your draft is saved.');
   return blockers;
 }
 export function summary(c) {
