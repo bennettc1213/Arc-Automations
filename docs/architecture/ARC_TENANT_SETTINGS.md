@@ -75,7 +75,7 @@ for every client. **Not stored** means it has no home, with the reason in sectio
 | 11 | Preferred handoff method | Fixed | — | Text only. An email recipient is refused until something sends one. |
 | 12 | Booking link or instructions | Stored | `booking_url`, `templates.reply_ack`, `templates.reply_ack_booking` | The link, and the sentence the customer gets after replying. |
 | 13 | First response template | Stored | `templates.first_response`, `templates.after_hours_response` | The reviewed words of the first text. A website-form lead gets `templates.first_response_form` instead where one is set; it has no default, so its absence means this one. It, this one and the follow-up's words and timing are what an owner may publish themselves (`config/owner-wording.ts`, 0034); every other setting is still an operator's. |
-| 14 | Qualification questions | Stored, as wording | `templates.first_response` | The first text asks what they need and their ZIP. There is no question list. See 5.3. |
+| 14 | Qualification questions | Stored | `questions`, `templates.question_service`, `templates.question_location`, `templates.question_urgency`, `templates.question_timing` | Which of four reviewed questions are asked after the first reply, in order, one at a time. Section 8. |
 | 15 | Follow-up limits | Stored | `followup`, `templates.followup` | **New.** Section 6. |
 | 16 | Quiet hours | Stored | `after_hours`, `business_hours` | The first text follows `after_hours.behaviour`. The follow-up never leaves opening hours. |
 | 17 | Opt-out and stop list | Stored and fixed | `compliance.opt_out_language` | The sentence is stored. The words that stop everything and the stop list are the engine's. |
@@ -112,9 +112,11 @@ every alert contact, at any hour. What the customer is told outside opening hour
 ### 5.3 Qualification questions
 
 The first text asks one open question, and its wording is the client's template. The reply is
-read against services, service area and the safety rules. A list of questions asked in turn
-needs a new action type and new reviewed templates, and is frozen as later work
-(`ARC_PRODUCT_SCOPE.md`, section 5.3).
+read against services, service area and the safety rules. Since 2026-10-13 a client can also
+have up to four questions asked in turn (section 8). What is still not a setting is a question
+of the client's own invention: the list is closed, because each question is a reviewed
+template and three of them are answered by a fact the reply is already read for. A key such as
+`qualification_questions` is refused.
 
 ### 5.4 n8n workflow status
 
@@ -167,3 +169,53 @@ deployed: `ops` and `crm`, which are live today, and the five Lead Recovery func
 Until `ops` is redeployed the console still works. The older settings form sends the follow-up
 only when it differs from the default, so an untouched save is accepted by the older function.
 A changed follow-up is refused by name until the function is current.
+
+---
+
+## 8. The questions
+
+```json
+"questions": { "ask": ["service", "location"], "wait_minutes": 30 }
+```
+
+- `ask` — which questions ARC asks after the customer's first reply, in this order. Drawn from
+  `service`, `location`, `urgency` and `timing`, each at most once. An empty list asks none.
+- `wait_minutes` — how long ARC waits for an answer before the lead goes to the business with
+  what is known, from 5 to 240.
+
+The words of each question are a template: `templates.question_service`, `question_location`,
+`question_urgency` and `question_timing`. Each has a reviewed default and takes the same
+placeholders as every other template. The opt-out line is appended by the engine.
+
+What the engine does with them:
+
+- A question is asked only of a lead ARC would otherwise have passed to the business as it
+  stood. A reply that needs a person, for a safety word, an unclear job, low confidence or an
+  address outside the service area, still goes to a person at once and is asked nothing.
+- A question whose answer is already known is skipped: the service, the ZIP and how soon are
+  read from everything the customer has written. `timing` has no fact behind it, so it is asked
+  whenever it is listed, and the answer is kept in the customer's own words.
+- A question is asked once. The exchange is never longer than the list.
+- Every answer is read by the deterministic safety rules first, like any reply. "Right now" in
+  answer to "how soon" hands the lead to a person.
+- If the customer does not answer within `wait_minutes`, the lead goes to the business with
+  what it has. If they write again before the question has gone, the question is dropped and
+  their newer message decides what is asked.
+- STOP, a takeover, a booking and a pause stop it like everything else.
+
+What is not a setting: a question of the client's own. A fifth key is refused.
+
+Behaviour worth knowing:
+
+- A configuration published before this field existed asks nothing, as before.
+- A lead already in progress keeps the questions it started under.
+- Changing it is a retest when an operator does it. An owner may publish which questions are
+  asked and their words themselves (`config/owner-wording.ts`, 0036); `wait_minutes` stays an
+  operator's.
+
+Where: the validator and its constants in `_shared/lead-recovery-config.ts`; `nextQuestion` and
+`renderQuestion` in `_shared/engine/templates.ts`; the `ask_question` action in
+`_shared/engine/runtime.ts`; the field's metadata in `registry/schemas.ts` and its layout in
+`registry/layouts.ts`.
+
+Tests: `tests/lead-recovery-conversation.test.js`, on the in-memory store and on real Postgres.

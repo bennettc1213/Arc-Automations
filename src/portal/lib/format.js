@@ -199,6 +199,7 @@ export function eventLabel(eventType, payload = {}) {
     case 'sms_sent':
       return payload.purpose === 'first_response' ? 'first response sent'
         : payload.purpose === 'followup' ? 'follow-up sent'
+          : payload.purpose === 'question' ? 'question sent'
           : payload.purpose === 'reply_ack' ? 'reply acknowledgement sent'
             : payload.purpose === 'handoff_ack' ? 'handoff acknowledgement sent'
               : 'text sent';

@@ -23,8 +23,13 @@ import { fileURLToPath } from 'node:url';
 import {
   ALERT_CHANNELS,
   DEFAULT_FOLLOWUP_AFTER_MINUTES,
+  DEFAULT_QUESTION_WAIT_MINUTES,
+  DEFAULT_TEMPLATES,
   MAX_FOLLOWUP_AFTER_MINUTES,
+  MAX_QUESTION_WAIT_MINUTES,
   MIN_FOLLOWUP_AFTER_MINUTES,
+  MIN_QUESTION_WAIT_MINUTES,
+  QUESTION_KEYS,
   defaultConfig,
   validateLeadRecoveryConfig,
 } from '../supabase/functions/_shared/lead-recovery-config.ts';
@@ -51,7 +56,7 @@ const NINETEEN = [
   { n: 11, setting: 'Preferred handoff method', reads: 'Fixed', paths: [] },
   { n: 12, setting: 'Booking link or instructions', reads: 'Stored', paths: ['booking_url', 'templates.reply_ack', 'templates.reply_ack_booking'] },
   { n: 13, setting: 'First response template', reads: 'Stored', paths: ['templates.first_response', 'templates.after_hours_response'] },
-  { n: 14, setting: 'Qualification questions', reads: 'Stored, as wording', paths: ['templates.first_response'] },
+  { n: 14, setting: 'Qualification questions', reads: 'Stored', paths: ['questions', 'templates.question_service', 'templates.question_location', 'templates.question_urgency', 'templates.question_timing'] },
   { n: 15, setting: 'Follow-up limits', reads: 'Stored', paths: ['followup', 'templates.followup'] },
   { n: 16, setting: 'Quiet hours', reads: 'Stored', paths: ['after_hours', 'business_hours'] },
   { n: 17, setting: 'Opt-out and stop list', reads: 'Stored and fixed', paths: ['compliance.opt_out_language'] },
@@ -125,7 +130,31 @@ describe('what the engine fixes for every client', () => {
     assert.deepEqual(verdict.flags.sort(), ['distressed', 'human_only']);
   });
 
-  test('no trade, no emergency window and no question list can be stored', () => {
+  test('the questions are a closed list asked in the client\'s order, and absent means none', () => {
+    assert.deepEqual(defaultConfig().questions, { ask: [], wait_minutes: DEFAULT_QUESTION_WAIT_MINUTES });
+    assert.deepEqual([...QUESTION_KEYS], ['service', 'location', 'urgency', 'timing']);
+    assert.deepEqual([DEFAULT_QUESTION_WAIT_MINUTES, MIN_QUESTION_WAIT_MINUTES, MAX_QUESTION_WAIT_MINUTES], [30, 5, 240]);
+    /* a configuration published before the field existed says nothing, and asks nothing. */
+    assert.deepEqual(validateLeadRecoveryConfig(leadRecoveryConfig()).config.questions.ask, []);
+    const set = validateLeadRecoveryConfig({ ...leadRecoveryConfig(), questions: { ask: ['location', 'timing'], wait_minutes: 10 } });
+    assert.deepEqual(set.config.questions, { ask: ['location', 'timing'], wait_minutes: 10 });
+    for (const [bad, why] of [
+      [{ ask: ['budget'] }, /drawn from service, location, urgency, timing/],
+      [{ ask: ['service', 'service'] }, /names a question twice/],
+      [{ ask: [], wait_minutes: 1 }, /between 5 and 240/],
+      [{ ask: [], max: 9 }, /questions\.max is not a setting/],
+    ]) {
+      const result = validateLeadRecoveryConfig({ ...leadRecoveryConfig(), questions: bad });
+      assert.equal(result.ok, false);
+      assert.match(result.errors.join(' '), why);
+    }
+    /* every question has reviewed words, and no model writes one. */
+    for (const key of QUESTION_KEYS) assert.ok(DEFAULT_TEMPLATES[`question_${key}`].length > 0, key);
+    assert.ok(DOC.includes('"questions": { "ask": ["service", "location"], "wait_minutes": 30 }'));
+    assert.match(DOC, /from 5 to 240/);
+  });
+
+  test('no trade, no emergency window and no free-form question list can be stored', () => {
     for (const key of ['trade', 'niche', 'emergency_hours', 'qualification_questions', 'quiet_hours', 'n8n']) {
       const result = validateLeadRecoveryConfig({ ...leadRecoveryConfig(), [key]: 'anything' });
       assert.equal(result.ok, false, key);

@@ -285,6 +285,24 @@ const LEAD_RECOVERY_FIELDS: readonly FieldMetadata[] = Object.freeze([
     control: 'group',
   },
   {
+    key: 'questions',
+    type: 'object',
+    label: 'questions',
+    help: 'Which questions are asked, one at a time, after the customer’s first reply (service, location, urgency, timing — one per line, in order), and how many minutes to wait for an answer before the lead goes to the business as it stands. None listed means none asked.',
+    required: false,
+    clientEditable: false,
+    operatorEditable: true,
+    protected: false,
+    secretProhibited: true,
+    /* adds texts a customer receives, like the follow-up above. a run already in flight
+       keeps the questions it was pinned to. */
+    requiresRetest: true,
+    requiresShadow: false,
+    requiresReactivation: false,
+    sensitiveDisplay: false,
+    control: 'group',
+  },
+  {
     key: 'safety',
     type: 'object',
     label: 'safety rules',

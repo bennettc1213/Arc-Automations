@@ -1,16 +1,35 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { filterLeads } from './model';
 import { questionHelp } from './guide';
+import { handBackLead, replyToLead } from './api';
 import { Badge, Button, Dialog, Field, Notice, PageHead, Section, dateLabel, eventLabel, initials, sourceLabel } from './ui';
 import { crmApi } from '../lib/crm';
 import Conversation, { Conversations } from '../components/CrmConversation';
 import { getSupabase } from '../lib/supabase';
+import { MAX_OWNER_REPLY_CHARS } from '../../../supabase/functions/_shared/engine/templates.ts';
 
 const FILTERS = [['all', 'All leads'], ['attention', 'Waiting on you'], ['eligible', 'Inquiries ARC could answer'], ['sent', 'First text sent'], ['engaged', 'Missed callers who replied'], ['qualified', 'Looks like a fit'], ['phone', 'Missed calls'], ['form', 'Website inquiries'], ['existing', 'Existing contacts'], ['suppressed', 'Opted out']];
 const words = value => String(value || '').replaceAll('_', ' ').replace(/^./, c => c.toUpperCase());
 const fitTone = fit => fit === 'Qualified' ? 'good' : fit === 'Needs Owner Review' ? 'warn' : '';
-const AUTHORS = { 'ARC automation': 'ARC', 'Demo owner': 'You' };
+const AUTHORS = { 'ARC automation': 'ARC', 'Demo owner': 'You', You: 'You' };
+
+/* why a reply or a hand-back was refused, in an owner's words. the codes are the engine's
+   own closed list (`OwnerActionRefusal`); one this page does not know reads as not available. */
+const REFUSALS = {
+  not_taken_over: 'Take this conversation over first, then reply.',
+  empty: 'Write your reply first.',
+  too_long: `A reply can be up to ${MAX_OWNER_REPLY_CHARS} characters.`,
+  withheld: 'That text reads like a password or a key, so it was not sent. Take it out and send again.',
+  no_number: 'There is no mobile number on record for this customer, so call them instead.',
+  no_permission: 'There is no permission on record to text this customer, so call them instead.',
+  opted_out: 'This customer asked not to be texted, so nothing was sent.',
+  safety: 'This one came to you for a safety reason, so it stays with you.',
+  reply_pending: 'Your last reply is still being sent. Try again in a minute.',
+  not_found: 'This conversation could not be found. Refresh the page and try again.',
+  failed: 'That did not go through, and nothing was sent. Please try again.',
+};
+const refusal = failure => REFUSALS[failure?.code] || 'This is not switched on for your account yet. Call or text the customer from your own phone for now.';
 
 export function Leads({ state, base }) {
   const [params, setParams] = useSearchParams(), [query, setQuery] = useState(''), [selected, setSelected] = useState(null);
@@ -113,7 +132,8 @@ function Messages({ lead, state }) {
       {lead.messages.map(m => (
         <div key={m.id} className={`ap-message ${m.author === 'Customer' ? 'ap-message--customer' : ''}`}>
           <p>{m.body}</p>
-          <small>{m.author === 'Customer' ? lead.name.split(' ')[0] : AUTHORS[m.author] || m.author} · {dateLabel(m.at, state.business.timezone)} · {words(m.state)}</small>
+          <small>{m.author === 'Customer' ? lead.name.split(' ')[0] : AUTHORS[m.author] || m.author} · {dateLabel(m.at, state.business.timezone)} · {m.problem ? 'Not sent' : words(m.state)}</small>
+          {m.problem && <p role="alert" className="ap-error">Not sent: {m.problem}.</p>}
         </div>
       ))}
       {!lead.messages.length && <p className="ap-empty">No messages yet.</p>}
@@ -141,8 +161,14 @@ function ProductionInbox({ state, base, onReload }) {
   const [by, setBy] = useState(null);
   const { id } = useParams();
   const [working, setWorking] = useState(false), [error, setError] = useState('');
+  const [body, setBody] = useState(''), [sent, setSent] = useState(false), [confirmBack, setConfirmBack] = useState(false);
+  /* one text, one identity: pressing send twice, or again after a dropped connection, is the
+     same request to ARC and so the same single text. a new one is made once this one is taken. */
+  const requestKey = useRef(null), timers = useRef([]);
   const rows = state.leads.filter(lead => lead.messages.length || lead.needsOwner);
   const selected = state.leads.find(lead => lead.id === id) || rows[0];
+  useEffect(() => { setBody(''); setSent(false); setError(''); requestKey.current = null; }, [selected?.id]);
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
   async function takeOver(lead) {
     setWorking(true); setError('');
     const { data, error: failure } = await getSupabase().functions.invoke('crm', {
@@ -151,6 +177,27 @@ function ProductionInbox({ state, base, onReload }) {
     // the function's own words ("unknown action") are not an owner's: say what did and did not happen
     if (failure || !data?.ok) setError('Taking over did not work, so ARC has not stopped. Please contact ARC support.');
     else await onReload?.();
+    setWorking(false);
+  }
+  async function reply(lead) {
+    setWorking(true); setError(''); setSent(false);
+    requestKey.current ||= crypto.randomUUID();
+    try {
+      await replyToLead(state.tenantId, lead.id, body, requestKey.current);
+      requestKey.current = null;
+      setBody(''); setSent(true);
+      /* ARC sends it on its next pass, so the conversation is read again once it should have gone. */
+      timers.current.push(setTimeout(() => onReload?.(), 20000), setTimeout(() => onReload?.(), 75000));
+    } catch (failure) { setError(refusal(failure)); }
+    setWorking(false);
+  }
+  async function handBack(lead) {
+    setWorking(true); setError('');
+    try {
+      await handBackLead(state.tenantId, lead.id);
+      setConfirmBack(false); setSent(false);
+      await onReload?.();
+    } catch (failure) { setConfirmBack(false); setError(refusal(failure)); }
     setWorking(false);
   }
   return (
@@ -163,15 +210,36 @@ function ProductionInbox({ state, base, onReload }) {
             <header>
               <div><h2>{selected.name}</h2><p>{selected.service || 'Has not said what they need'} · {selected.qualification}</p></div>
               {!selected.ownerTakeover && !selected.suppressed && <Button disabled={working} onClick={() => takeOver(selected)}>{working ? 'Taking over…' : 'Take over'}</Button>}
+              {selected.ownerTakeover && !selected.suppressed && !selected.safety && <Button disabled={working} onClick={() => setConfirmBack(true)}>Hand back to ARC</Button>}
             </header>
             {selected.handoffReason && <Notice warning>Handed to you: {selected.handoffReason}</Notice>}
-            {selected.ownerTakeover && <Notice>You have taken this over, and ARC has stopped texting this customer. A text already on its way cannot be recalled.</Notice>}
-            {!selected.ownerTakeover && !selected.suppressed && <p className="ap-muted">Taking over stops ARC’s texts to this customer so you can handle it yourself.</p>}
+            {selected.suppressed && <Notice warning>This customer opted out. Nobody can text them from ARC.</Notice>}
+            {selected.ownerTakeover && <Notice>You have taken this over, and ARC has stopped texting this customer. A text already on its way cannot be recalled.{selected.safety ? ' It came to you for a safety reason, so it stays with you.' : ''}</Notice>}
+            {!selected.ownerTakeover && !selected.suppressed && <p className="ap-muted">Taking over stops ARC’s texts to this customer so you can reply yourself.</p>}
             <Messages lead={selected} state={state} />
+            {selected.ownerTakeover && !selected.suppressed && (
+              <div className="ap-composer">
+                <Field label="Your reply" hint={`Sent from your business number. ${body.length} of ${MAX_OWNER_REPLY_CHARS} characters.`}>
+                  <textarea value={body} maxLength={MAX_OWNER_REPLY_CHARS} onChange={e => { setBody(e.target.value); setSent(false); }} placeholder="Write a reply…" />
+                </Field>
+                <Button primary disabled={working || !body.trim()} onClick={() => reply(selected)}>{working ? 'Sending…' : 'Send reply'}</Button>
+              </div>
+            )}
+            {sent && <Notice>Your reply is on its way. It shows here once it has gone, usually within a minute. If it cannot be sent, this conversation says why.</Notice>}
             {error && <p role="alert" className="ap-error">{error}</p>}
           </section>
         ) : <section className="ap-thread"><p className="ap-empty">Pick a conversation to read it.</p></section>}
       </div>
+      {confirmBack && selected && (
+        <Dialog title="Hand this back to ARC?" onClose={() => setConfirmBack(false)}>
+          <p>ARC goes back to reading this customer’s replies, asking your questions and passing the lead to you.</p>
+          <p className="ap-muted">ARC texts nothing until they write again. A check-in that was cancelled when you took over stays cancelled, and an opt-out or a booking still stops everything.</p>
+          <div className="ap-actions">
+            <Button primary disabled={working} onClick={() => handBack(selected)}>{working ? 'Working…' : 'Hand back to ARC'}</Button>
+            <Button onClick={() => setConfirmBack(false)}>Not now</Button>
+          </div>
+        </Dialog>
+      )}
       <Section title="Conversations from your contact list">
         <Notice>Picking up a contact here does not stop a campaign that is still texting them. Use Take over on their conversation above first.</Notice>
         {by ? (

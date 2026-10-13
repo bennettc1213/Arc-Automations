@@ -598,7 +598,7 @@ describe('ARC-200 against real Postgres', { skip }, () => {
     });
     await asRole(db, { role: 'authenticated', sub: operator }, async (tx) => {
       assert.ok((await tx.query('select count(*)::int as n from scheduled_actions where id = $1', [actionA.id])).rows[0].n === 1, 'an operator sees the queue');
-      assert.ok((await tx.query('select count(*)::int as n from automation_action_types')).rows[0].n === 16);
+      assert.ok((await tx.query('select count(*)::int as n from automation_action_types')).rows[0].n === 18);
     });
     await asRole(db, { role: 'anon' }, async (tx) => {
       assert.equal((await tx.query('select count(*)::int as n from automation_runs')).rows[0].n, 0);

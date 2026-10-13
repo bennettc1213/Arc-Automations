@@ -6,7 +6,7 @@ has to happen outside this repository. It replaces nothing: the order of work is
 `ARC_IMPLEMENTATION_ROADMAP.md`, and what the launch product is is still
 `ARC_PRODUCT_SCOPE.md` (section 7 there records what this work reopened).
 
-Last checked: 2026-10-13 (`1.48.0`). The code is on `main`, except the sign-up door
+Last checked: 2026-10-13 (`1.49.0`). The code is on `main`, except the sign-up door
 (`/signup`, `Signup.jsx`, `CreateBusiness.jsx` and their routes), which is held in the working
 tree until a hosted database has the migrations.
 
@@ -14,7 +14,7 @@ tree until a hosted database has the migrations.
 or a hosted database. "Locally tested" means the repository's own test suite on real SQL
 (PGlite), with a recording sender in place of the carrier, a fake classifier in place of the
 model and a Stripe snapshot written by the same SQL function the webhook calls. No delivery has
-been observed. Migrations `0029` to `0035` and the `billing` function are not deployed.
+been observed. Migrations `0029` to `0036` and the `billing` function are not deployed.
 
 ## 1. Status by capability
 
@@ -29,16 +29,16 @@ Stages: **planned** (not written) → **implemented** (written, no test of its o
 | Website form (speed-to-lead) | `lead-intake`, `0030` (`consume_public_intake_capacity`), `0032` (owner-made key, one origin) | No CAPTCHA: protection is the origin allowlist, a honeypot, a dwell time, 30 submissions an hour per form and 3 a day per recipient. No measured response time. | Locally tested | `tests/public-intake-db.test.js`, `tests/lead-recovery.test.js` ("an inquiry without SMS permission…"), the journey test |
 | Messaging gateway and duplicates | The engine's one effect gate (`authorizeLeadRecoveryEffect` → `reserve_lead_recovery_effect`), wrapped by `0031` (subscription, cap) and `0033` (emergency stop) | Nothing new: this was built and gated before the brief (`npm run gate`). | Locally tested | `tests/lead-recovery-gate.test.js` on memory and SQL |
 | Missed-call text-back | `twilio/handler.ts`; official Twilio SDK signature check; `MISSED_CALL_PERMISSION` | Voicemail cannot be told from a person: a pickup of either kind is `completed`. A failed or cancelled ring texts nobody. Never run on a real line. | Locally tested | Gate: "each dial result is read on its own" (seven results, both stores) |
-| Qualification | `engine/rules.ts`, `classify_reply`: one reply read against services, area and safety rules | **Not the brief's design.** No second question is ever asked; the question list an owner writes in a campaign draft is stored and unread. See section 3. | Locally tested as built | Gate suite |
+| Qualification | `engine/rules.ts`, `classify_reply`: each reply read against services, area and safety rules. Since `0036`, up to four reviewed questions asked one at a time (`questions.ask`, the `ask_question` action): service, ZIP, how soon, when to call. One already answered is skipped, each is asked once, and an unanswered one passes the lead on after `questions.wait_minutes`. | The list of questions is closed: an owner picks from four and writes their words, and cannot invent a fifth. Only a lead ARC would have passed on as it stood is asked anything; one that needs a person goes to a person. The model's structured output is unchanged, so "when to call" is kept in the customer's words and not interpreted. | Locally tested | Gate suite, five scenarios on memory and SQL ("a client's questions are asked one at a time…") |
 | Follow-up | One follow-up, `followup.enabled` / `after_minutes`, waits for opening hours, stops on reply, opt-out, booking, takeover | A campaign draft's follow-up fields are unread. One follow-up, never a sequence. | Locally tested | Gate suite |
-| Owner takeover | `crm` action `lead-takeover` → engine `takeOverLead` | No resume. No owner-written reply: no channel adapter exists (`PRODUCTION_CHANNEL_ADAPTERS` is empty). | Locally tested (engine path); the HTTP door has no test of its own | Journey test |
+| Owner takeover, reply and hand-back | `crm` actions `lead-takeover`, `lead-reply`, `lead-resume` → engine `takeOverLead`, `sendOwnerReply`, `resumeAutomation` (`0036`) | A reply is queued and sent on the dispatcher's next pass, so it can take up to a minute; the screen says so. An owner cannot text a customer with no SMS permission on record, or one who opted out. Handing back sends nothing by itself and does not put a cancelled check-in back. A lead that reached a person for a safety reason cannot be handed back. ARC-370's hub still has no channel: this is the Lead Recovery engine's own path, not a second one. The reply box and the hand-back dialog were not looked at against a live account. | Locally tested (engine path, memory and SQL); the HTTP door has no test of its own | Gate suite ("the owner takes a lead over, writes to the customer…", "the owner hands the lead back…"), `tests/saas-operations-db.test.js` |
 | Campaigns: drafts | `0029` drafts (`self_service_save_campaign`), guided builder in the portal | A draft changes nothing ARC sends until its owner switches it on. | Locally tested | `tests/self-service-db.test.js`, `tests/campaign-guide.test.js` |
-| Campaigns: an owner publishing | `0034`, `config/owner-wording.ts`, `publishOwnerWording`, `_shared/campaigns/`, `crm` `campaign-preview` / `campaign-publish`, `Publish.jsx` | Wording only: the first text (calls and website forms separately) and the one check-in. See section 3 for what a campaign carries that is not applied. Needs an account ARC has already configured. No undo short of an operator's rollback. The dialog was not looked at in a browser. | Locally tested | `tests/owner-publishing.test.js`: what the owner saved is what the next customer receives; the database refuses anything but wording |
+| Campaigns: an owner publishing | `0034`, `config/owner-wording.ts`, `publishOwnerWording`, `_shared/campaigns/`, `crm` `campaign-preview` / `campaign-publish`, `Publish.jsx` | Wording only: the first text (calls and website forms separately), the one check-in and, since `0036`, which questions are asked and their words. See section 3 for what a campaign carries that is not applied. Needs an account ARC has already configured. No undo short of an operator's rollback. The dialog was not looked at in a browser. | Locally tested | `tests/owner-publishing.test.js`: what the owner saved is what the next customer receives; the database refuses anything but wording |
 | Subscriptions | `billing/handler.ts` + `index.ts`, `0031` (accounts, usage, events, the gate) | Test mode only: `billingSettings` refuses a live key. No price is chosen. Past-due has no grace period: it stops new texts at once. | Locally tested | `tests/billing.test.js` (real Stripe SDK signature check), `tests/saas-operations-db.test.js` |
 | Usage cap | `0031`: one unit per text reserved, counted per paid period, refused at the cap | The unit is a message, not a carrier segment; the billing page says so. Two workers at once are serialised by a row lock that the in-process test database cannot exercise in parallel. | Locally tested, serially | `tests/saas-operations-db.test.js` ("the cap is a ceiling") |
 | Emergency stop and operator view | `0033` (`platform_controls`, `set_platform_sending_stop`), `ops` `platform-*`, `PlatformPanel.jsx` on the console's alerts page | The stop on a person-written message (`crm_message_begin_send`) is written and has no test: no client can send one yet. | Locally tested | `tests/saas-operations-db.test.js` ("the emergency stop", "the operator's platform actions") |
-| An owner pausing their texts | `0035` (`owner_sending_pauses`, `self_service_set_sending_pause`), checked at the send reservation; `Pause.jsx` on the campaigns page | It pauses every text to that business's customers, not one campaign. The owner is still alerted to each lead. The control was not looked at in a browser. | Locally tested | `tests/saas-operations-db.test.js` ("an owner's own pause"), `tests/saas-readiness.test.js` |
-| n8n workflows | Only `arc-runner-error-handler-v1` | **Not built, by a recorded decision.** See section 3. | Blocked on a decision | — |
+| An owner pausing their texts | `0035` (`owner_sending_pauses`, `self_service_set_sending_pause`) for every text; `0036` (`owner_campaign_pauses`, `self_service_set_campaign_pause`) for one campaign. Both checked at the send reservation; `Pause.jsx` on the campaigns page | A campaign is paused by how the customer arrived: missed calls, or website inquiries. A lead that arrives by a text of its own belongs to neither and is stopped only by the pause of everything. Neither pause stops a reply the owner writes themselves. The owner is still alerted to each lead. Neither control was looked at against a live account. | Locally tested | `tests/saas-operations-db.test.js` ("an owner's own pause", "an owner pausing one campaign"), `tests/saas-readiness.test.js` |
+| n8n workflows | `arc-runner-error-handler-v1`, registered. Four **drafts** in `n8n/drafts/`: a new inquiry, an inbound reply, a missed call, due follow-up work | **Drafts only.** Each is the reviewed frame around a step that checks the work is its own kind and reports it as `skipped`. None is registered, none can be assigned, and none sends anything. See section 3. | Locally tested as drafts; blocked on a decision | `tests/n8n-drafts.test.js`: each runs in the local simulator against ARC's real verifiers. No real n8n has imported one. |
 | First customer journey | Sign-up → setup → draft → operator publishes and activates → inquiry → text → reply → qualified → owner takeover → portal record | The operator step in the middle is by hand. | **Locally verified, simulated providers.** Staging: not run | `tests/saas-journey-db.test.js` |
 
 ## 2. What a subscription state means
@@ -58,25 +58,28 @@ is not gated on a subscription.
 ## 3. Not built, and why
 
 1. **Parts of a campaign the engine has no setting for.** Publishing is built (section 1), and
-   it applies the first text, the check-in text, and whether and when the check-in goes. A
-   campaign's questions, its wait before the first text, its out-of-hours choice and its
+   it applies the first text, the check-in text, whether and when the check-in goes, and the
+   questions. A campaign's wait before the first text, its out-of-hours choice and its
    repeat-contact limits are saved and unused, and the owner is told so before they confirm.
-   A check-in campaign to existing contacts cannot be published at all. An owner cannot pause
-   one campaign or undo a publication; an operator can roll the configuration back.
-2. **n8n as the execution layer.** The brief asks for five workflow exports. Lead Recovery is
-   registered `direct` with n8n `prohibited`, the bridge refuses production until a licensing
-   decision is recorded, and `ARC_PRODUCT_SCOPE.md` §5.1 freezes launch on ARC's own
-   dispatcher. The founder reporting authorisation from n8n is not that recorded decision, and
-   this work did not treat it as one. Everything the five workflows would do, the dispatcher
-   does, tested.
-3. **A multi-question qualification exchange.** Frozen as a later improvement
-   (`ARC_PRODUCT_SCOPE.md` §5.3): it needs a new engine action and reviewed templates for each
-   question.
-4. **An owner replying by text from ARC.** Needs a channel adapter that sends through ARC's
-   Twilio; none exists.
-5. **Resuming automation after a takeover.** An owner can pause all their texts (section 1), not
-   one campaign on its own.
-6. **A sixth setup step, a CAPTCHA on the public form, a measured response time.**
+   Whether a question is "needed" or "optional" is not applied either: every question is asked,
+   and an unanswered one still passes the lead on. A check-in campaign to existing contacts
+   cannot be published at all. An owner cannot undo a publication; an operator can roll the
+   configuration back.
+2. **n8n as the execution layer.** The brief asks for five workflow exports. The error handler
+   is built and registered. The other four exist as drafts (`n8n/drafts/`, section 1) that
+   perform nothing, because three things each stop a workflow from running and none was
+   changed: the bridge refuses production until a licensing decision is recorded
+   (ADR ARC-010 §26); Lead Recovery v1 is registered `direct` with n8n `prohibited`, so a
+   workflow cannot be registered for it; and the connector gateway a workflow would ask to act
+   has no route on the bridge. `ARC_PRODUCT_SCOPE.md` §5.1 still freezes launch on ARC's own
+   dispatcher. The founder asking for the workflows, or reporting authorisation from n8n, is
+   not the recorded licensing decision, and this work did not treat it as one. Everything the
+   workflows would do, the dispatcher does, tested. `n8n/drafts/README.md` lists what has to
+   exist first, in order.
+3. **A question of the owner's own invention, and a reading of "when to call".** Section 1.
+4. **A general inbox for texting any contact.** An owner replies on a lead they took over.
+   ARC-370's conversation hub, which would cover contacts with no lead, still has no channel.
+5. **A sixth setup step, a CAPTCHA on the public form, a measured response time.**
 
 ## 4. Outside this repository
 
@@ -84,8 +87,8 @@ Each is one action, in order. Nothing here was done by this work.
 
 | Needed | For | Tested so far | Smallest next action |
 | --- | --- | --- | --- |
-| `0029`–`0035` on a hosted database | Everything in section 1 | All seven apply cleanly on PGlite in `npm test` | `supabase db push` to staging |
-| `billing`, `twilio`, `lead-intake`, `crm`, `ops` redeployed | Sign-up, billing, takeover, the emergency stop | Handlers under `node --test` | `supabase functions deploy` each; `billing`, `twilio` and `lead-intake` take `--no-verify-jwt` (each file's header says why) |
+| `0029`–`0036` on a hosted database | Everything in section 1 | All eight apply cleanly on PGlite in `npm test` | `supabase db push` to staging |
+| `billing`, `twilio`, `lead-intake`, `crm`, `ops`, `dispatch` redeployed | Sign-up, billing, takeover, the owner's reply and hand-back, questions, the emergency stop | Handlers under `node --test` | `supabase functions deploy` each; `billing`, `twilio` and `lead-intake` take `--no-verify-jwt` (each file's header says why) |
 | Stripe test-mode product and price | Checkout | The handler against the real SDK's signature check, no API call | Create a price; set `STRIPE_SECRET_KEY`, `ARC_STRIPE_WEBHOOK_SECRET`, `ARC_STRIPE_PRICE_ID`, `ARC_STRIPE_MONTHLY_ACTION_CAP`, `ARC_SITE_URL` on `billing`; point a webhook at `…/billing/webhook` |
 | A Twilio number with A2P registration | Any real text | Nothing | The hosted actions in `ARC_LEAD_RECOVERY_READINESS.md` §6.3 |
 | Email sign-ups allowed on the hosted auth project | `/signup` | Nothing hosted | Check the project's auth settings before the sign-up door is shipped |
@@ -96,8 +99,13 @@ Each is one action, in order. Nothing here was done by this work.
   for every business is refused from then on. Calls, forms and replies are still recorded, each
   refused text is cancelled and its lead handed to a person. Resuming sends none of them.
 - **Stop one business.** Pause its module on its activation page. An owner can also pause the
-  texts to their own customers from their campaigns page; that is their switch, it is audited
-  (`owner.sending_paused`), and it does not change the module's state.
+  texts to their own customers from their campaigns page, all of them or one campaign; that is
+  their switch, it is audited (`owner.sending_paused`, `owner.campaign_paused`), and it does
+  not change the module's state. Neither stops a reply the owner writes themselves; the
+  module's pause and the emergency stop do.
+- **An owner says their reply did not go.** The conversation shows it as not sent, with the
+  reason. If the reason is that the carrier did not answer, the send is held as unknown like
+  any other and is settled from the console; it is never resent by itself.
 - **Cannot be undone:** a text the carrier has already accepted. Stopping does not recall it.
 - **A business says it paid and cannot send.** Console → alerts → self-signup businesses: read
   the subscription status and "used this period". The row is what Stripe last reported; if
@@ -120,7 +128,7 @@ npm run build
 ```
 
 Without `ARC_PGLITE_DIR` the database suites are skipped and `npm test` still reads green,
-which proves nothing about `0029`–`0035`. `npm run gate` fails unless every test ran.
+which proves nothing about `0029`–`0036`. `npm run gate` fails unless every test ran.
 
 ## 7. What stops a first paying customer
 

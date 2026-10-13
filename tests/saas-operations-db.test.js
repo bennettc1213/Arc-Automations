@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 
 import { freshDatabase, loadPglite, restClient, SKIP_REASON } from './pglite-harness.js';
 import { handlePlatformAction, usageFlag } from '../supabase/functions/ops/platform.ts';
+import { intakeLead, sendOwnerReply, takeOverLead } from '../supabase/functions/_shared/engine/runtime.ts';
 import {
   OPERATOR, OTHER_OWNER, OWNER, asUser, dispatch, engineFor, inquiry, liveBusiness, operatorActivates,
   operatorConfigures, operatorTests, saveDraft, saveSetup, seedPeople, signUp, subscriptionSnapshot, tickSteps,
@@ -261,6 +262,137 @@ describe("an owner's own pause", { skip }, () => {
       await pause(db, OWNER, tenantId, true);
       const lifecycle = await engine.store.getLifecycle(tenantId, 'lead_recovery');
       assert.equal(lifecycle.state, 'active', 'the operator’s decision is untouched');
+    } finally { await db.close(); }
+  });
+});
+
+describe('an owner pausing one campaign (0036)', { skip }, () => {
+  const pauseCampaign = (db, user, tenantId, kind, paused) =>
+    asUser(db, user, 'select public.self_service_set_campaign_pause($1,$2,$3) as state', [tenantId, kind, paused]);
+  const pauseAll = (db, user, tenantId, paused) => asUser(db, user, 'select public.self_service_set_sending_pause($1,$2) as state', [tenantId, paused]);
+  const missedCall = (engine, tenantId, from) => intakeLead(engine.deps, {
+    tenantId, source: 'missed_call', externalRef: `call:${crypto.randomUUID()}`, phone: from, consentSms: true, consentSource: 'inbound_call',
+  });
+  /* the fixture's two recording senders count from one each, so a live text and the test
+     canary's can be handed the same provider id — and a message row is keyed on it. a real
+     carrier's ids are unique; here the live sender's are made so. */
+  const uniqueIds = (engine) => {
+    const send = engine.live.send.bind(engine.live);
+    engine.live.send = async (args) => ({ ...(await send(args)), sid: `SMlive${crypto.randomUUID().replaceAll('-', '')}` });
+  };
+
+  test('website inquiries are paused and missed calls are not: one is handed to the owner, the other is texted', async () => {
+    const db = await freshDatabase();
+    try {
+      const { tenantId, ...engine } = await liveBusiness(db);
+      assert.deepEqual((await pauseCampaign(db, OWNER, tenantId, 'inbound', true)).state.paused, true);
+
+      const form = phone();
+      const held = await inquiry(engine, tenantId, form);
+      const caller = phone();
+      await missedCall(engine, tenantId, caller);
+      await dispatch(engine, tenantId);
+      await dispatch(engine, tenantId);
+
+      assert.equal(sentTo(engine, form), 0, 'the website inquiry is not texted');
+      /* at least once: this fixture's engine clock is fixed, so the caller's check-in is due too. */
+      assert.ok(sentTo(engine, caller) >= 1, 'the missed caller is, as usual');
+      const [handoff] = (await db.query('select reason from handoffs where tenant_id=$1 and lead_id=$2', [tenantId, held.lead.id])).rows;
+      assert.match(handoff.reason, /This campaign is paused, so no automatic reply was sent/, 'the paused lead is in front of the owner, with why');
+      /* the owner is told about the lead they will have to answer: a staff text, not stopped. */
+      const counted = (await db.query('select distinct effect_type from saas_usage_actions where tenant_id=$1 order by effect_type', [tenantId])).rows.map((r) => r.effect_type);
+      assert.deepEqual(counted, ['customer_sms', 'staff_sms']);
+
+      /* resuming sends nothing that was held, because nothing was held. */
+      assert.equal((await pauseCampaign(db, OWNER, tenantId, 'inbound', false)).state.paused, false);
+      await dispatch(engine, tenantId);
+      await dispatch(engine, tenantId);
+      assert.equal(sentTo(engine, form), 0);
+      const after = phone();
+      await inquiry(engine, tenantId, after);
+      await dispatch(engine, tenantId);
+      assert.equal(sentTo(engine, after), 1, 'a new website inquiry after resuming is answered');
+    } finally { await db.close(); }
+  });
+
+  test('neither pause stops the owner’s own words: a text they wrote after taking the lead over still goes', async () => {
+    const db = await freshDatabase();
+    try {
+      const { tenantId, ...engine } = await liveBusiness(db);
+      uniqueIds(engine);
+      await pauseCampaign(db, OWNER, tenantId, 'inbound', true);
+      await pauseAll(db, OWNER, tenantId, true);
+
+      const customer = phone();
+      const { lead } = await inquiry(engine, tenantId, customer);
+      await dispatch(engine, tenantId);
+      await dispatch(engine, tenantId);
+      assert.equal(sentTo(engine, customer), 0, 'ARC texts nobody while paused');
+
+      assert.equal((await takeOverLead(engine.deps, { tenantId, leadId: lead.id, actor: OWNER })).ok, true);
+      const queued = await sendOwnerReply(engine.deps, { tenantId, leadId: lead.id, body: 'This is Robin from Fictional Glassworks. I can call you at 4.', actorId: OWNER, requestKey: crypto.randomUUID() });
+      assert.deepEqual(queued, { ok: true, outcome: 'queued' });
+      await dispatch(engine, tenantId);
+
+      const [mine] = engine.live.sent.filter((message) => message.to === customer);
+      /* the first text this customer has had from the number, so it carries the opt-out line. */
+      assert.equal(mine.body, 'This is Robin from Fictional Glassworks. I can call you at 4. Reply STOP to opt out.');
+      assert.equal(sentTo(engine, customer), 1);
+      const [row] = (await db.query('select author_user_id, status, direction from messages where tenant_id=$1 and author_user_id is not null', [tenantId])).rows;
+      assert.deepEqual([row.author_user_id, row.direction], [OWNER, 'outbound']);
+      /* it is a text through ARC's number: it counts against the period like any other. */
+      const counted = (await db.query("select count(*)::int as n from saas_usage_actions where tenant_id=$1 and effect_type='owner_sms'", [tenantId])).rows[0].n;
+      assert.equal(counted, 1);
+    } finally { await db.close(); }
+  });
+
+  test('the emergency stop does stop the owner’s own text, and they are shown why', async () => {
+    const db = await freshDatabase();
+    try {
+      const { tenantId, ...engine } = await liveBusiness(db);
+      uniqueIds(engine);
+      const customer = phone();
+      const { lead } = await inquiry(engine, tenantId, customer);
+      await dispatch(engine, tenantId);
+      assert.equal(sentTo(engine, customer), 1);
+      await takeOverLead(engine.deps, { tenantId, leadId: lead.id, actor: OWNER });
+      await sendOwnerReply(engine.deps, { tenantId, leadId: lead.id, body: 'On my way', actorId: OWNER, requestKey: crypto.randomUUID() });
+
+      await db.query('select public.set_platform_sending_stop($1,true,$2)', [OPERATOR, 'carrier incident']);
+      await dispatch(engine, tenantId);
+      assert.equal(sentTo(engine, customer), 1, 'nothing more reaches the handset');
+      const [row] = (await db.query('select status, error_detail, body from messages where tenant_id=$1 and author_user_id is not null', [tenantId])).rows;
+      assert.deepEqual([row.status, row.body], ['failed', 'On my way']);
+      assert.match(row.error_detail, /ARC has paused all texting/);
+    } finally { await db.close(); }
+  });
+
+  test('it is the owner’s alone, one kind at a time, and recorded once per change', async () => {
+    const db = await freshDatabase();
+    try {
+      const { tenantId, ...engine } = await liveBusiness(db);
+      await signUp(db, OTHER_OWNER, 'Fictional Screens');
+      await assert.rejects(pauseCampaign(db, OTHER_OWNER, tenantId, 'missed', true), /forbidden/);
+      await assert.rejects(pauseCampaign(db, OPERATOR, tenantId, 'missed', true), /forbidden/, 'an operator pauses the module, not this');
+      await assert.rejects(pauseCampaign(db, OWNER, tenantId, 'followup', true), /cannot be paused/);
+      await assert.rejects(pauseCampaign(db, OWNER, tenantId, 'missed', null), /invalid/);
+      await assert.rejects(asUser(db, OWNER, "insert into owner_campaign_pauses (tenant_id, kind, paused) values ($1,'missed',true)", [tenantId]), /permission denied/);
+
+      await pauseCampaign(db, OWNER, tenantId, 'missed', true);
+      await pauseCampaign(db, OWNER, tenantId, 'missed', true);
+      await pauseCampaign(db, OWNER, tenantId, 'missed', false);
+      const audit = (await db.query("select action, metadata->>'kind' as kind from admin_actions where action like 'owner.campaign_%' and target_id=$1 order by action", [tenantId])).rows;
+      assert.deepEqual(audit, [{ action: 'owner.campaign_paused', kind: 'missed' }, { action: 'owner.campaign_resumed', kind: 'missed' }]);
+      assert.equal((await asUser(db, OTHER_OWNER, 'select count(*)::int as n from owner_campaign_pauses')).n, 0, 'another business cannot read it');
+      assert.deepEqual((await asUser(db, OWNER, 'select kind, paused from owner_campaign_pauses where tenant_id=$1', [tenantId])), { kind: 'missed', paused: false });
+
+      /* a paused missed-call campaign leaves the form campaign alone, and the module's state too. */
+      await pauseCampaign(db, OWNER, tenantId, 'missed', true);
+      const form = phone();
+      await inquiry(engine, tenantId, form);
+      await dispatch(engine, tenantId);
+      assert.equal(sentTo(engine, form), 1);
+      assert.equal((await engine.store.getLifecycle(tenantId, 'lead_recovery')).state, 'active');
     } finally { await db.close(); }
   });
 });

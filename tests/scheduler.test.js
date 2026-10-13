@@ -28,6 +28,7 @@ import {
 
 const SQL = readFileSync(new URL('../supabase/migrations/0017_durable_scheduler.sql', import.meta.url), 'utf8');
 const SQL_0015 = readFileSync(new URL('../supabase/migrations/0015_tenant_module_lifecycle.sql', import.meta.url), 'utf8');
+const SQL_0036 = readFileSync(new URL('../supabase/migrations/0036_owner_conversation.sql', import.meta.url), 'utf8');
 const SCHEDULER_DIR = new URL('../supabase/functions/_shared/scheduler/', import.meta.url);
 
 /** A store that fails the test if the service ever reaches it. */
@@ -42,20 +43,23 @@ const LEASE = { actionId: '33333333-3333-4333-8333-333333333333', tenantId: TENA
 /* ══ the vocabulary ═══════════════════════════════════════ */
 
 describe('there is one vocabulary of action types, and the database holds the same one', () => {
-  test('0017 seeds exactly ACTION_TYPES — the build fails on drift', () => {
-    const block = SQL.slice(SQL.indexOf('insert into public.automation_action_types'), SQL.indexOf('on conflict (key) do nothing'));
-    const seeded = [...block.matchAll(/\('([a-z_]+)',\s*'([a-z_]+)',\s*'([a-z_]+)',\s*'([a-z_]+)',\s*'([a-z_]+)',\s*(\d+),\s*(\d+),\s*(\d+),/g)]
-      .map((m) => `${m[1]}|${m[2]}|${m[3]}|${m[4]}|${m[5]}|${m[6]}|${m[7]}|${m[8]}`).sort();
+  test('0017 and 0036 seed exactly ACTION_TYPES — the build fails on drift', () => {
+    /* 0017 seeded sixteen; 0036 added the question and the owner's own text. */
+    const seeded = [SQL, SQL_0036].flatMap((sql) => {
+      const block = sql.slice(sql.indexOf('insert into public.automation_action_types'), sql.indexOf('on conflict (key) do nothing'));
+      return [...block.matchAll(/\('([a-z_]+)',\s*'([a-z_]+)',\s*'([a-z_]+)',\s*'([a-z_]+)',\s*'([a-z_]+)',\s*(\d+),\s*(\d+),\s*(\d+),/g)]
+        .map((m) => `${m[1]}|${m[2]}|${m[3]}|${m[4]}|${m[5]}|${m[6]}|${m[7]}|${m[8]}`);
+    }).sort();
     const typed = ACTION_TYPES
       .map((d) => `${d.key}|${d.dispatcher}|${d.effectClass}|${d.pausedPolicy}|${d.connectionRequirement}|${d.defaultMaxAttempts}|${d.retryBaseSeconds}|${d.retryCeilingSeconds}`)
       .sort();
-    assert.equal(seeded.length, 16);
+    assert.equal(seeded.length, 18);
     assert.deepEqual(seeded, typed);
   });
 
-  test('the Lead Recovery engine keeps its seven types, and only the engine decides their pause behaviour', () => {
+  test('the Lead Recovery engine has its nine types, and only the engine decides their pause behaviour', () => {
     const engine = ACTION_TYPES.filter((d) => d.dispatcher === 'lead_recovery_engine').map((d) => d.key).sort();
-    assert.deepEqual(engine, ['classify_reply', 'close_run', 'notify_staff', 'open_handoff', 'route_to_contractor', 'send_first_response', 'send_followup']);
+    assert.deepEqual(engine, ['ask_question', 'classify_reply', 'close_run', 'notify_staff', 'open_handoff', 'route_to_contractor', 'send_first_response', 'send_followup', 'send_owner_reply']);
     for (const d of ACTION_TYPES) assert.equal(d.dispatcher === 'lead_recovery_engine', d.pausedPolicy === 'engine', d.key);
     /* the same retry numbers the engine already uses. */
     for (const d of ACTION_TYPES.filter((x) => x.dispatcher === 'lead_recovery_engine')) {

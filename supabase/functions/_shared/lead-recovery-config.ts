@@ -98,7 +98,33 @@ export const TEMPLATE_KEYS = [
      the second is used instead of the first when a booking link is set. */
   'reply_ack',
   'reply_ack_booking',
+  /* one per question ARC may ask after the customer's first reply (`questions.ask`). a
+     template nobody is asked is never sent. */
+  'question_service',
+  'question_location',
+  'question_urgency',
+  'question_timing',
 ] as const;
+
+/**
+ * The questions ARC may ask, one at a time, after the customer's first reply.
+ *
+ * A closed list, because each is a reviewed template and three of them are answered by a
+ * fact the reply is already read for: the service, the ZIP and how soon. `timing` — when
+ * the business should call — is kept in the customer's own words. Which of them a client
+ * asks, and in what order, is `questions.ask`; an empty list is no questions, which is what
+ * every configuration published before this field existed means.
+ */
+export const QUESTION_KEYS = ['service', 'location', 'urgency', 'timing'] as const;
+export type QuestionKey = (typeof QUESTION_KEYS)[number];
+
+/** How long ARC waits for an answer before passing the lead on with what it has. */
+export const DEFAULT_QUESTION_WAIT_MINUTES = 30;
+export const MIN_QUESTION_WAIT_MINUTES = 5;
+export const MAX_QUESTION_WAIT_MINUTES = 240;
+
+/** The template that asks each question. */
+export const questionTemplateKey = (key: QuestionKey) => `question_${key}`;
 
 /** The one template that is only ever sent when `booking_url` is set. */
 export const BOOKING_LINK_TEMPLATE = 'reply_ack_booking';
@@ -141,6 +167,7 @@ export interface LeadRecoveryConfig {
   templates: Record<string, string>;
   after_hours: { behaviour: string; callback_window: string | null };
   followup: { enabled: boolean; after_minutes: number };
+  questions: { ask: QuestionKey[]; wait_minutes: number };
   safety: {
     emergency_keywords: string[];
     always_handoff_services: string[];
@@ -355,6 +382,7 @@ const TOP_LEVEL = [
   'templates',
   'after_hours',
   'followup',
+  'questions',
   'safety',
   'ai',
   'compliance',
@@ -388,6 +416,10 @@ export const DEFAULT_TEMPLATES: Record<string, string> = {
     "Thanks{{customer_name}} — {{company}} has your message and will call you to set a time.",
   reply_ack_booking:
     "Thanks{{customer_name}} — {{company}} has your message. Pick a time here: {{booking_url}} or we'll call you to set one.",
+  question_service: 'Thanks{{customer_name}}. What do you need help with?',
+  question_location: 'What ZIP code is the job in?',
+  question_urgency: 'How soon do you need someone out?',
+  question_timing: 'When is a good time for {{company}} to call you?',
 };
 
 export const DEFAULT_OPT_OUT_LANGUAGE = 'Reply STOP to opt out.';
@@ -424,6 +456,7 @@ export function defaultConfig(partial: Partial<LeadRecoveryConfig> = {}): LeadRe
     templates: { ...DEFAULT_TEMPLATES },
     after_hours: { behaviour: 'after_hours_response', callback_window: 'first thing in the morning' },
     followup: { enabled: true, after_minutes: DEFAULT_FOLLOWUP_AFTER_MINUTES },
+    questions: { ask: [], wait_minutes: DEFAULT_QUESTION_WAIT_MINUTES },
     safety: {
       emergency_keywords: [],
       always_handoff_services: [],
@@ -726,6 +759,40 @@ export function validateLeadRecoveryConfig(input: unknown): ConfigResult {
     warnings.push('the follow-up is off — a customer who does not answer the first text hears nothing more');
   }
 
+  // ── the questions ─────────────────────────────────────
+  const questionsRaw = input.questions;
+  const questions: LeadRecoveryConfig['questions'] = { ask: [...base.questions.ask], wait_minutes: base.questions.wait_minutes };
+  if (questionsRaw !== undefined && questionsRaw !== null) {
+    if (!isPlainObject(questionsRaw)) {
+      errors.push('questions must be an object');
+    } else {
+      rejectUnknown(questionsRaw, ['ask', 'wait_minutes'], 'questions', errors);
+      if (questionsRaw.ask !== undefined && questionsRaw.ask !== null) {
+        const ask = questionsRaw.ask;
+        if (!Array.isArray(ask) || !ask.every((key) => (QUESTION_KEYS as readonly unknown[]).includes(key))) {
+          errors.push(`questions.ask must be a list drawn from ${QUESTION_KEYS.join(', ')}`);
+        } else if (new Set(ask).size !== ask.length) {
+          errors.push('questions.ask names a question twice — each is asked once');
+        } else {
+          questions.ask = [...ask] as QuestionKey[];
+        }
+      }
+      if (questionsRaw.wait_minutes !== undefined && questionsRaw.wait_minutes !== null) {
+        const minutes = questionsRaw.wait_minutes;
+        if (
+          typeof minutes !== 'number' || !Number.isInteger(minutes) ||
+          minutes < MIN_QUESTION_WAIT_MINUTES || minutes > MAX_QUESTION_WAIT_MINUTES
+        ) {
+          errors.push(
+            `questions.wait_minutes must be a whole number of minutes between ${MIN_QUESTION_WAIT_MINUTES} and ${MAX_QUESTION_WAIT_MINUTES}`,
+          );
+        } else {
+          questions.wait_minutes = minutes;
+        }
+      }
+    }
+  }
+
   // ── safety ────────────────────────────────────────────
   const safetyRaw = input.safety;
   const safety = { ...base.safety };
@@ -893,6 +960,7 @@ export function validateLeadRecoveryConfig(input: unknown): ConfigResult {
       templates,
       after_hours: afterHours,
       followup,
+      questions,
       safety,
       ai,
       compliance,

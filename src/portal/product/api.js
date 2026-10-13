@@ -6,13 +6,14 @@ const daysForUi = value => String(value || '').replace(/-/g, '\u2013');
 
 export async function loadProduct(tenant) {
   const client = getSupabase();
-  const [setup, campaigns, billing, form, readiness, pause] = await Promise.all([
+  const [setup, campaigns, billing, form, readiness, pause, campaignPauses] = await Promise.all([
     client.from('tenant_setup_answers').select('*').eq('tenant_id', tenant.id).maybeSingle(),
     client.from('customer_campaign_drafts').select('*').eq('tenant_id', tenant.id).order('updated_at', { ascending: false }),
     client.from('saas_billing_accounts').select('*').eq('tenant_id', tenant.id).maybeSingle(),
     client.rpc('self_service_form_status', { p_tenant: tenant.id }),
     client.rpc('self_service_readiness', { p_tenant: tenant.id }),
     client.from('owner_sending_pauses').select('paused,changed_at').eq('tenant_id', tenant.id).maybeSingle(),
+    client.from('owner_campaign_pauses').select('kind,paused,changed_at').eq('tenant_id', tenant.id),
   ]);
   if (setup.error || campaigns.error) return { available: false, error: (setup.error || campaigns.error).message };
   const usage = billing.data?.period_start ? await client.from('saas_usage_actions')
@@ -28,6 +29,12 @@ export async function loadProduct(tenant) {
     /* the owner's own pause (0035). no row means never paused; an error means the switch is
        not available on this account, and the page offers no button it could not honour. */
     sending: pause.error ? { available: false } : { available: true, paused: pause.data?.paused === true, changedAt: pause.data?.changed_at ?? null },
+    /* one campaign's own pause (0036), by kind. the same rule: an error means this account
+       has no such switch, and no button is drawn for it. */
+    campaignPauses: campaignPauses.error ? { available: false } : {
+      available: true,
+      kinds: Object.fromEntries((campaignPauses.data || []).map(row => [row.kind, { paused: row.paused === true, changedAt: row.changed_at ?? null }])),
+    },
     /* what the database says is true right now (0033). absent means unknown, never "ready". */
     readiness: readiness.error || !readiness.data ? { available: false, error: readiness.error?.message || 'Readiness has not loaded' }
       : { available: true, ...readiness.data },
@@ -89,8 +96,9 @@ export async function saveBusiness(tenantId, revision, business, step) {
   return data;
 }
 
-/* switching a campaign on (0034). the server reads the words from the saved campaign, so
-   these send only which campaign and which versions the owner was looking at. */
+/* an owner's action on the `crm` function: switching a campaign on (0034), replying to a
+   customer or handing a conversation back (0036). a refusal comes back as an error carrying
+   the function's own code, so the page can say what happened in its own words. */
 async function campaignAction(action, tenantId, body) {
   const { data, error } = await getSupabase().functions.invoke('crm', { body: { action, tenant_id: tenantId, ...body } });
   let answer = data;
@@ -113,6 +121,28 @@ export async function setSendingPaused(tenantId, paused) {
   const { data, error } = await getSupabase().rpc('self_service_set_sending_pause', { p_tenant: tenantId, p_paused: paused });
   if (error) throw error;
   return data;
+}
+
+/** pause or resume one campaign: texts to people who arrive by missed call, or by the form (0036). */
+export async function setCampaignPaused(tenantId, kind, paused) {
+  const { data, error } = await getSupabase().rpc('self_service_set_campaign_pause', { p_tenant: tenantId, p_kind: kind, p_paused: paused });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * the owner's own text to a customer whose conversation they have taken over (0036). it is
+ * queued, not sent, by this call: ARC's dispatcher sends it, usually within a minute, after
+ * re-reading the opt-out list. `requestKey` is this text's own identity, so pressing send
+ * twice is one text.
+ */
+export async function replyToLead(tenantId, leadId, body, requestKey) {
+  return await campaignAction('lead-reply', tenantId, { lead_id: leadId, body, request_key: requestKey });
+}
+
+/** hand a conversation the owner took over back to ARC (0036). nothing cancelled is re-sent. */
+export async function handBackLead(tenantId, leadId) {
+  return await campaignAction('lead-resume', tenantId, { lead_id: leadId });
 }
 
 export async function previewCampaign(tenantId, campaignId) {

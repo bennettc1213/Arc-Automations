@@ -7,6 +7,63 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.49.0] - 2026-10-13
+
+**Questions after the first reply, an owner's own reply, handing a conversation back, and
+pausing one campaign.** Decided 2026-10-13 (`ARC_PRODUCT_SCOPE.md` §8). Not deployed: it needs
+migration `0036` and the `crm` and `dispatch` functions on a hosted project. The n8n workflows
+were asked for too and are drafts only; see the last item.
+
+### Added
+
+- **ARC asks the client's questions, one at a time.** After the customer's first reply ARC can
+  ask up to four reviewed questions: what they need, the ZIP, how soon, and when to call. One
+  they have already answered is skipped, each is asked once, and if they stop answering the
+  lead goes to the business with what it has. A reply that needs a person still goes to a
+  person at once, and an answer that sounds urgent hands the lead over. No model writes a
+  question. New setting `questions` (`ask`, `wait_minutes`) and four templates; a configuration
+  that says nothing asks nothing, as before.
+- **An owner's campaign questions are now what ARC asks.** Switching a campaign on publishes
+  which questions are asked and the owner's own wording for each, alongside the first text and
+  the check-in. The preview shows each question as a customer would get it.
+- **An owner can reply to a customer from the inbox.** On a conversation they have taken over,
+  the owner writes a text and ARC sends it from the business number, usually within a minute.
+  It goes through the same send gate as every other text, so an opt-out, a lapsed subscription
+  or ARC's emergency stop still stops it, and the conversation says why when it does not go.
+  Pressing send twice is one text. It is never counted as one of ARC's texts.
+- **Hand a conversation back to ARC.** The reverse of taking over. ARC texts nothing until the
+  customer writes again, a check-in that was cancelled stays cancelled, and a conversation that
+  came to a person for a safety reason stays with a person.
+- **Pause one campaign.** Beside "pause all texts", each switched-on campaign has its own
+  pause: missed calls, or website inquiries. The other keeps running, the inquiries still
+  arrive, the owner is still alerted, and resuming sends nothing that was held. Neither pause
+  stops a reply the owner writes themselves.
+- Migration `0036`: the `ask_question` and `send_owner_reply` actions, the `owner_sms` effect
+  type, `messages.author_user_id`, `owner_campaign_pauses` with its owner-only function, and
+  the questions added to what an owner may publish.
+- `crm` actions `lead-reply` and `lead-resume`, for the business's owner only.
+- **Four n8n workflows, as drafts that perform nothing** (`n8n/drafts/`). A new inquiry, an
+  inbound reply, a missed call and due follow-up work, each the reviewed frame around a step
+  that checks the work is its own kind and reports it as skipped. They are not registered and
+  cannot be assigned: the licensing decision is not recorded, Lead Recovery v1 forbids n8n, and
+  the gateway a workflow would ask to act does not exist. Launch still runs on ARC's dispatcher.
+
+### Changed
+
+- The inbox no longer shows "Needs you" on a conversation whose handoff was resolved.
+- The Lead Recovery engine has nine action types, not seven.
+
+### Tests
+
+- Ten scenarios in the gate suite, each on the in-memory store and on real Postgres: the
+  questions, a customer who writes again before a question has gone, an unanswered question, an
+  urgent answer, the owner's reply sent once, an opt-out landing after it was queued, handing
+  back, and a safety lead that cannot be handed back.
+- On real SQL: one campaign paused while the other still texts, neither pause stopping the
+  owner's own words, and the emergency stop stopping them.
+- Each draft workflow run in the local simulator against ARC's real verifiers. No real n8n has
+  imported one.
+
 ## [1.48.0] - 2026-10-13
 
 **An owner can pause and resume their own texts.** Not deployed: it needs migration `0035`.

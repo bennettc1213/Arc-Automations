@@ -141,6 +141,7 @@ const toMessage = (row: any): MessageRow => ({
   errorClass: row.error_class ?? null,
   errorDetail: row.error_detail ?? null,
   occurredAt: row.occurred_at,
+  authorUserId: row.author_user_id ?? null,
 });
 
 // deno-lint-ignore no-explicit-any
@@ -461,6 +462,9 @@ export function supabaseStore(db: Db): EngineStore {
           error_class: row.errorClass,
           error_detail: row.errorDetail,
           occurred_at: row.occurredAt,
+          /* named only for a text a person wrote (0036), so every other insert is the one a
+             database from before that migration already takes. */
+          ...(row.authorUserId ? { author_user_id: row.authorUserId } : {}),
         })
         .select('*')
         .single();

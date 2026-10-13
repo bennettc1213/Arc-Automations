@@ -42,7 +42,9 @@ import {
   AFTER_HOURS_BEHAVIOURS,
   COMPLIANCE_STATUSES,
   DEFAULT_FOLLOWUP_AFTER_MINUTES,
+  DEFAULT_QUESTION_WAIT_MINUTES,
   DEFAULT_TEMPLATES,
+  QUESTION_KEYS,
   defaultConfig,
   FORWARDING_MODES,
   MAX_FOLLOWUP_AFTER_MINUTES,
@@ -117,6 +119,16 @@ function toForm(config) {
     /* the owner's own words for a website-form lead, published from their portal. this form
        has no box for it; it is carried so that saving here does not erase it. */
     first_response_form: base.templates?.first_response_form ?? '',
+    /* the same for the questions an owner switched on (0036): which are asked, and their
+       words. no box here either. kept only where they are not what their absence already
+       means, so an untouched save is still a document an older `ops` function accepts. */
+    questions: (base.questions?.ask?.length ?? 0) > 0 || (base.questions?.wait_minutes ?? DEFAULT_QUESTION_WAIT_MINUTES) !== DEFAULT_QUESTION_WAIT_MINUTES
+      ? base.questions
+      : null,
+    question_templates: Object.fromEntries(
+      QUESTION_KEYS.map((key) => [`question_${key}`, base.templates?.[`question_${key}`]])
+        .filter(([key, text]) => typeof text === 'string' && text.trim() !== '' && text !== DEFAULT_TEMPLATES[key]),
+    ),
     after_hours_response: base.templates?.after_hours_response ?? '',
     followup: base.templates?.followup ?? '',
     handoff_ack: base.templates?.handoff_ack ?? '',
@@ -181,7 +193,9 @@ function toConfig(form) {
           .map((key) => [key, form[key].trim()])
           .filter(([key, text]) => text !== '' && text !== DEFAULT_TEMPLATES[key]),
       ),
+      ...form.question_templates,
     },
+    ...(form.questions ? { questions: form.questions } : {}),
     after_hours: {
       behaviour: form.after_hours_behaviour,
       callback_window: form.callback_window.trim() || null,

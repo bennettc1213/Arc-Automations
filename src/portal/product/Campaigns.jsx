@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { KINDS, QUESTIONS, newCampaign, previewMessage, readiness, validateCampaign } from './model';
 import { KIND_HELP, applyRecommended, businessHours, delayWords, guideSteps, hoursWords, isRecommended, journey, messageTemplates, oneLine, questionHelp, readinessItems, recommend, recommendKind, templateOf } from './guide';
 import PublishDialog from './Publish';
-import SendingPause from './Pause';
+import SendingPause, { CampaignPause, campaignPaused } from './Pause';
 import { CAMPAIGN_FIRST_TEXT } from '../../../supabase/functions/_shared/campaigns/model.ts';
 import { Badge, Button, Checklist, Choice, Choices, Dialog, Field, Notice, PageHead, Progress, Section, dateLabel, stateLabel, stateTone } from './ui';
 
@@ -26,7 +26,7 @@ export function Campaigns({ state, dispatch, base, onReload }) {
       )}
       <SendingPause state={state} onReload={onReload} />
       <div className="ap-campaign-list">
-        {state.campaigns.map(c => <CampaignCard key={c.id} c={c} state={state} base={base} dispatch={dispatch} onReview={setReview} onPublish={setPublishing} />)}
+        {state.campaigns.map(c => <CampaignCard key={c.id} c={c} state={state} base={base} dispatch={dispatch} onReview={setReview} onPublish={setPublishing} onReload={onReload} />)}
       </div>
       {!state.campaigns.length && (
         <Section title="Start with the inquiries you already get" note="Pick the one that matches how customers reach you. You can add the others later.">
@@ -53,10 +53,13 @@ export function Campaigns({ state, dispatch, base, onReload }) {
   );
 }
 
-function CampaignCard({ c, state, base, dispatch, onReview, onPublish }) {
+function CampaignCard({ c, state, base, dispatch, onReview, onPublish, onReload }) {
   const items = readinessItems(c, state);
   const done = items.filter(item => item.done).length;
   const next = items.find(item => !item.done);
+  /* the owner's own pause of this one campaign (0036). it is switched on and not texting,
+     which is a different thing from a draft, so it is said in its own words. */
+  const held = campaignPaused(state, c) && (c.runtime === 'live' || c.runtime === 'live_edited');
   return (
     <article className="ap-card ap-campaign">
       <div className="ap-row">
@@ -64,13 +67,14 @@ function CampaignCard({ c, state, base, dispatch, onReview, onPublish }) {
           <h2>{c.name}</h2>
           <p className="ap-muted">{c.name === KINDS[c.kind].name ? '' : `${KINDS[c.kind].name} · `}{c.updatedAt ? `Updated ${dateLabel(c.updatedAt, state.business.timezone)}` : 'Not saved yet'}</p>
         </div>
-        <Badge tone={stateTone(c.runtime)}>{stateLabel(c.runtime)}</Badge>
+        <Badge tone={stateTone(held ? 'paused' : c.runtime)}>{held ? 'Paused by you' : stateLabel(c.runtime)}</Badge>
       </div>
       <p className="ap-campaign-summary">{oneLine(c)}</p>
       <div className="ap-campaign-ready">
         <Progress value={done} max={items.length} label={`${done} of ${items.length} ready`} />
         <p>
-          {c.runtime === 'paused' ? 'Paused. Look it over before you start it again.'
+          {held ? <><b>You paused this campaign.</b> Nobody who reaches you this way is being texted. They still arrive in your inbox and you are still told about each one.</>
+            : c.runtime === 'paused' ? 'Paused. Look it over before you start it again.'
             : next ? <><b>{done} of {items.length} ready.</b> Next: {next.todo}.</>
               : <b>Everything it needs is in place.</b>}
         </p>
@@ -82,6 +86,7 @@ function CampaignCard({ c, state, base, dispatch, onReview, onPublish }) {
         {state.mode !== 'demo' && CAMPAIGN_FIRST_TEXT[c.kind] && (
           <Button primary={c.runtime !== 'live'} onClick={() => onPublish(c)}>{c.runtime === 'live' ? 'See what is live' : c.runtime === 'live_edited' ? 'Switch on your changes' : 'Switch on'}</Button>
         )}
+        <CampaignPause state={state} campaign={c} onReload={onReload} />
       </div>
     </article>
   );

@@ -170,5 +170,35 @@ are not read as still holding where they no longer do. Where the work stands is
 brief reports an authorisation from n8n; closing the licensing gate is still its own recorded
 decision. 5.3 stands as a later improvement. 5.4 stands: no speed is claimed.
 
+---
+
+## 8. Reopened on 2026-10-13, second decision
+
+Bennett asked for five more things to be built. Four move across the boundary and are built.
+The fifth does not move, and what was built toward it is stated below so that it is not read
+as more than it is. Nothing here is deployed.
+
+| Was | Now | Built |
+| --- | --- | --- |
+| Qualification is one reply read by rules (5.3) | ARC may ask up to four reviewed questions after the first reply, one at a time: the service, the ZIP, how soon, and when to call. The list is closed and a model writes none of them. A reply that needs a person still goes to a person at once. | Yes. `questions` in the configuration, the `ask_question` action, `ARC_TENANT_SETTINGS.md` §8. An owner may publish which are asked and their words. |
+| A client sending messages by hand is out (section 3) | An owner who has taken a lead over may text that customer from ARC. Their words, queued and sent by the dispatcher through the one send gate. Not a second messaging system: ARC-370's hub still has no channel. | Yes. `sendOwnerReply`, `send_owner_reply`, `owner_sms` (0036). |
+| A takeover is final | An owner may hand a lead they took over back to ARC. Nothing cancelled is sent; ARC reads the customer's next message. A lead that reached a person for a safety reason stays with a person. | Yes. `resumeAutomation`. |
+| The owner's pause covers every text | An owner may also pause one campaign: missed calls, or website inquiries. | Yes. `owner_campaign_pauses` (0036). |
+
+**Not reopened: 5.1.** Launch runs on ARC's dispatcher and n8n is not in the path. Bennett
+asked for the n8n workflows; three things in this repository each stop one from running, by
+design, and none of the three was changed:
+
+1. The licensing gate (ADR ARC-010 §26) is closed. It opens on a recorded decision with the
+   written confirmation behind it, and asking for the workflows is not that record.
+2. Lead Recovery v1 is registered `direct` with n8n `prohibited`, so no workflow can be
+   registered for it or assigned to it.
+3. The connector gateway a workflow would ask to act (ADR §20) has no route on the bridge.
+
+What was built is four draft exports in `n8n/drafts/`: the reviewed frame around a step that
+checks the work is its own kind and reports it as skipped. They prove the contract in the local
+simulator and send nothing. `n8n/drafts/README.md` lists what has to exist, in order, before
+one could run for a client.
+
 Related: `ARC_IMPLEMENTATION_ROADMAP.md` (the order of work), `ARC_LEAD_RECOVERY_READINESS.md`
 (what stands between the code and a real phone), `ARC_PROOF_LEDGER.md` (what counts).

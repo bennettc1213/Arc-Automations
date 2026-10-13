@@ -43,7 +43,7 @@ import { resolveRuntimeEnvironment } from '../_shared/connections/runtime-env.ts
 import { supabaseConfigStore } from '../_shared/config/supabase-config-store.ts';
 import { ACCOUNT_ERROR_STATUS, readAccountSettings, supabaseStopList } from '../_shared/account/service.ts';
 import { supabaseStore } from '../_shared/supabase-store.ts';
-import { takeOverLead } from '../_shared/engine/runtime.ts';
+import { resumeAutomation, sendOwnerReply, takeOverLead } from '../_shared/engine/runtime.ts';
 import { RecordingSender } from '../_shared/twilio.ts';
 import { UnavailableClassifier } from '../_shared/classifier.ts';
 
@@ -53,6 +53,13 @@ import { supabaseCampaignStore } from '../_shared/campaigns/supabase-campaign-st
 /** the owner portal's one read that is not a workspace action. */
 const ACCOUNT_ACTION = 'account-settings';
 const LEAD_TAKEOVER_ACTION = 'lead-takeover';
+/* the owner's own words to a customer, and handing the conversation back (0036). both are
+   the engine's: this door checks who is asking and queues or transitions, and sends nothing. */
+const LEAD_REPLY_ACTION = 'lead-reply';
+const LEAD_RESUME_ACTION = 'lead-resume';
+const LEAD_ACTIONS = [LEAD_TAKEOVER_ACTION, LEAD_REPLY_ACTION, LEAD_RESUME_ACTION];
+/* a refusal the owner can act on is a 409 with its code; a lead that is not theirs is a 404. */
+const OWNER_REFUSAL_STATUS: Record<string, number> = { not_found: 404, empty: 422, too_long: 422, invalid: 422, withheld: 422 };
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -106,8 +113,8 @@ Deno.serve(async (request) => {
   }
 
   const action = String(body.action ?? '');
-  if (action === 'capabilities') return json({ ok: true, actions: [...WORKSPACE_ACTIONS, ACCOUNT_ACTION, LEAD_TAKEOVER_ACTION, ...CAMPAIGN_ACTIONS] }, 200);
-  if (action !== ACCOUNT_ACTION && action !== LEAD_TAKEOVER_ACTION && !CAMPAIGN_ACTIONS.includes(action) && !WORKSPACE_ACTIONS.includes(action)) return json({ error: 'unknown action' }, 400);
+  if (action === 'capabilities') return json({ ok: true, actions: [...WORKSPACE_ACTIONS, ACCOUNT_ACTION, ...LEAD_ACTIONS, ...CAMPAIGN_ACTIONS] }, 200);
+  if (action !== ACCOUNT_ACTION && !LEAD_ACTIONS.includes(action) && !CAMPAIGN_ACTIONS.includes(action) && !WORKSPACE_ACTIONS.includes(action)) return json({ error: 'unknown action' }, 400);
   if (typeof body.tenant_id !== 'string' || !UUID.test(body.tenant_id)) {
     return json({ error: 'tenant_id is required', code: 'invalid' }, 422);
   }
@@ -140,6 +147,43 @@ Deno.serve(async (request) => {
     } catch (failure) {
       console.error('crm lead-takeover failed', failure);
       return json({ error: 'could not take over this inquiry', code: 'failed' }, 500);
+    }
+  }
+
+  /* the owner writes to the customer, or hands the conversation back to ARC (0036). who is
+     asking is their sign-in and their role is `tenant_members`'; the lead is found by tenant
+     and id together. nothing is sent from here: a reply becomes one action on the queue, and
+     the dispatcher sends it through the same reservation as every other text. the sender
+     this function holds records and reaches nobody, as for a takeover. */
+  if (action === LEAD_REPLY_ACTION || action === LEAD_RESUME_ACTION) {
+    if (membership?.role !== 'owner') return json({ error: 'owner access required', code: 'forbidden' }, 403);
+    if (typeof body.lead_id !== 'string' || !UUID.test(body.lead_id)) return json({ error: 'lead_id is required', code: 'invalid' }, 422);
+    try {
+      const recording = new RecordingSender();
+      const deps = {
+        store: supabaseStore(db as never), now: () => new Date(),
+        liveSender: recording, canarySender: recording,
+        classifierFor: () => new UnavailableClassifier('owner action'),
+        uuid: () => crypto.randomUUID(), worker: `owner:${userId}`,
+      };
+      const result = action === LEAD_REPLY_ACTION
+        ? await sendOwnerReply(deps, {
+          tenantId: body.tenant_id, leadId: body.lead_id, actorId: userId,
+          body: typeof body.body === 'string' ? body.body : '',
+          requestKey: typeof body.request_key === 'string' ? body.request_key : '',
+        })
+        : await resumeAutomation(deps, { tenantId: body.tenant_id, leadId: body.lead_id, actor: userId });
+      return result.ok
+        ? json({ ok: true, outcome: result.outcome }, 200)
+        : json({ error: result.outcome, code: result.code }, OWNER_REFUSAL_STATUS[result.code] ?? 409);
+    } catch (failure) {
+      const message = (failure as Error)?.message ?? '';
+      /* the queue does not know the action yet: 0036 has not been applied to this database. */
+      if (/automation_action_types|scheduled_actions_action_type_fk|send_owner_reply/i.test(message)) {
+        return json({ error: 'replying from ARC is not available on this account yet', code: 'unavailable' }, 501);
+      }
+      console.error(`crm ${action} failed`, failure);
+      return json({ error: 'that did not go through, and nothing was changed', code: 'failed' }, 500);
     }
   }
 

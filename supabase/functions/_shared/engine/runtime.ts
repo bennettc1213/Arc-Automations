@@ -53,7 +53,7 @@ import { resolveEffectiveConfig } from '../config/engine.ts';
 import { authorizeModuleExecution, type ExecutionDecision } from '../lifecycle/authorize.ts';
 import { safeSummary } from '../lifecycle/engine.ts';
 import { EXECUTION_DENIAL_CODES, type ExecutionDenialCode, LifecycleStoreError, type RunMode } from '../lifecycle/model.ts';
-import { type LeadRecoveryConfig } from '../lead-recovery-config.ts';
+import { type LeadRecoveryConfig, QUESTION_KEYS, type QuestionKey } from '../lead-recovery-config.ts';
 import { validatorFor } from '../registry/index.ts';
 import { findSecretShaped } from '../scheduler/model.ts';
 import { normaliseEmail, normalisePhone, maskPhone } from '../phone.ts';
@@ -63,8 +63,12 @@ import { classifyReply } from './rules.ts';
 import {
   decideFirstResponse,
   followupDueAt,
+  MAX_OWNER_REPLY_CHARS,
+  nextQuestion,
   renderFollowup,
   renderHandoffAck,
+  renderOwnerReply,
+  renderQuestion,
   renderReplyAck,
   renderStaffAlert,
 } from './templates.ts';
@@ -132,7 +136,7 @@ export function backoffSeconds(attempts: number): number {
  */
 const BOOKKEEPING: ActionType[] = ['open_handoff', 'close_run'];
 /** Everything else: what reaches somebody, or decides who gets reached. */
-const CONTACT_ACTIONS: ActionType[] = ['send_first_response', 'send_followup', 'classify_reply', 'route_to_contractor', 'notify_staff'];
+const CONTACT_ACTIONS: ActionType[] = ['send_first_response', 'send_followup', 'classify_reply', 'route_to_contractor', 'notify_staff', 'ask_question', 'send_owner_reply'];
 
 /* ── dependencies ───────────────────────────────────────── */
 
@@ -351,6 +355,7 @@ export type EffectDenial =
   | 'usage_cap'
   | 'sending_stopped'
   | 'owner_paused'
+  | 'campaign_paused'
   | 'config_unpinned'
   | ExecutionDenialCode;
 
@@ -371,6 +376,7 @@ const SEND_STOPPED: EffectDenial[] = [
   'usage_cap',
   'sending_stopped',
   'owner_paused',
+  'campaign_paused',
 ];
 
 export interface EffectPermit {
@@ -428,6 +434,12 @@ export async function authorizeLeadRecoveryEffect(
      * every other guard — suppression, a person on the lead, consent, compliance — stands.
      */
     afterReply?: boolean;
+    /**
+     * a person wrote this, after taking the lead over. it is the one message that goes while
+     * a person has the lead — and only then — so the two guards that exist to keep the
+     * automation quiet around a person do not apply to it. every other guard stands.
+     */
+    personWritten?: boolean;
   },
 ): Promise<AuthorizeResult> {
   const { store } = deps;
@@ -452,7 +464,11 @@ export async function authorizeLeadRecoveryEffect(
 
   /* ── the run ── */
   if (isTerminal(run.state)) return deny('run_terminal', `the run is ${run.state} — nothing further is sent`);
-  if (!maySend(run.state)) {
+  if (args.personWritten) {
+    if (run.state !== 'handed_off') {
+      return deny('run_not_sendable', `the run is ${run.state} — a person writes to a customer only while they have the lead`);
+    }
+  } else if (!maySend(run.state)) {
     return deny('run_not_sendable', `the run is ${run.state} — a person has this, so the automation stays quiet`);
   }
 
@@ -481,12 +497,12 @@ export async function authorizeLeadRecoveryEffect(
     if (!lead.consentSms) {
       return deny('no_consent', 'there is no recorded SMS consent for this lead');
     }
-    const openHandoff = await store.getOpenHandoff(action.tenantId, lead.id);
+    const openHandoff = args.personWritten ? null : await store.getOpenHandoff(action.tenantId, lead.id);
     if (openHandoff) return deny('handoff_open', 'a person has taken this lead over');
 
     /* a reply stops the sequence. checked for first responses too, not only
        follow-ups: a customer who texts in during the queue delay has still replied. */
-    if (!args.afterReply) {
+    if (!args.afterReply && !args.personWritten) {
       const conversation = await store.getOrCreateConversation(action.tenantId, lead.id);
       if (conversation.lastInboundAt) {
         return deny('customer_replied', 'the customer replied before this message fired');
@@ -546,6 +562,10 @@ export async function authorizeLeadRecoveryEffect(
     /* 0035: the owner has paused the texts to their own customers. */
     if (/arc_account:owner_paused/.test(String((error as Error)?.message ?? error))) {
       return deny('owner_paused', 'the business has paused its texts');
+    }
+    /* 0036: the owner has paused the one campaign this lead came in by. */
+    if (/arc_account:campaign_paused/.test(String((error as Error)?.message ?? error))) {
+      return deny('campaign_paused', 'the business has paused this campaign');
     }
     throw error;
   }
@@ -1215,6 +1235,7 @@ export async function handleInboundMessage(deps: EngineDeps, input: InboundMessa
       const stopped = await store.cancelPendingActions(input.tenantId, run.id, 'a safety rule fired on the customer\'s reply', [
         'classify_reply',
         'route_to_contractor',
+        'ask_question',
       ]);
       await store.updateLead(input.tenantId, lead.id, { status: 'handoff_required' });
       /* queued first, moved second: the action is what fetches the person, and it moves
@@ -1257,7 +1278,12 @@ export async function handleInboundMessage(deps: EngineDeps, input: InboundMessa
      message was dealt with (`replyWasHandled`). */
   const closeLater = () => queue(deps, run, 'close_run', new Date(now.getTime() + CLOSE_AFTER_HOURS * 3_600_000), {}, messageKey);
 
-  if (!verdict.substantive) {
+  /* a question is out and this is what came back. "today", "43215", "yes" are answers then,
+     however little a classifier could make of them cold, so they are read like any reply. */
+  const answering = run.state === 'qualifying' &&
+    (await store.listActionsForRun(input.tenantId, run.id)).some((action) => action.actionType === 'ask_question' && action.status === 'done');
+
+  if (!verdict.substantive && !answering) {
     /* "yes", "ok", "thanks". nothing a classifier can use — but a customer who answers
        "yes" to "sorry we missed your call" has asked to be called, so the business is told.
        once the lead has been read and routed they already have it, and are not told twice. */
@@ -1639,7 +1665,14 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
   try {
     switch (action.actionType) {
       case 'send_first_response':
-      case 'send_followup': {
+      case 'send_followup':
+      case 'ask_question': {
+        const asking = action.actionType === 'ask_question';
+        /* the customer wrote again after the reply this question follows. that newer message
+           is being read, and what it says decides what is asked next — not this. */
+        if (asking && typeof action.payload.inbound_seen === 'number' && (await inboundCount(store, lead)) > action.payload.inbound_seen) {
+          return finish('cancelled', 'the customer wrote again before this question went — their newer message is being read');
+        }
         const body =
           action.actionType === 'send_followup'
             ? renderFollowup(config, lead.customerName)
@@ -1660,7 +1693,19 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
           return finish('failed', 'the message body was withheld from the queue');
         }
 
-        const result = await sendMessage(deps, { lead, run, config, body, action, now });
+        const result = await sendMessage(deps, {
+          lead, run, config, body, action, now,
+          /* a question answers the customer's reply, so the reply is not a reason to hold it. */
+          ...(asking ? {
+            effect: {
+              key: eventKey('lr', 'effect', action.idempotencyKey),
+              eventKey: eventKey('lr', 'sms', action.idempotencyKey),
+              template: String(action.payload.template ?? 'question'),
+              afterReply: true,
+              purpose: 'question',
+            },
+          } : {}),
+        });
 
         if (!result.sent) {
           /* the lifecycle refused at the last moment — a pause, a deselection, an archive
@@ -1692,6 +1737,14 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
             if (result.denial === 'owner_paused') {
               await openHandoffFor(deps, lead, run, {
                 reason: 'Your texts are paused, so no automatic reply was sent. This inquiry needs you.',
+                reasonCode: 'other', isSafety: false, at: now, notifyStaff: true,
+                config, action,
+              });
+            }
+            /* the same, for the one campaign the owner paused (0036). */
+            if (result.denial === 'campaign_paused') {
+              await openHandoffFor(deps, lead, run, {
+                reason: 'This campaign is paused, so no automatic reply was sent. This inquiry needs you.',
                 reasonCode: 'other', isSafety: false, at: now, notifyStaff: true,
                 config, action,
               });
@@ -1741,6 +1794,18 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
           const chaseAt = followupDueAt(config, now);
           if (chaseAt) await queue(deps, run, 'send_followup', chaseAt, {});
           await queue(deps, run, 'close_run', new Date((chaseAt ?? now).getTime() + CLOSE_AFTER_HOURS * 3_600_000), {});
+        } else if (asking) {
+          /* no answer is not the end of the lead: after the client's wait it goes to the
+             business with what is known. one per question, and it stands down by itself if
+             the customer has written anything by then (`unless_inbound_over`). the lead's
+             self-closing deadline was put back when their reply arrived. */
+          const question = String(action.payload.question ?? '');
+          await queue(
+            deps, run, 'route_to_contractor',
+            new Date(now.getTime() + config.questions.wait_minutes * 60_000),
+            { unanswered: question, unless_inbound_over: await inboundCount(store, lead) },
+            `unanswered:${question}`,
+          );
         } else {
           await queue(deps, run, 'close_run', new Date(now.getTime() + CLOSE_AFTER_HOURS * 3_600_000), {});
         }
@@ -1754,13 +1819,8 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
         /* everything the customer has written, not only the message that queued this
            (ARC-GO-310): a second text sent while the first was waiting is part of what
            they said, and the rules inside `applyClassification` read all of it. */
-        const conversation = await store.getOrCreateConversation(action.tenantId, lead.id);
-        const said = (await store.listMessages(action.tenantId, conversation.id))
-          .filter((message) => message.direction === 'inbound' && message.body)
-          .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
-          .map((message) => message.body)
-          .join('\n')
-          .slice(-2000);
+        const inbound = await inboundMessages(store, lead);
+        const said = inbound.map((message) => message.body).join('\n').slice(-2000);
         const decision = await classifyLead(deps, { lead, config, text: said || String(action.payload.body ?? lead.serviceRequest ?? '') });
 
         /* the model can take seconds, and a later message may have handed this lead to a
@@ -1772,13 +1832,27 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
         run.state = current.state;
         const messageKey = typeof action.payload.message_id === 'string' ? `reply:${action.payload.message_id}` : undefined;
 
+        /* is there a question to ask before the business gets this? (`questions.ask`) only of
+           a lead that would otherwise have been passed on as it stands: a reply that needs
+           a person goes to a person now, and one the business already has is not quizzed. */
+        const history = await store.listActionsForRun(action.tenantId, run.id);
+        const resumedAt = lastResumeAt(history);
+        const routed = wasRouted(history, resumedAt);
+        const asks = history.filter((a) => a.actionType === 'ask_question');
+        const asked = asks.filter((a) => a.status === 'done');
+        const onItsWay = asks.some((a) => (a.status === 'pending' || a.status === 'claimed') && a.payload.inbound_seen === inbound.length);
+        const next = decision.needsHuman || routed || onItsWay
+          ? null
+          : nextQuestion(config, decision, asked.map((a) => String(a.payload.question)));
+        const answers = answersInTheirWords(asked, inbound);
+
         await store.updateLead(action.tenantId, lead.id, {
           urgency: decision.urgency,
           safetyFlags: decision.safetyFlags,
           aiSummary: decision.summary,
           locationZip: decision.zip ?? lead.locationZip,
           serviceRequest: decision.serviceType ?? lead.serviceRequest,
-          status: decision.needsHuman ? 'handoff_required' : 'qualified',
+          status: decision.needsHuman ? 'handoff_required' : next || onItsWay ? 'qualifying' : 'qualified',
         });
 
         await store.emit(action.tenantId, [
@@ -1788,7 +1862,10 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
             /* one per message read, so a second reply's reading is on the record too. */
             event_key: eventKey('lr', 'qualified', lead.correlationId, messageKey ?? String(action.attempts)),
             payload: {
-              outcome: decision.needsHuman ? 'needs_human' : 'qualified',
+              /* `needs_info` while a question is still out: read, safe, and not finished. */
+              outcome: decision.needsHuman ? 'needs_human' : next || onItsWay ? 'needs_info' : 'qualified',
+              /* when to call them, in the customer's own words — no model reads it. */
+              ...(answers.timing ? { preferred_time: answers.timing } : {}),
               job_type: decision.serviceType,
               zip: decision.zip,
               in_service_area:
@@ -1819,12 +1896,50 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
           return finish('done', `handoff required: ${decision.handoffCode}`);
         }
 
-        await queue(deps, run, 'route_to_contractor', now, {});
+        if (onItsWay) return finish('done', 'a question for this reply is already on the queue');
+
+        if (next) {
+          /* one question, in reviewed words, through the same gate as every other text. the
+             run stays `qualifying`: the exchange is still being read. `inbound_seen` is how
+             the question knows, when its turn comes, whether the customer has written since. */
+          const question = renderQuestion(config, next, lead.customerName);
+          await queue(deps, run, 'ask_question', now, {
+            question: next,
+            body: question.body,
+            template: question.templateKey,
+            to: lead.phone,
+            inbound_seen: inbound.length,
+          }, `question:${next}:${messageKey ?? action.id}`);
+          return finish('done', `asking the customer: ${next}`);
+        }
+
+        /* keyed on the message once the lead has been handed back to ARC, because the route
+           from before the takeover keeps the run's own key (`resumeAutomation`). */
+        await queue(deps, run, 'route_to_contractor', now, {}, resumedAt > 0 ? (messageKey ?? `after:${action.id}`) : undefined);
         await moveRun(deps, lead, run, 'qualified');
         return finish('done', 'qualified');
       }
 
       case 'route_to_contractor': {
+        const history = await store.listActionsForRun(action.tenantId, run.id);
+
+        /* queued behind a question, for the case nobody answers it. if the customer has
+           written anything since, their message is being read and decides what happens. */
+        if (typeof action.payload.unless_inbound_over === 'number') {
+          if ((await inboundCount(store, lead)) > action.payload.unless_inbound_over) {
+            return finish('cancelled', 'the customer answered — their reply is being read');
+          }
+          if (run.state === 'handoff_required' || run.state === 'handed_off') {
+            return finish('cancelled', 'a person already has this lead');
+          }
+        }
+        /* the business is told about a lead once. a second route for the same lead — the
+           answer to a question arriving after its wait ran out — changes nothing. */
+        if (wasRouted(history.filter((a) => a.id !== action.id), lastResumeAt(history))) {
+          return finish('done', 'already routed to the contractor');
+        }
+        if (run.state === 'qualifying') await moveRun(deps, lead, run, 'qualified');
+
         const destination = config.forwarding.destination;
         await store.updateLead(action.tenantId, lead.id, { assignedTo: destination, status: 'qualified' });
         await notifyStaff(deps, { lead, config, now, summary: lead.aiSummary, urgency: lead.urgency, safetyFlags: lead.safetyFlags, action, run });
@@ -1901,6 +2016,48 @@ async function executeAction(deps: EngineDeps, action: ActionRow, now: Date): Pr
         return finish('done', 'closed');
       }
 
+      case 'send_owner_reply': {
+        /* a text the owner wrote, after taking the lead over (`sendOwnerReply`). their words,
+           through the same reservation as every other text — and nothing here fetches a
+           person or alerts one when it does not go: the person is the one who sent it, and
+           they are shown why on the conversation itself. */
+        const author = typeof action.payload.author === 'string' ? action.payload.author : null;
+        const written = String(action.payload.body ?? '');
+        const notSent = (why: string) => recordOwnerReplyNotSent(deps, action, lead, why, now);
+        if (!written.trim() || written === WITHHELD) {
+          await notSent('this text read like a password or a key, so it was not sent');
+          return finish('failed', 'the reply was withheld from the queue');
+        }
+
+        /* the opt-out line goes on the first text this customer gets, and only that one. a
+           text that never went is not one they got. */
+        const conversation = await store.getOrCreateConversation(action.tenantId, lead.id);
+        const heardFromUs = (await store.listMessages(action.tenantId, conversation.id))
+          .some((message) => message.direction === 'outbound' && message.status !== 'failed');
+        const result = await sendMessage(deps, {
+          lead, run, config, action, now,
+          body: renderOwnerReply(config, written, !heardFromUs),
+          effect: {
+            key: eventKey('lr', 'effect', action.idempotencyKey),
+            eventKey: eventKey('lr', 'sms', action.idempotencyKey),
+            template: 'owner_reply',
+            personWritten: true,
+            authorUserId: author,
+          },
+        });
+        if (result.sent) return finish('done', `sent (${result.sid ?? 'no sid'})`);
+
+        if (result.ambiguous) {
+          await notSent('the phone carrier did not answer, so it is not known whether this went. Check with the customer before sending it again');
+          return finish('failed', result.detail);
+        }
+        if (result.permanent || (result.denial && (SEND_STOPPED as readonly string[]).includes(result.denial))) {
+          await notSent(ownerReplyRefusal(result.denial, result.detail));
+          return finish(result.denial ? 'cancelled' : 'failed', result.detail);
+        }
+        return retryOrGiveUp(deps, action, run, lead, result.detail, now);
+      }
+
       default:
         return finish('failed', `"${action.actionType}" is not an action this engine performs`);
     }
@@ -1949,6 +2106,13 @@ async function retryOrGiveUp(
   const closed = await store.completeAction(lease, 'failed', detail, iso(now));
   if (!closed.ok) {
     return { kind: 'failed', outcome: `${detail} — and it could not be closed out (${closed.reason})` };
+  }
+  /* an owner's own text that never went. the owner already has the lead and is the one to
+     tell, on the conversation — and it is not one of ARC's texts failing, so it writes no
+     `message_failed`: the ledger reads that as ARC's text not having gone out. */
+  if (action.actionType === 'send_owner_reply') {
+    await recordOwnerReplyNotSent(deps, action, lead, `it could not be sent after ${action.attempts} tries`, now);
+    return { kind: 'failed', outcome: `${detail} — out of retries; the owner is shown that it did not go` };
   }
   await recordSendFailure(deps, lead, run, detail, now, action);
   await openHandoffFor(deps, lead, run, {
@@ -2011,6 +2175,8 @@ async function dispatchEffect(
     /** emitted only on acceptance, and only for customer-facing messages. */
     evidence?: { eventKey: string; template?: string | null; purpose?: string | null; latencyFrom?: string | null; unmeasured?: boolean } | null;
     recordMessage?: boolean;
+    /** who wrote it, when a person did. absent for every reviewed template. */
+    authorUserId?: string | null;
   },
 ): Promise<{ sent: boolean; sid: string | null; permanent: boolean; ambiguous: boolean; detail: string }> {
   const { store } = deps;
@@ -2128,6 +2294,7 @@ async function dispatchEffect(
       errorClass: null,
       errorDetail: null,
       occurredAt: iso(now),
+      ...(args.authorUserId ? { authorUserId: args.authorUserId } : {}),
     });
   }
 
@@ -2174,7 +2341,14 @@ async function sendMessage(
     action: ActionRow;
     now: Date;
     /** a message that is not the action's own one send: its identity, and its template. */
-    effect?: { key: string; eventKey: string; template: string; afterReply?: boolean };
+    effect?: {
+      key: string; eventKey: string; template: string; afterReply?: boolean;
+      /** what the text is for, when its template key does not say (`question`). */
+      purpose?: string;
+      /** an owner's own text: gated as one, reserved as `owner_sms`, and never `sms_sent`. */
+      personWritten?: boolean;
+      authorUserId?: string | null;
+    };
   },
 ): Promise<{ sent: boolean; sid: string | null; permanent: boolean; ambiguous: boolean; detail: string; denial?: EffectDenial }> {
   const { lead, action, now } = args;
@@ -2188,11 +2362,12 @@ async function sendMessage(
     run: args.run,
     lead,
     config: args.config,
-    effectType: 'customer_sms',
+    effectType: args.effect?.personWritten ? 'owner_sms' : 'customer_sms',
     effectKey,
     destination: lead.phone,
     now,
     afterReply: args.effect?.afterReply === true,
+    personWritten: args.effect?.personWritten === true,
   });
 
   if (!authorized.ok) {
@@ -2212,13 +2387,109 @@ async function sendMessage(
     body: args.body,
     to: lead.phone as string,
     now,
-    evidence: {
+    authorUserId: args.effect?.authorUserId ?? null,
+    /* `sms_sent` is ARC's own text going out: the ledger's third link and the response time
+       are read off it. a text a person wrote is neither, so it is a row on the conversation
+       and no event (as ARC-370 keeps a person's messages out of `events`). */
+    evidence: args.effect?.personWritten ? null : {
       eventKey: args.effect?.eventKey ?? eventKey('lr', 'sms', action.idempotencyKey),
       template: args.effect?.template ?? (typeof action.payload.template === 'string' ? action.payload.template : null),
-      purpose: args.effect?.template === 'reply_ack' ? 'reply_ack' : action.actionType === 'send_first_response' ? 'first_response' : action.actionType === 'send_followup' ? 'followup' : null,
+      purpose: args.effect?.purpose ?? (args.effect?.template === 'reply_ack' ? 'reply_ack' : action.actionType === 'send_first_response' ? 'first_response' : action.actionType === 'send_followup' ? 'followup' : null),
       latencyFrom: typeof action.payload.lead_at === 'string' ? action.payload.lead_at : null,
       unmeasured: Boolean(args.effect),
     },
+  });
+}
+
+/* ── what the question exchange reads off the run ───────── */
+
+/** Everything the customer has written on this lead, oldest first. */
+async function inboundMessages(store: EngineStore, lead: LeadRow) {
+  const conversation = await store.getOrCreateConversation(lead.tenantId, lead.id);
+  return (await store.listMessages(lead.tenantId, conversation.id))
+    .filter((message) => message.direction === 'inbound' && message.body)
+    .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+}
+
+/**
+ * How many messages the customer has sent. A count rather than a time: "have they written
+ * since?" is then the same question on a database's clock, a worker's and a test's.
+ */
+async function inboundCount(store: EngineStore, lead: LeadRow): Promise<number> {
+  return (await inboundMessages(store, lead)).length;
+}
+
+/** When the lead was last handed back to ARC (`resumeAutomation`), or 0 if it never was. */
+function lastResumeAt(actions: ActionRow[]): number {
+  let latest = 0;
+  for (const action of actions) {
+    const at = typeof action.payload.resumed_at === 'string' ? Date.parse(action.payload.resumed_at) : NaN;
+    if (Number.isFinite(at) && at > latest) latest = at;
+  }
+  return latest;
+}
+
+/** Whether the business has been told about this lead since it was last handed back. */
+function wasRouted(actions: ActionRow[], since: number): boolean {
+  return actions.some((action) => {
+    if (action.actionType !== 'route_to_contractor' || action.status !== 'done') return false;
+    /* a route from before the hand-back told them about the lead as it stood then. */
+    return since === 0 || (action.completedAt !== null && Date.parse(action.completedAt) >= since);
+  });
+}
+
+/**
+ * What the customer wrote after each question, in their own words.
+ *
+ * A question's answer is every message between it and the next question — counted, as
+ * `inbound_seen` is, not timed. No model reads these: the answer to "when should we call?"
+ * is the sentence they sent.
+ */
+function answersInTheirWords(asked: ActionRow[], inbound: { body: string | null }[]): Partial<Record<QuestionKey, string>> {
+  const marks = asked
+    .filter((action) => typeof action.payload.inbound_seen === 'number' && (QUESTION_KEYS as readonly unknown[]).includes(action.payload.question))
+    .map((action) => ({ key: action.payload.question as QuestionKey, from: action.payload.inbound_seen as number }))
+    .sort((a, b) => a.from - b.from);
+  const out: Partial<Record<QuestionKey, string>> = {};
+  marks.forEach((mark, index) => {
+    const words = inbound.slice(mark.from, marks[index + 1]?.from).map((message) => message.body ?? '').join(' ').replace(/\s+/g, ' ').trim();
+    if (words) out[mark.key] = words.slice(0, 160);
+  });
+  return out;
+}
+
+/** Why an owner's own text did not go, in words for the owner. */
+function ownerReplyRefusal(denial: EffectDenial | undefined, detail: string): string {
+  switch (denial) {
+    case 'suppressed': return 'this customer asked not to be texted, so it was not sent';
+    case 'no_consent': return 'there is no permission on record to text this customer, so it was not sent. Call them instead';
+    case 'lead_closed': return 'this conversation is closed, so it was not sent';
+    case 'run_not_sendable': return 'you handed this conversation back to ARC before it went, so it was not sent';
+    case 'subscription_inactive': return 'your subscription is not active, so it was not sent';
+    case 'usage_cap': return 'you have used every text in this period, so it was not sent';
+    case 'sending_stopped': return 'ARC has paused all texting while it fixes a problem, so it was not sent';
+    case 'compliance_not_approved': return 'your number is not approved for texting yet, so it was not sent';
+    case 'module_paused': case 'module_not_active': return 'ARC is not switched on for your business right now, so it was not sent';
+    case 'tenant_paused': case 'tenant_archived': case 'tenant_missing': return 'your account is not active, so it was not sent';
+    default: return `it was not sent (${detail})`;
+  }
+}
+
+/** The row on the conversation that says an owner's text did not go, and why. */
+async function recordOwnerReplyNotSent(deps: EngineDeps, action: ActionRow, lead: LeadRow, why: string, now: Date) {
+  const written = String(action.payload.body ?? '');
+  const conversation = await deps.store.getOrCreateConversation(action.tenantId, lead.id);
+  await deps.store.insertMessage({
+    tenantId: action.tenantId,
+    conversationId: conversation.id,
+    direction: 'outbound',
+    providerMessageId: null,
+    body: written === WITHHELD ? null : written,
+    status: 'failed',
+    errorClass: 'delivery',
+    errorDetail: why.slice(0, 300),
+    occurredAt: iso(now),
+    authorUserId: typeof action.payload.author === 'string' ? action.payload.author : null,
   });
 }
 
@@ -2743,6 +3014,113 @@ export async function takeOverLead(
   ]);
 
   return { ok: true, outcome: `taken over — ${cancelled} pending action(s) cancelled` };
+}
+
+/** Why an owner's reply or hand-back was refused at the door. A closed list the portal words. */
+export type OwnerActionRefusal =
+  | 'not_found'
+  | 'not_taken_over'
+  | 'empty'
+  | 'too_long'
+  | 'withheld'
+  | 'no_number'
+  | 'no_permission'
+  | 'opted_out'
+  | 'safety'
+  | 'reply_pending'
+  | 'invalid';
+
+export type OwnerActionResult =
+  | { ok: true; outcome: string }
+  | { ok: false; code: OwnerActionRefusal; outcome: string };
+
+const refuse = (code: OwnerActionRefusal, outcome: string): OwnerActionResult => ({ ok: false, code, outcome });
+
+/**
+ * The owner writes to the customer themselves.
+ *
+ * Only on a lead they have taken over: the takeover is what stopped the automation, and it
+ * is committed before a word of theirs can be queued, so a person and a template never talk
+ * to the same customer at once. This function sends nothing. It queues one action — keyed on
+ * the caller's own `requestKey`, so a double tap is one text — and the dispatcher sends it
+ * through the same reservation as every other message, re-reading the opt-out list, the
+ * lifecycle and the emergency stop at that moment.
+ *
+ * What is checked here is checked again there; these are the refusals worth giving at once
+ * rather than a minute later.
+ */
+export async function sendOwnerReply(
+  deps: EngineDeps,
+  args: { tenantId: string; leadId: string; body: string; actorId: string; requestKey: string },
+): Promise<OwnerActionResult> {
+  const { store } = deps;
+  const now = deps.now();
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(args.requestKey)) return refuse('invalid', 'a reply names the request it is');
+
+  const body = String(args.body ?? '').replace(/\s+/g, ' ').trim();
+  if (!body) return refuse('empty', 'there is nothing to send');
+  if (body.length > MAX_OWNER_REPLY_CHARS) return refuse('too_long', `a reply is at most ${MAX_OWNER_REPLY_CHARS} characters`);
+  if (findSecretShaped({ body })) return refuse('withheld', 'that text reads like a password or a key, so it was not sent');
+
+  const lead = await store.getLead(args.tenantId, args.leadId);
+  if (!lead) return refuse('not_found', 'no lead with that id for this client');
+  const run = await store.getRunForLead(args.tenantId, lead.id, MODULE_KEY);
+  if (!run || run.state !== 'handed_off') return refuse('not_taken_over', 'take this conversation over before replying');
+  if (!lead.phone) return refuse('no_number', 'there is no number to text for this customer');
+  if (!lead.consentSms) return refuse('no_permission', 'there is no permission on record to text this customer');
+  if (await store.isSuppressed(args.tenantId, 'sms', lead.phone, iso(now))) return refuse('opted_out', 'this customer asked not to be texted');
+
+  const created = await queue(deps, run, 'send_owner_reply', now, { body, author: args.actorId }, `reply:${args.requestKey}`);
+  return { ok: true, outcome: created ? 'queued' : 'already queued' };
+}
+
+/**
+ * The owner hands the conversation back to ARC.
+ *
+ * The reverse of a takeover, and only of a takeover: a lead that reached a person for a
+ * safety reason stays with a person, and one that has ended stays ended. It re-evaluates
+ * rather than replays — nothing that was cancelled when they took over is put back, no
+ * check-in is sent, and ARC says nothing until the customer next writes. From then on their
+ * replies are read, answered and passed on as before, under the configuration the run was
+ * pinned to when it began.
+ */
+export async function resumeAutomation(
+  deps: EngineDeps,
+  args: { tenantId: string; leadId: string; actor?: string | null },
+): Promise<OwnerActionResult> {
+  const { store } = deps;
+  const now = deps.now();
+  const lead = await store.getLead(args.tenantId, args.leadId);
+  if (!lead) return refuse('not_found', 'no lead with that id for this client');
+  const run = await store.getRunForLead(args.tenantId, lead.id, MODULE_KEY);
+  if (!run || run.state !== 'handed_off' || run.stopReason !== 'human_takeover') {
+    return refuse('not_taken_over', 'only a conversation you took over can be handed back');
+  }
+  if ((lead.safetyFlags ?? []).length > 0) {
+    return refuse('safety', 'this conversation came to a person for a safety reason and stays with one');
+  }
+  if (lead.phone && (await store.isSuppressed(args.tenantId, 'sms', lead.phone, iso(now)))) {
+    return refuse('opted_out', 'this customer asked not to be texted');
+  }
+  const actions = await store.listActionsForRun(args.tenantId, run.id);
+  if (actions.some((action) => action.actionType === 'send_owner_reply' && (action.status === 'pending' || action.status === 'claimed'))) {
+    return refuse('reply_pending', 'your last reply is still being sent');
+  }
+
+  /* the person's hold on the lead ends first, so nothing of ARC's is refused for it after. */
+  for (let open = await store.getOpenHandoff(args.tenantId, lead.id), guard = 0; open && guard < 10; open = await store.getOpenHandoff(args.tenantId, lead.id), guard += 1) {
+    await resolveHandoffFor(deps, { tenantId: args.tenantId, handoffId: open.id, resolution: 'handed back to ARC', actorId: args.actor ?? null });
+  }
+
+  await moveRun(deps, lead, run, 'awaiting_reply');
+  await store.updateRun(args.tenantId, run.id, { stoppedAt: null, stopReason: null });
+  await store.updateLead(args.tenantId, lead.id, { status: 'awaiting_reply' });
+
+  /* the lead still closes itself if nothing more happens. the row also marks when the
+     hand-back was: a route to the business from before it does not count as one since. */
+  await queue(deps, run, 'close_run', new Date(now.getTime() + CLOSE_AFTER_HOURS * 3_600_000), { resumed_at: iso(now) }, `resumed:${iso(now)}`);
+
+  return { ok: true, outcome: 'handed back — ARC reads the customer\'s next message' };
 }
 
 export async function resolveHandoffFor(

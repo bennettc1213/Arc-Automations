@@ -102,9 +102,19 @@ plus three lead-action proof events (ARC-SAAS-040).
 | `handoff_accepted` | a person took the lead over through `takeOverLead`. A handoff request alone does not make this claim. |
 | `followup_stopped` | a queued follow-up was actually cancelled. `payload.reason` explains why; an absent or already completed follow-up creates no stop event. |
 
-`sms_sent.payload.purpose` identifies `first_response`, `followup`, `reply_ack`, or
-`handoff_ack` when the engine knows it. The send and carrier delivery remain separate
-events. The owner job card shows these rows in time order with their event IDs; the billing
+`sms_sent.payload.purpose` identifies `first_response`, `followup`, `reply_ack`,
+`handoff_ack` or `question` when the engine knows it. A `question` is one of the client's own
+questions, asked after a reply (0036); it carries its template key and no response time. The
+send and carrier delivery remain separate events.
+
+`sms_sent` is only ever one of ARC's own reviewed texts. A text the owner writes themselves
+after taking a lead over is a row on the conversation (`messages.author_user_id`) and writes
+no event, so no figure and no ledger link reads it.
+
+`lead_qualified.payload.outcome` is `needs_info` while a question is still out: the reply was
+read and is safe, and the business has not been told yet. Each reading is its own row.
+`payload.preferred_time`, when present, is the customer's own words in answer to "when should
+we call?" — no model reads it. The owner job card shows these rows in time order with their event IDs; the billing
 verdict remains a derivation, never a stored `billable` event. See
 [lead-action proof](docs/architecture/ARC_LEAD_ACTION_PROOF.md).
 

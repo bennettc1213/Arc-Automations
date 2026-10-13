@@ -244,7 +244,8 @@ describe('the settings actions', { skip }, () => {
       body.schema.fields.find((f) => f.key === 'templates').layout.parts.map((part) => part.key),
       layoutsFor('lead_recovery_config').templates.parts.map((part) => part.key),
     );
-    assert.equal(body.schema.fields.find((f) => f.key === 'templates').layout.parts.length, 6);
+    /* ten since the four questions each got a template of their own. */
+    assert.equal(body.schema.fields.find((f) => f.key === 'templates').layout.parts.length, 10);
     assert.equal(body.current, null);
     assert.equal(body.open_draft, null);
     assert.deepEqual(body.lifecycles, [{ module_key: 'lead_recovery', state: 'configuring' }]);

@@ -43,8 +43,11 @@ import {
   listUnknownSends,
   loadPinnedConfig,
   recordPilotTerms,
+  resumeAutomation,
   runDueActions,
+  sendOwnerReply,
   settleUnknownSend,
+  takeOverLead,
 } from '../supabase/functions/_shared/engine/runtime.ts';
 import { activateModule, beginTesting, pauseModule, recordTestResult, selectModule } from '../supabase/functions/_shared/lifecycle/engine.ts';
 import { classifierFor, FakeClassifier } from '../supabase/functions/_shared/classifier.ts';
@@ -1367,6 +1370,300 @@ function gate(title, makeWorld, options = {}) {
       const data = await world.dashboard(client);
       assert.equal(data.threads.find((thread) => thread.id === lead.correlationId).ledger.status, 'disputed');
       assert.equal(data.ledger.month.billed, 0, 'a job the owner says did not happen is not billed');
+    });
+
+    /* ── the conversation after the first reply (0036) ── */
+
+    const ASKING = { questions: { ask: ['service', 'location', 'timing'], wait_minutes: 30 } };
+    const qualifiedRows = async (world, client) =>
+      (await world.events(client)).filter((event) => event.eventType === 'lead_qualified' && !event.isCanary).sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+
+    test('a client\'s questions are asked one at a time, a known answer is skipped, and the owner gets the lead once', async () => {
+      const world = await makeWorld();
+      const client = await world.client({ config: ASKING });
+      const { customer, lead } = await texted(world, client);
+
+      /* they say what they need, so the first question on the list is already answered. */
+      await world.advance(MINUTE);
+      await text(world, client, customer, 'furnace repair please');
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 2);
+      assert.match(world.carrier.to(customer)[1].body, /^What ZIP code is the job in\? Reply STOP to opt out\.$/, 'the next question, in reviewed words, with the engine\'s opt-out line');
+      assert.equal(world.carrier.to(client.ownerPhone).length, 0, 'the business is not told until the questions are done');
+      assert.equal(await stateOf(world, client, lead), 'qualifying');
+
+      /* "43215" is no sentence, and it is the answer. */
+      await world.advance(MINUTE);
+      await text(world, client, customer, '43215');
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 3);
+      assert.match(world.carrier.to(customer)[2].body, /^When is a good time for Halstead Heating to call you\?/);
+      assert.equal(world.carrier.to(client.ownerPhone).length, 0);
+
+      await world.advance(MINUTE);
+      await text(world, client, customer, 'after 5pm works');
+      await world.dispatch();
+      assert.equal(await stateOf(world, client, lead), 'qualified');
+      assert.equal(world.carrier.to(client.ownerPhone).length, 1, 'the owner is told once, at the end');
+      assert.equal(world.carrier.to(customer).length, 4, 'the first text, two questions and the one acknowledgement');
+      assert.match(world.carrier.to(customer)[3].body, /has your message and will call you to set a time/);
+
+      /* each reading is on the record: unfinished twice, then qualified with their own words. */
+      const read = await qualifiedRows(world, client);
+      assert.deepEqual(read.map((event) => event.payload.outcome), ['needs_info', 'needs_info', 'qualified']);
+      assert.equal(read.at(-1).payload.preferred_time, 'after 5pm works', 'when to call is the sentence they sent');
+      assert.deepEqual([read.at(-1).payload.job_type, read.at(-1).payload.zip], ['furnace repair', '43215']);
+      const asked = (await world.events(client)).filter((event) => event.eventType === 'sms_sent' && event.payload.purpose === 'question');
+      assert.deepEqual(asked.map((event) => event.payload.template).sort(), ['question_location', 'question_timing']);
+      assert.ok(asked.every((event) => event.latencyMs === null), 'a question is not a response time');
+
+      /* the waits behind the two questions stand down: the customer answered each. */
+      await world.advance(2 * HOUR);
+      await world.dispatch();
+      assert.equal(world.carrier.to(client.ownerPhone).length, 1);
+      assert.equal(count(await world.events(client), 'routed'), 1);
+      assert.deepEqual(world.invalid(), []);
+    });
+
+    test('a client with no questions asks none: the reply is read and passed on as it always was', async () => {
+      const world = await makeWorld();
+      const client = await world.client();
+      const { customer, lead } = await texted(world, client);
+      await text(world, client, customer, 'furnace repair please');
+      await world.dispatch();
+      assert.equal(await stateOf(world, client, lead), 'qualified');
+      assert.equal(world.carrier.to(customer).length, 2);
+      assert.match(world.carrier.to(customer)[1].body, /has your message/);
+      assert.equal(world.carrier.to(client.ownerPhone).length, 1);
+    });
+
+    test('a question nobody answers still gets the lead to the owner after the client\'s wait, and a late answer changes nothing', async () => {
+      const world = await makeWorld();
+      const client = await world.client({ config: ASKING });
+      const { customer, lead } = await texted(world, client);
+      await text(world, client, customer, 'furnace repair please');
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 2);
+
+      await world.advance(29 * MINUTE);
+      await world.dispatch();
+      assert.equal(world.carrier.to(client.ownerPhone).length, 0, 'not before the wait is up');
+
+      await world.advance(2 * MINUTE);
+      await world.dispatch();
+      assert.equal(await stateOf(world, client, lead), 'qualified');
+      assert.equal(world.carrier.to(client.ownerPhone).length, 1, 'the owner gets it with what is known');
+      assert.equal(world.carrier.to(customer).length, 3, 'and the customer is told the business has it');
+
+      /* the answer arrives after all. it is read, and nobody is told or asked twice. */
+      await world.advance(HOUR);
+      await text(world, client, customer, '43215');
+      await world.dispatch();
+      assert.equal(world.carrier.to(client.ownerPhone).length, 1);
+      assert.equal(world.carrier.to(customer).length, 3);
+      assert.equal(count(await world.events(client), 'routed'), 1);
+    });
+
+    test('an answer that sounds urgent goes to a person at once, and the questions stop', async () => {
+      const world = await makeWorld();
+      const client = await world.client({ config: ASKING });
+      const { customer, lead } = await texted(world, client);
+      await text(world, client, customer, 'furnace repair please');
+      await world.dispatch();
+      await text(world, client, customer, '43215 and I need someone right now, it is an emergency');
+      await world.dispatch();
+
+      const handoff = await world.store.getOpenHandoff(client.tenantId, lead.id);
+      assert.deepEqual([handoff.reasonCode, handoff.isSafety], ['safety', true]);
+      assert.equal(await stateOf(world, client, lead), 'handoff_required');
+      assert.equal(world.carrier.to(client.ownerPhone).length, 1);
+      const texts = world.carrier.to(customer).map((message) => message.body);
+      assert.equal(texts.length, 3);
+      assert.match(texts[2], /picking this up now/, 'the customer hears a person has it, not another question');
+
+      /* neither the unanswered-question wait nor anything else speaks afterwards. */
+      await world.advance(DAY);
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 3);
+      assert.equal(world.carrier.to(client.ownerPhone).length, 1);
+      assert.equal(count(await world.events(client), 'routed'), 0);
+    });
+
+    test('a customer who writes again before the question has gone is asked from their newer message, once', async () => {
+      const world = await makeWorld();
+      const client = await world.client({ config: ASKING });
+      const { customer, lead } = await texted(world, client);
+
+      /* the reply is read, and the question it calls for is on the queue but has not gone. */
+      await text(world, client, customer, 'furnace repair please');
+      await runDueActions(world.engine('scheduler:gate'), { limit: 1, worker: 'scheduler:gate', tenantId: client.tenantId });
+      const run = await runOf(world, client, lead);
+      const queued = (await world.store.listActionsForRun(client.tenantId, run.id)).filter((action) => action.actionType === 'ask_question');
+      assert.deepEqual(queued.map((action) => [action.payload.question, action.status]), [['location', 'pending']]);
+      assert.equal(world.carrier.to(customer).length, 1);
+
+      /* they answer it before it is asked. */
+      await text(world, client, customer, 'we are in 43215');
+      await world.dispatch();
+      const texts = world.carrier.to(customer).map((message) => message.body);
+      assert.equal(texts.length, 2, 'one question goes, not two');
+      assert.match(texts[1], /^When is a good time/, 'and it is the one their newer message leaves unanswered');
+      const asks = (await world.store.listActionsForRun(client.tenantId, run.id)).filter((action) => action.actionType === 'ask_question');
+      assert.deepEqual(asks.map((action) => [action.payload.question, action.status]).sort(), [['location', 'cancelled'], ['timing', 'done']]);
+    });
+
+    test('the owner takes a lead over, writes to the customer themselves, and it is sent once, by the dispatcher', async () => {
+      const world = await makeWorld();
+      const client = await world.client();
+      const { customer, lead } = await texted(world, client);
+      const owner = world.engine('crm');
+      const reply = (body, requestKey = crypto.randomUUID()) => sendOwnerReply(owner, { tenantId: client.tenantId, leadId: lead.id, body, actorId: client.owner, requestKey });
+
+      /* not before they have it: the automation is still the one talking. */
+      assert.deepEqual([(await reply('Hi, it is Dana')).ok, (await reply('Hi, it is Dana')).code], [false, 'not_taken_over']);
+      assert.equal((await takeOverLead(owner, { tenantId: client.tenantId, leadId: lead.id, actor: client.owner })).ok, true);
+      assert.equal(await stateOf(world, client, lead), 'handed_off');
+
+      /* what a door refuses at once rather than a minute later. */
+      assert.equal((await reply('   ')).code, 'empty');
+      assert.equal((await reply('x'.repeat(481))).code, 'too_long');
+      assert.equal((await reply('use this to get in: ' + ['sk', 'live', 'a'.repeat(32)].join('_'))).code, 'withheld');
+      assert.equal((await reply('Hi', 'short')).code, 'invalid');
+
+      const sentBefore = count(await world.events(client), 'sms_sent');
+      const requestKey = crypto.randomUUID();
+      assert.deepEqual(await reply('Hi, it is Dana from Halstead. I can come by at 3 today.', requestKey), { ok: true, outcome: 'queued' });
+      assert.deepEqual(await reply('Hi, it is Dana from Halstead. I can come by at 3 today.', requestKey), { ok: true, outcome: 'already queued' }, 'a double tap is one text');
+      assert.equal(world.carrier.to(customer).length, 1, 'the door queues and returns — only the dispatcher sends');
+
+      await world.dispatch();
+      const texts = world.carrier.to(customer).map((message) => message.body);
+      assert.deepEqual(texts.slice(1), ['Hi, it is Dana from Halstead. I can come by at 3 today.'], 'their words, as written, once');
+
+      /* it is a row on the conversation with their name on it, and not one of ARC's texts:
+         no `sms_sent`, so no figure and no ledger link reads it. */
+      const conversation = await world.store.getOrCreateConversation(client.tenantId, lead.id);
+      const written = (await world.store.listMessages(client.tenantId, conversation.id)).filter((message) => message.authorUserId);
+      assert.deepEqual(written.map((message) => [message.direction, message.authorUserId, message.body]), [['outbound', client.owner, 'Hi, it is Dana from Halstead. I can come by at 3 today.']]);
+      assert.equal(count(await world.events(client), 'sms_sent'), sentBefore);
+      assert.equal(await stateOf(world, client, lead), 'handed_off', 'and the lead is still theirs');
+
+      /* the customer's answer is recorded and nothing of ARC's speaks over the owner. */
+      await text(world, client, customer, 'yes 3 is good');
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 2);
+
+      /* STOP ends it for the owner too. */
+      await text(world, client, customer, 'STOP');
+      await world.dispatch();
+      assert.equal((await reply('one more thing')).ok, false);
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 2);
+      assert.deepEqual(world.invalid(), []);
+    });
+
+    test('an opt-out that lands after the owner\'s text was queued stops it, and the owner is shown why', async () => {
+      const world = await makeWorld();
+      const client = await world.client();
+      const { customer, lead } = await texted(world, client);
+      const owner = world.engine('crm');
+      await takeOverLead(owner, { tenantId: client.tenantId, leadId: lead.id, actor: client.owner });
+      assert.equal((await sendOwnerReply(owner, { tenantId: client.tenantId, leadId: lead.id, body: 'On my way', actorId: client.owner, requestKey: crypto.randomUUID() })).ok, true);
+
+      /* the number is suppressed by something other than this conversation, in the gap. */
+      await world.store.addSuppression({ tenantId: client.tenantId, channel: 'sms', address: customer, reason: 'opt_out', source: 'customer', createdAt: world.now().toISOString(), expiresAt: null });
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 1, 'nothing left for the handset');
+      const conversation = await world.store.getOrCreateConversation(client.tenantId, lead.id);
+      const [row] = (await world.store.listMessages(client.tenantId, conversation.id)).filter((message) => message.authorUserId);
+      assert.deepEqual([row.status, row.body], ['failed', 'On my way']);
+      assert.match(row.errorDetail, /asked not to be texted/);
+      assert.equal(count(await world.events(client), 'message_failed'), 0, 'it is not one of ARC\'s texts failing');
+    });
+
+    test('the owner hands the lead back: nothing cancelled is sent, and ARC reads the customer\'s next message', async () => {
+      const world = await makeWorld();
+      const client = await world.client({ config: ASKING });
+      const { customer, lead } = await texted(world, client);
+      const owner = world.engine('crm');
+      const back = () => resumeAutomation(owner, { tenantId: client.tenantId, leadId: lead.id, actor: client.owner });
+
+      /* only a takeover is handed back. */
+      assert.deepEqual([(await back()).ok, (await back()).code], [false, 'not_taken_over']);
+      await takeOverLead(owner, { tenantId: client.tenantId, leadId: lead.id, actor: client.owner });
+      const run = await runOf(world, client, lead);
+      const cancelled = (await world.store.listActionsForRun(client.tenantId, run.id)).filter((action) => action.status === 'cancelled').map((action) => action.actionType).sort();
+      assert.deepEqual(cancelled, ['close_run', 'send_followup'], 'the takeover cancelled the check-in');
+
+      /* a reply of theirs that is still on its way goes first. */
+      await sendOwnerReply(owner, { tenantId: client.tenantId, leadId: lead.id, body: 'Dana here', actorId: client.owner, requestKey: crypto.randomUUID() });
+      assert.equal((await back()).code, 'reply_pending');
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 2);
+
+      assert.deepEqual(await back(), { ok: true, outcome: 'handed back — ARC reads the customer\'s next message' });
+      assert.equal(await stateOf(world, client, lead), 'awaiting_reply');
+      assert.equal(await world.store.getOpenHandoff(client.tenantId, lead.id), null, 'nobody is holding it');
+      assert.equal((await back()).code, 'not_taken_over', 'handing back twice is one hand-back');
+      assert.equal((await sendOwnerReply(owner, { tenantId: client.tenantId, leadId: lead.id, body: 'me again', actorId: client.owner, requestKey: crypto.randomUUID() })).code, 'not_taken_over');
+
+      /* the check-in that was cancelled stays cancelled: nothing goes out by itself. */
+      await world.advance(2 * DAY);
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 2, 'ARC says nothing until the customer writes');
+      assert.equal(await stateOf(world, client, lead), 'awaiting_reply');
+
+      /* and then it carries on: their reply is read, a question asked, the owner told at the end. */
+      await text(world, client, customer, 'furnace repair please, 43215');
+      await world.dispatch();
+      assert.match(world.carrier.to(customer).at(-1).body, /^When is a good time/);
+      await text(world, client, customer, 'mornings');
+      await world.dispatch();
+      assert.equal(await stateOf(world, client, lead), 'qualified');
+      assert.equal(world.carrier.to(client.ownerPhone).length, 1);
+      assert.equal((await qualifiedRows(world, client)).at(-1).payload.preferred_time, 'mornings');
+      assert.deepEqual(world.invalid(), []);
+    });
+
+    test('a lead that reached a person for a safety reason is not handed back to the automation', async () => {
+      const world = await makeWorld();
+      const client = await world.client();
+      const { customer, lead } = await texted(world, client);
+      await text(world, client, customer, 'there is smoke coming from the furnace');
+      await world.dispatch();
+      const owner = world.engine('crm');
+      await takeOverLead(owner, { tenantId: client.tenantId, leadId: lead.id, actor: client.owner });
+      assert.equal(await stateOf(world, client, lead), 'handed_off');
+      const refused = await resumeAutomation(owner, { tenantId: client.tenantId, leadId: lead.id, actor: client.owner });
+      assert.deepEqual([refused.ok, refused.code], [false, 'safety']);
+      assert.equal(await stateOf(world, client, lead), 'handed_off');
+    });
+
+    test('a lead the business was already told about is routed again only after a hand-back', async () => {
+      const world = await makeWorld();
+      const client = await world.client();
+      const { customer, lead } = await texted(world, client);
+      await text(world, client, customer, 'furnace repair please, we are in 43215');
+      await world.dispatch();
+      assert.equal(world.carrier.to(client.ownerPhone).length, 1);
+
+      const owner = world.engine('crm');
+      await takeOverLead(owner, { tenantId: client.tenantId, leadId: lead.id, actor: client.owner });
+      await world.advance(MINUTE);
+      assert.equal((await resumeAutomation(owner, { tenantId: client.tenantId, leadId: lead.id, actor: client.owner })).ok, true);
+
+      await world.advance(MINUTE);
+      await text(world, client, customer, 'also the water heater is leaking a little');
+      await world.dispatch();
+      assert.equal(await stateOf(world, client, lead), 'qualified');
+      assert.equal(world.carrier.to(client.ownerPhone).length, 2, 'the owner handed it back, so they are told about what came next');
+      assert.equal(world.carrier.to(customer).length, 2, 'the customer is thanked once per lead, not again');
+
+      /* and once more is once: a further reply does not alert them a third time. */
+      await world.advance(MINUTE);
+      await text(world, client, customer, 'the water heater is in the basement');
+      await world.dispatch();
+      assert.equal(world.carrier.to(client.ownerPhone).length, 2);
     });
   });
 }

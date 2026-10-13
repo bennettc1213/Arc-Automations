@@ -65,18 +65,43 @@ describe("turning an owner's campaign into what ARC sends", () => {
       templates: {
         first_response_form: 'Hi{{customer_name}}, this is {{company}}. Thanks for your request, we will call you today. Reply STOP to opt out.',
         followup: '{{company}} here again. Do you still need a hand? Reply STOP to opt out.',
+        question_service: 'What do you need?',
       },
       followup: { enabled: true, after_minutes: 1440 },
+      questions: { ask: ['service'] },
     });
-    assert.deepEqual(plan.applied.map((line) => line.id), ['message', 'followup']);
-    assert.deepEqual(plan.notApplied.map((line) => line.id), ['questions', 'delay', 'afterHours', 'limits']);
-    assert.match(plan.notApplied[0].text, /does not ask questions one by one yet/);
+    assert.deepEqual(plan.applied.map((line) => line.id), ['message', 'followup', 'questions']);
+    assert.match(plan.applied[2].text, /asks your question, skipping anything they have already told you/);
+    assert.deepEqual(plan.notApplied.map((line) => line.id), ['delay', 'afterHours', 'limits']);
+  });
+
+  test('the questions are the owner’s own, from ARC’s list, each asked once', () => {
+    const two = publishPlan(campaign({ questions: [{ key: 'location', text: 'What ZIP is the job in, {{first_name}}?' }, { key: 'timing', text: 'When should {{business}} call?' }] }));
+    assert.equal(two.ok, true);
+    /* the order is the owner's, and the words are theirs in the engine's placeholders. */
+    assert.deepEqual(two.wording.questions, { ask: ['location', 'timing'] });
+    assert.equal(two.wording.templates.question_location, 'What ZIP is the job in{{customer_name}}?');
+    assert.equal(two.wording.templates.question_timing, 'When should {{company}} call?');
+    assert.match(two.applied.at(-1).text, /2 questions, one at a time/);
+
+    /* none is a decision too: it is published as none, so an earlier list stops being asked. */
+    const none = publishPlan(campaign({ questions: [] }));
+    assert.deepEqual(none.wording.questions, { ask: [] });
+    assert.match(none.applied.at(-1).text, /asks no questions/);
+
+    const invented = publishPlan(campaign({ questions: [{ key: 'budget', text: 'What is your budget?' }] }));
+    assert.equal(invented.ok, false);
+    assert.match(invented.problems[0].text, /not one ARC can ask/);
+    const twice = publishPlan(campaign({ questions: [{ key: 'service', text: 'What do you need?' }, { key: 'service', text: 'And again?' }] }));
+    assert.match(twice.problems[0].text, /listed twice/);
+    const gap = publishPlan(campaign({ questions: [{ key: 'service', text: 'Is this about {{service}}?' }] }));
+    assert.match(gap.problems[0].text, /One of your questions uses \{\{service\}\}/);
   });
 
   test('a missed-call campaign writes the call text, and a single contact turns the check-in off', () => {
     const plan = publishPlan(campaign({ kind: 'missed', maxContacts: 1, followup: '' }));
     assert.equal(plan.ok, true);
-    assert.deepEqual(Object.keys(plan.wording.templates), ['first_response']);
+    assert.deepEqual(Object.keys(plan.wording.templates), ['first_response', 'question_service']);
     assert.deepEqual(plan.wording.followup, { enabled: false });
     assert.match(plan.applied[1].text, /No check-in text is sent/);
   });
@@ -141,12 +166,14 @@ describe('what an owner may publish is a closed list', () => {
     assert.equal(ownerWordingImpact({ requires_retest: false, requires_shadow: false, requires_reactivation: false, unknown_fields: ['mystery'] }).ok, false);
   });
 
-  test('0034 lists the same templates, and redefines the publish function with one clause changed', () => {
+  test('the database lists the same templates, and 0034 redefines the publish function with one clause changed', () => {
     const sql = read('supabase/migrations/0034_owner_publishing.sql');
-    const listed = /v_allowed constant text\[\] := array\[([^\]]+)\]/.exec(sql)[1].split(',').map((s) => s.trim().replace(/'/g, ''));
+    /* 0036 widened the list by the questions, in both places: it is the definition in force. */
+    const widened = read('supabase/migrations/0036_owner_conversation.sql');
+    const listed = /v_allowed constant text\[\] := array\[([^\]]+)\]/.exec(widened)[1].split(',').map((s) => s.trim().replace(/'/g, ''));
     assert.deepEqual(listed, [...OWNER_WORDING_TEMPLATES]);
-    assert.match(sql, /\(p_after - 'templates' - 'followup'\)/);
-    assert.deepEqual([...OWNER_WORDING_FIELDS], ['templates', 'followup']);
+    assert.match(widened, /\(p_after - 'templates' - 'followup' - 'questions'\)/);
+    assert.deepEqual([...OWNER_WORDING_FIELDS], ['templates', 'followup', 'questions']);
 
     const body = (text) => {
       const start = text.indexOf('create or replace function public.publish_config_draft(');
@@ -203,7 +230,7 @@ describe('an owner publishing on real SQL', { skip }, () => {
       const head = await headRow(db, tenantId);
       assert.equal(head.version, preview.body.preview.version + 1);
       assert.equal(head.published_by, OWNER, 'the version is recorded as the owner’s');
-      assert.deepEqual(head.change_impact.owner_authored, { waived: ['retest'], fields: ['templates', 'followup'] });
+      assert.deepEqual(head.change_impact.owner_authored, { waived: ['retest'], fields: ['templates', 'followup', 'questions'] });
       assert.equal(head.change_impact.requires_retest, false);
       const lifecycle = await moduleRow(db, tenantId);
       assert.deepEqual([lifecycle.state, lifecycle.pending_requirements], ['active', []], 'nothing is held for a retest');

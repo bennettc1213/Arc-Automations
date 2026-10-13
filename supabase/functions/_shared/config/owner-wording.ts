@@ -25,18 +25,27 @@ import { canonicalJson } from '../canonical-json.ts';
 
 export const OWNER_WORDING_MODULE = 'lead_recovery';
 
-/** The top-level fields an owner's publication may differ in. */
-export const OWNER_WORDING_FIELDS = ['templates', 'followup'] as const;
+/**
+ * The top-level fields an owner's publication may differ in. `questions` is which of the
+ * reviewed questions ARC asks after a reply, and in what order (0036): a closed list of
+ * keys, each a template, so it is wording too.
+ */
+export const OWNER_WORDING_FIELDS = ['templates', 'followup', 'questions'] as const;
 
-/** The templates inside `templates` an owner may change. Mirrored in 0034. */
-export const OWNER_WORDING_TEMPLATES = ['first_response', 'first_response_form', 'followup'] as const;
+/** The templates inside `templates` an owner may change. Mirrored in 0034, widened by 0036. */
+export const OWNER_WORDING_TEMPLATES = [
+  'first_response', 'first_response_form', 'followup',
+  'question_service', 'question_location', 'question_urgency', 'question_timing',
+] as const;
 
 export type OwnerTemplateKey = (typeof OWNER_WORDING_TEMPLATES)[number];
 
 export interface OwnerWording {
-  /** a string sets the words; null removes the key (only `first_response_form` has no default). */
+  /** a string sets the words; null removes the key, which puts back the reviewed default (`first_response_form` has none). */
   templates?: Partial<Record<OwnerTemplateKey, string | null>>;
   followup?: { enabled: boolean; after_minutes?: number };
+  /** which questions are asked, in order. an empty list asks none. */
+  questions?: { ask: string[] };
 }
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
@@ -80,6 +89,13 @@ export function applyOwnerWording(document: Record<string, unknown>, wording: Ow
       ...(isPlainObject(document.followup) ? document.followup : {}),
       enabled: wording.followup.enabled,
       ...(wording.followup.after_minutes === undefined ? {} : { after_minutes: wording.followup.after_minutes }),
+    };
+  }
+  if (wording.questions) {
+    /* the wait for an answer is not the owner's to set here, so whatever is published stays. */
+    next.questions = {
+      ...(isPlainObject(document.questions) ? document.questions : {}),
+      ask: [...wording.questions.ask],
     };
   }
   return next;

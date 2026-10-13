@@ -72,7 +72,10 @@ export const TRANSITIONS: Record<RunState, RunState[]> = {
   qualifying: ['qualified', 'handoff_required', 'awaiting_reply', 'booked', 'suppressed', 'closed', 'failed'],
   qualified: ['handed_off', 'handoff_required', 'booked', 'awaiting_reply', 'suppressed', 'closed', 'failed'],
   handoff_required: ['handed_off', 'booked', 'closed', 'suppressed'],
-  handed_off: ['booked', 'closed', 'suppressed'],
+  /* `awaiting_reply` is the one way back to the automation, and only a person takes it:
+     the owner who took the lead over hands it back (`resumeAutomation`). nothing that was
+     cancelled when they took it is put back; the run waits for the customer's next message. */
+  handed_off: ['awaiting_reply', 'booked', 'closed', 'suppressed'],
   booked: ['closed'],
   closed: [],
   suppressed: [],

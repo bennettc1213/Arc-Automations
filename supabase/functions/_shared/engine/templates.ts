@@ -13,8 +13,8 @@
  * being part of any template — so it cannot be edited out of one.
  */
 
-import type { LeadRecoveryConfig } from '../lead-recovery-config.ts';
-import { BOOKING_LINK_TEMPLATE, DEFAULT_OPT_OUT_LANGUAGE, DEFAULT_TEMPLATES } from '../lead-recovery-config.ts';
+import type { LeadRecoveryConfig, QuestionKey } from '../lead-recovery-config.ts';
+import { BOOKING_LINK_TEMPLATE, DEFAULT_OPT_OUT_LANGUAGE, DEFAULT_TEMPLATES, questionTemplateKey } from '../lead-recovery-config.ts';
 import { isOpenAt, nextOpenAt } from './hours.ts';
 
 export interface RenderInput {
@@ -175,6 +175,49 @@ export function renderReplyAck(config: LeadRecoveryConfig, customerName?: string
   const template = config.templates[templateKey] ?? DEFAULT_TEMPLATES[templateKey];
   return { templateKey, body: withOptOut(render(template, { config, customerName }), config) };
 }
+
+/**
+ * Which question to ask next, or null when there is none left.
+ *
+ * In the client's own order (`questions.ask`), skipping one whose answer is already known
+ * from what the customer wrote — the service, the ZIP, how soon — and one that has already
+ * been asked. A question is asked once, so the exchange is never longer than the list.
+ * `timing` has no fact behind it: it is known only once it has been asked.
+ */
+export function nextQuestion(
+  config: LeadRecoveryConfig,
+  known: { serviceType: string | null; zip: string | null; urgency: string | null },
+  asked: readonly string[],
+): QuestionKey | null {
+  const have: Record<QuestionKey, boolean> = {
+    service: Boolean(known.serviceType),
+    location: Boolean(known.zip),
+    urgency: Boolean(known.urgency) && known.urgency !== 'unknown',
+    timing: false,
+  };
+  return config.questions.ask.find((key) => !have[key] && !asked.includes(key)) ?? null;
+}
+
+/** One question, in the client's reviewed words, with the opt-out line like every other text. */
+export function renderQuestion(config: LeadRecoveryConfig, key: QuestionKey, customerName?: string | null): { body: string; templateKey: string } {
+  const templateKey = questionTemplateKey(key);
+  return { templateKey, body: withOptOut(render(config.templates[templateKey] ?? DEFAULT_TEMPLATES[templateKey], { config, customerName }), config) };
+}
+
+/**
+ * A text the owner wrote themselves, after taking the lead over.
+ *
+ * Their words, unchanged. The opt-out line is added only when this is the first text this
+ * customer has had from the business's number, so a conversation already under way is not
+ * signed off with it on every message.
+ */
+export function renderOwnerReply(config: LeadRecoveryConfig, body: string, firstText: boolean): string {
+  const text = body.replace(/\s+/g, ' ').trim();
+  return firstText ? withOptOut(text, config) : text;
+}
+
+/** The longest text an owner may write: three segments. */
+export const MAX_OWNER_REPLY_CHARS = 480;
 
 /**
  * When the one follow-up may go (ARC-GO-310).

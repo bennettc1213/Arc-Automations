@@ -11,8 +11,11 @@ function projectLead(tenantId, thread, row, runtime) {
   const conversation = runtime?.conversations?.find(item => item.lead_id === row?.id);
   const messages = (runtime?.messages || []).filter(item => item.conversation_id === conversation?.id)
     .sort((a, b) => a.occurred_at.localeCompare(b.occurred_at))
-    .map(item => ({ id: item.id, author: item.direction === 'inbound' ? 'Customer' : 'ARC automation',
-      body: item.body || '', state: item.status, at: item.occurred_at }));
+    /* a text with an author is one the owner wrote themselves (0036); every other outbound
+       text is one of ARC's reviewed ones. `problem` is why a text of theirs did not go. */
+    .map(item => ({ id: item.id, author: item.direction === 'inbound' ? 'Customer' : item.author_user_id ? 'You' : 'ARC automation',
+      body: item.body || '', state: item.status, at: item.occurred_at,
+      problem: item.author_user_id && item.status === 'failed' ? item.error_detail || 'it was not sent' : null }));
   const handoff = runtime?.handoffs?.find(item => item.lead_id === row?.id && item.status === 'open');
   const evidence = row?.permission_evidence;
   const permission = row?.consent_sms && evidence?.affirmative === true
@@ -32,8 +35,13 @@ function projectLead(tenantId, thread, row, runtime) {
     deliveryFailed: Boolean(thread?.deliveryFailed || messages.some(item => ['undelivered', 'failed'].includes(item.state))),
     answers: Object.fromEntries(Object.entries({ service: q?.jobType, location: q?.zip || row?.location_zip,
       urgency: q?.urgency || row?.urgency, timing: q?.preferredTime }).filter(([, value]) => value)),
-    campaignId: null, needsOwner: Boolean(handoff || thread?.handoff && !thread.handoff.resolvedAt || thread?.unacknowledged),
+    /* where the lead's own row is in hand, whether a person is holding it is that row's open
+       handoff: a handoff that was resolved — the owner handed the conversation back to ARC —
+       no longer needs them, and the log's request for one cannot say so. */
+    campaignId: null, needsOwner: Boolean(handoff || !row && thread?.handoff && !thread.handoff.resolvedAt || thread?.unacknowledged),
     ownerTakeover: row?.status === 'handed_off', handoffReason: handoff?.reason || null,
+    /* a lead that reached a person for a safety reason stays with a person (`resumeAutomation`). */
+    safety: Boolean(row?.safety_flags?.length || handoff?.is_safety),
     lastActivity: messages.at(-1)?.at || row?.updated_at || thread?.steps?.at(-1)?.at || started,
     messages, steps: thread?.steps || [] };
 }
@@ -98,6 +106,7 @@ export function productionState(data) {
     ], leads,
     readiness: ready,
     sending,
+    campaignPauses: data.product?.campaignPauses?.available ? data.product.campaignPauses : null,
     readinessError: ready ? null : data.product?.readiness?.error || null,
     events: data.threads.flatMap(thread => (thread.steps || []).map((event, index) => ({
       id: `${thread.id}-${index}`, tenantId: data.tenant.id,

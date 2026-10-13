@@ -103,6 +103,11 @@ export interface MessageRow {
   errorClass: string | null;
   errorDetail: string | null;
   occurredAt: string;
+  /**
+   * Who wrote it, when a person did (0036): the owner's own reply after taking the lead
+   * over. Absent or null for everything else — a reviewed template, or the customer.
+   */
+  authorUserId?: string | null;
 }
 
 export interface RunRow {
@@ -168,7 +173,11 @@ export type ActionType =
   | 'route_to_contractor'
   | 'open_handoff'
   | 'close_run'
-  | 'notify_staff';
+  | 'notify_staff'
+  /* one of the client's questions, asked after a reply (0036). */
+  | 'ask_question'
+  /* a text the owner wrote themselves after taking the lead over (0036). */
+  | 'send_owner_reply';
 
 export interface ActionRow {
   id: string;
@@ -244,7 +253,9 @@ export const storeFail = <T = void>(reason: StoreFailure, detail: string): Store
 
 /* ── external effects ───────────────────────────────────── */
 
-export type EffectType = 'customer_sms' | 'staff_sms';
+/* `owner_sms` (0036) is a text a person wrote. it passes every gate a customer text does
+   except the owner's own pauses, which are about what ARC sends by itself. */
+export type EffectType = 'customer_sms' | 'staff_sms' | 'owner_sms';
 
 /**
  * The lifecycle of one customer- or employee-affecting side effect.

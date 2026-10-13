@@ -25,7 +25,7 @@ import type { ConfigActor } from '../config/model.ts';
 import { moduleScope } from '../config/model.ts';
 import { publishOwnerWording, resolveEffectiveConfig } from '../config/engine.ts';
 import { applyOwnerWording, OWNER_WORDING_MODULE } from '../config/owner-wording.ts';
-import { render, withOptOut } from '../engine/templates.ts';
+import { render, renderQuestion, withOptOut } from '../engine/templates.ts';
 import { DEFAULT_TEMPLATES, type LeadRecoveryConfig } from '../lead-recovery-config.ts';
 import { CAMPAIGN_FIRST_TEXT, type PlanLine, publishPlan } from './model.ts';
 
@@ -87,6 +87,9 @@ function samples(config: LeadRecoveryConfig, kind: string, followup: boolean): {
       label: 'Check-in text',
       text: withOptOut(render(config.templates.followup ?? DEFAULT_TEMPLATES.followup, { config, customerName: 'Alex Morgan' }), config),
     });
+  }
+  for (const key of config.questions?.ask ?? []) {
+    out.push({ id: `question_${key}`, label: 'Question', text: renderQuestion(config, key, 'Alex Morgan').body });
   }
   return out;
 }

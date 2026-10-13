@@ -56,10 +56,13 @@ const t = (
   Object.freeze({ key, dispatcher, effectClass, pausedPolicy, connectionRequirement, defaultMaxAttempts, retryBaseSeconds, retryCeilingSeconds });
 
 /**
- * Exactly the rows 0017 seeds into `automation_action_types`. A new type is a row there, in
- * a migration, and a row here — the test fails on any difference.
+ * Exactly the rows 0017 and 0036 seed into `automation_action_types`. A new type is a row
+ * there, in a migration, and a row here — the test fails on any difference.
  */
 export const ACTION_TYPES: readonly ActionTypeDefinition[] = Object.freeze([
+  /* 0036: a question asked after the customer's reply, and a text the owner wrote. */
+  t('ask_question', 'lead_recovery_engine', 'external_effect', 'engine', 'none', 5, 60, 1800),
+  t('send_owner_reply', 'lead_recovery_engine', 'external_effect', 'engine', 'none', 5, 60, 1800),
   t('send_first_response', 'lead_recovery_engine', 'external_effect', 'engine', 'none', 5, 60, 1800),
   t('send_followup', 'lead_recovery_engine', 'external_effect', 'engine', 'none', 5, 60, 1800),
   t('notify_staff', 'lead_recovery_engine', 'external_effect', 'engine', 'none', 5, 60, 1800),

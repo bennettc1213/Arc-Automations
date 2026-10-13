@@ -258,6 +258,7 @@ export const MODULES: readonly ModuleDefinition[] = Object.freeze([
           actions: [
             'send_first_response', 'send_followup', 'classify_reply',
             'route_to_contractor', 'open_handoff', 'close_run', 'notify_staff',
+            'ask_question', 'send_owner_reply',
           ],
           eventTypes: [
             'call_missed', 'lead_received', 'sms_sent', 'message_delivered', 'message_failed',

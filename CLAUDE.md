@@ -23,8 +23,9 @@ a client's dashboard cannot disagree.
 
 **What the launch product is and is not is frozen in one file** (ARC-SAAS-010,
 [docs/architecture/ARC_PRODUCT_SCOPE.md](docs/architecture/ARC_PRODUCT_SCOPE.md)): nine things
-in, eight out. Check it before building anything a launch client would see or be sold; moving
-something across the boundary edits that file as its own decision. Where the `ARC-SAAS-*`
+in, eight out, and §7–§8 for what Bennett has reopened since. Check it before building anything
+a launch client would see or be sold; moving something across the boundary edits that file as
+its own decision. Where the `ARC-SAAS-*`
 prompt file disagrees with the repository (n8n as Lead Recovery's execution layer, a promised
 reply speed, a scripted qualification exchange), section 5 says which holds.
 
@@ -37,7 +38,8 @@ reads looks like it does something. An optional field's absence must mean what i
 the field existed, and `LeadRecoveryPanel` sends it only when it differs from that, so the site
 can ship ahead of the functions. The follow-up's limits are `followup` (`enabled`,
 `after_minutes`, read by `followupDueAt`); that there is one follow-up and never two is the
-engine's, not a setting.
+engine's, not a setting. The questions are `questions` (`ask`, `wait_minutes`, §8 of that
+document): which of four reviewed questions are asked, never one of the client's own invention.
 
 ## ARC Lead Recovery (`0010`)
 
@@ -96,6 +98,29 @@ as a ticked box), where a website form needs the box ticked and an untick is a h
 visit is the owner's `visit-booked` on the `ledger` function or the console's button, both the
 engine's `markBooked`; an unknown send is settled by `settleUnknownSend`, which resends
 nothing. The webhooks queue and return — only the dispatcher's schedule sends.
+
+**The conversation after the first reply is still the engine's, and a person's words go through
+its one gate** (`0036`, `engine/runtime.ts`, the gate suite's last ten scenarios; decided
+2026-10-13, ARC_PRODUCT_SCOPE.md §8). *Questions:* `classify_reply` asks the next of
+`questions.ask` (`nextQuestion`, the `ask_question` action) only of a lead it would otherwise
+have routed as it stood — a reply that needs a person still goes to one at once. One already
+answered is skipped, each is asked once, and the run stays `qualifying`. "Has the customer
+written since?" is a count of their messages (`inbound_seen`, `unless_inbound_over`), never a
+time, so a question dropped for a newer message and the route queued behind an unanswered one
+behave the same on a database's clock and a test's. The business is told about a lead once
+(`wasRouted`). *An owner's own text:* `sendOwnerReply` queues `send_owner_reply` only on a run
+that is `handed_off` — the takeover is committed first — keyed on the caller's `requestKey`,
+and the dispatcher sends it with `personWritten`, reserved as `owner_sms`. It is a row on the
+conversation (`messages.author_user_id`) and **never `sms_sent`**: the ledger's third link and
+the response time read that event, and a text that did not go is a failed row with the reason,
+never `message_failed`. *Handing back:* `resumeAutomation` is `handed_off → awaiting_reply`,
+the one way back, for a takeover only — never a lead with a safety flag. It re-queues nothing
+that was cancelled and sends nothing; its `close_run` row carries `resumed_at`, after which one
+more route to the business is allowed. *One campaign paused:* a campaign is how the lead
+arrived, so `owner_campaign_pauses` is keyed on `missed` / `inbound` and read at the
+reservation beside 0035's pause (`campaign_paused`, a `SEND_STOPPED` refusal that hands the
+lead to the owner). Neither of the owner's pauses stops `owner_sms`; the lifecycle, the
+subscription and the emergency stop do.
 
 **The gate for anything hosted is `npm run gate`** (ARC-GO-320, `tests/lead-recovery-gate.test.js`,
 `scripts/safety-gate.mjs`, ARC_LEAD_RECOVERY_READINESS.md §7): the whole suite on real SQL, failing
@@ -157,7 +182,7 @@ that are not lead conversations, a reviewed vocabulary of action types
 (`automation_action_types`, drift-tested against `scheduler/model.ts`), and an attempt row
 per claim (`automation_action_attempts`), which is never deleted or rewritten. Each type names
 its dispatcher, and each claim path takes only its own. The Lead Recovery engine claims its
-seven types and decides a pause at execution, cancelling contact. The scheduler's claim
+nine types (seven from 0017, two from 0036) and decides a pause at execution, cancelling contact. The scheduler's claim
 re-reads a gate (run, tenant, lifecycle for the run's mode, health, connection) at the claim
 and again at the start, and holds paused work rather than cancelling it. An external effect
 is recorded as started before its outcome is accepted, and an ambiguous outcome, including
@@ -203,6 +228,15 @@ execution data. A failed execution reaches ARC only through `arc-runner-error-ha
 reports a category and the execution id — never the error's text — and ARC decides the outcome
 (`failureOutcome`) from its own rows. `tests/n8n-sim.js` runs the real exports locally; conformance
 with a real n8n is a hosted gate. After editing an export, `node scripts/n8n-manifest.mjs --write`.
+
+**The four Lead Recovery workflows exist as drafts that perform nothing** (`n8n/drafts/`,
+`scripts/n8n-drafts.mjs`, `tests/n8n-drafts.test.js`). A new inquiry, an inbound reply, a missed
+call and due follow-up work: each is the reference frame, built by the script so it cannot
+drift, around a step that checks the work is its own kind and reports it as `skipped`. None is
+in the manifest and none can be: an action workflow serves only a module version that permits
+n8n. Three things stand between a draft and a client, and none is closed by building more —
+the licensing record (ADR §26), a Lead Recovery version that permits n8n, and a connector
+gateway route for the step to ask. Never make a draft report work as done.
 
 **A client is created by one operator action, and its modules come from the registry** (`0021`,
 `_shared/tenants/`, `ops` `tenant-create` / `tenant-modules`, ARC-300). `create_tenant()` writes
@@ -392,7 +426,8 @@ post one. Lead Recovery's own `messages` are shown in the timeline by reference,
 note is a different table with no path to a send. Nothing here writes `events`. **No client can send
 yet**: `PRODUCTION_CHANNEL_ADAPTERS` is empty (Twilio is `arc_managed`, not a client connection), so the
 screen says there is no channel; a send through ARC's Twilio is ARC-LR-420's. `synthetic-channel.ts` is
-the test adapter and refuses production.
+the test adapter and refuses production. An owner replying on a lead they took over is not this
+hub: it is the Lead Recovery engine's own `send_owner_reply` (0036), on the same queue and gate.
 
 **A lead becomes an appointment, and a time is given to one booking** (`0027`, `_shared/booking/`,
 `native-booking`, `CrmBooking.jsx`, `PublicBooking.jsx`, ARC-380; docs/architecture/ARC_BOOKING.md).
@@ -458,9 +493,10 @@ brief asks for and is not built). Self-service is `self_service_accounts` and it
 an owner's setup answers and campaign drafts are proposals — **nothing an owner saves is read by
 the engine** until they publish it (next paragraph). The send gate is still the engine's one reservation,
 now four checks in SQL, outermost first: the emergency stop (`platform_controls`, 0033), the
-owner's own pause (`owner_sending_pauses`, 0035 — customer texts only, so the owner is still
-alerted; it is not the lifecycle and an operator cannot set it), the subscription and cap (0031,
-self-signed-up tenants only), the lifecycle (0015). A text refused by any of the first three is
+owner's own pause (`owner_sending_pauses`, 0035, and one campaign's, 0036 — ARC's own customer
+texts only, so the owner is still alerted and their own reply still goes; it is not the
+lifecycle and an operator cannot set it), the subscription and cap (0031, self-signed-up
+tenants only), the lifecycle (0015). A text refused by any of the first three is
 cancelled and its lead handed to a person (`SEND_STOPPED`), so
 nothing is queued to flush later; none of this exists in `MemoryStore`, so test it on SQL with
 `tests/saas-fixtures.js`. Billing never trusts an event or a success page: the webhook's
@@ -473,10 +509,11 @@ means nothing is shown as ready. n8n is not in this path (ARC_PRODUCT_SCOPE.md �
 **An owner may publish wording, and that is the only publication that is not an operator's**
 (`0034`, `_shared/config/owner-wording.ts`, `publishOwnerWording`, `_shared/campaigns/`, `crm`
 `campaign-preview` / `campaign-publish`, `Publish.jsx`, `tests/owner-publishing.test.js`). A
-closed list: three templates (`first_response`, `first_response_form`, `followup`) and the
-`followup` field. `ownerWordingViolations` is asked by the engine and again by 0034's
-`config_owner_wording_violation`, which a test holds together; widen either only with the
-other. It goes through the same draft and the same `publish_config_draft` as everything else —
+closed list: three templates (`first_response`, `first_response_form`, `followup`), the
+`followup` field and, since 0036, the `questions` field with the four `question_*` templates.
+`ownerWordingViolations` is asked by the engine and again by
+`config_owner_wording_violation` (0034, redefined by 0036), which a test holds together; widen
+either only with the other. It goes through the same draft and the same `publish_config_draft` as everything else —
 0034 redefines that function with **one marked clause** changed, and the test fails if anything
 else differs from 0014, so edit 0014's copy and regenerate rather than hand-editing 0034's. An
 owner publishes only ONTO a version an operator published (their words never create a number or

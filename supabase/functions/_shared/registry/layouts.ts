@@ -18,6 +18,7 @@ import {
   ALERT_CHANNELS,
   COMPLIANCE_STATUSES,
   FORWARDING_MODES,
+  QUESTION_KEYS,
 } from '../lead-recovery-config.ts';
 
 export type PartControl =
@@ -83,6 +84,10 @@ const LEAD_RECOVERY_LAYOUT: Readonly<Record<string, FieldLayout>> = Object.freez
       { key: 'handoff_ack', label: 'handoff acknowledgement', control: 'textarea' },
       { key: 'reply_ack', label: 'after they reply', control: 'textarea' },
       { key: 'reply_ack_booking', label: 'after they reply, with the booking link', control: 'textarea' },
+      { key: 'question_service', label: 'question: what they need', control: 'textarea' },
+      { key: 'question_location', label: 'question: where the job is', control: 'textarea' },
+      { key: 'question_urgency', label: 'question: how soon', control: 'textarea' },
+      { key: 'question_timing', label: 'question: when to call them', control: 'textarea' },
     ],
   },
   after_hours: {
@@ -95,6 +100,12 @@ const LEAD_RECOVERY_LAYOUT: Readonly<Record<string, FieldLayout>> = Object.freez
     parts: [
       { key: 'enabled', label: 'send one follow-up when nobody replies', control: 'toggle' },
       { key: 'after_minutes', label: 'minutes after the first text', control: 'number' },
+    ],
+  },
+  questions: {
+    parts: [
+      { key: 'ask', label: `questions to ask, in order (${QUESTION_KEYS.join(', ')})`, control: 'lines' },
+      { key: 'wait_minutes', label: 'minutes to wait for an answer', control: 'number' },
     ],
   },
   safety: {
