@@ -7,6 +7,21 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.49.1] - 2026-10-13
+
+**The SaaS foundation's database and its three live functions are on the live project.** No code
+changed. This records what was deployed, so the documents stop saying nothing was.
+
+### Changed
+
+- Migrations `0029` to `0036` were applied to the live project, the first time they ran on a
+  hosted database, and `crm`, `ops` and `ledger` were redeployed from `main`. On the live site
+  an owner's pause of everything, the pause of one campaign, switching a campaign on, taking
+  over, queueing a reply and handing back now have a database behind them.
+- Still not on live: `billing`, `twilio`, `lead-intake` and `dispatch`. The project has no
+  Twilio or Stripe secret, so nothing there can receive a lead or send a text yet, and a reply
+  an owner queues waits unsent. `ARC_SAAS_IMPLEMENTATION_STATUS.md` says this at the top.
+
 ## [1.49.0] - 2026-10-13
 
 **Questions after the first reply, an owner's own reply, handing a conversation back, and

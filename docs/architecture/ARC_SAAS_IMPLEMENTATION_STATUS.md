@@ -6,15 +6,25 @@ has to happen outside this repository. It replaces nothing: the order of work is
 `ARC_IMPLEMENTATION_ROADMAP.md`, and what the launch product is is still
 `ARC_PRODUCT_SCOPE.md` (section 7 there records what this work reopened).
 
-Last checked: 2026-10-13 (`1.49.0`). The code is on `main`, except the sign-up door
-(`/signup`, `Signup.jsx`, `CreateBusiness.jsx` and their routes), which is held in the working
-tree until a hosted database has the migrations.
+Last checked: 2026-10-13 (`1.49.1`). The code is on `main`, except the sign-up door
+(`/signup`, `Signup.jsx`, `CreateBusiness.jsx` and their routes), which is still held in the
+working tree: the live database has the migrations now, and shipping the door is its own
+decision (section 4).
 
-**Read this first.** Nothing below has run against a real Stripe account, a real Twilio number
-or a hosted database. "Locally tested" means the repository's own test suite on real SQL
-(PGlite), with a recording sender in place of the carrier, a fake classifier in place of the
-model and a Stripe snapshot written by the same SQL function the webhook calls. No delivery has
-been observed. Migrations `0029` to `0036` and the `billing` function are not deployed.
+**Read this first.** Nothing below has run against a real Stripe account or a real Twilio
+number. "Locally tested" means the repository's own test suite on real SQL (PGlite), with a
+recording sender in place of the carrier, a fake classifier in place of the model and a Stripe
+snapshot written by the same SQL function the webhook calls. No delivery has been observed.
+
+**What is on the live project** (`ekrszulekvvhbfemcrsl`, since 2026-10-13, at Bennett's
+instruction): migrations `0029` to `0036`, applied in one push with no staging run before it,
+and `crm`, `ops` and `ledger` redeployed from `main` at `53ddecc`. Each of the three answered a
+request in its own words afterwards, and the new tables answer through the API. That is all
+that was checked there: no signed-in owner has used a new screen against it. `billing`,
+`twilio`, `lead-intake` and `dispatch` have never been deployed to live and were not deployed
+then, because the project holds no Twilio or Stripe secret for them to run with. So on live an
+owner can pause, publish, take over, queue a reply and hand back, and **nothing can send a
+text**: there is no dispatcher and no carrier.
 
 ## 1. Status by capability
 
@@ -83,12 +93,13 @@ is not gated on a subscription.
 
 ## 4. Outside this repository
 
-Each is one action, in order. Nothing here was done by this work.
+Each is one action, in order. The first two rows were done on 2026-10-13; nothing below them was.
 
 | Needed | For | Tested so far | Smallest next action |
 | --- | --- | --- | --- |
-| `0029`–`0036` on a hosted database | Everything in section 1 | All eight apply cleanly on PGlite in `npm test` | `supabase db push` to staging |
-| `billing`, `twilio`, `lead-intake`, `crm`, `ops`, `dispatch` redeployed | Sign-up, billing, takeover, the owner's reply and hand-back, questions, the emergency stop | Handlers under `node --test` | `supabase functions deploy` each; `billing`, `twilio` and `lead-intake` take `--no-verify-jwt` (each file's header says why) |
+| `0029`–`0036` on a hosted database | Everything in section 1 | **Done on live, 2026-10-13.** All eight applied cleanly on Postgres 17, the first time they ran outside PGlite. Staging has none of them. | None on live. |
+| `crm`, `ops`, `ledger` redeployed | Takeover, the owner's reply and hand-back as far as queueing, campaign publishing and pauses, the emergency stop | **Done on live, 2026-10-13**, from `main` at `53ddecc`. Each boots and refuses an unsigned caller. | A signed-in owner walking the new screens once. |
+| `billing`, `twilio`, `lead-intake`, `dispatch` deployed for the first time | Sign-up, billing, any lead arriving, any text leaving | Handlers under `node --test`. Never deployed to any hosted project. | Set their secrets first (the next two rows), then `supabase functions deploy` each; `billing`, `twilio` and `lead-intake` take `--no-verify-jwt` (each file's header says why), and `dispatch` needs its schedule (`DEPLOYMENT.md`). |
 | Stripe test-mode product and price | Checkout | The handler against the real SDK's signature check, no API call | Create a price; set `STRIPE_SECRET_KEY`, `ARC_STRIPE_WEBHOOK_SECRET`, `ARC_STRIPE_PRICE_ID`, `ARC_STRIPE_MONTHLY_ACTION_CAP`, `ARC_SITE_URL` on `billing`; point a webhook at `…/billing/webhook` |
 | A Twilio number with A2P registration | Any real text | Nothing | The hosted actions in `ARC_LEAD_RECOVERY_READINESS.md` §6.3 |
 | Email sign-ups allowed on the hosted auth project | `/signup` | Nothing hosted | Check the project's auth settings before the sign-up door is shipped |
@@ -132,6 +143,6 @@ which proves nothing about `0029`–`0036`. `npm run gate` fails unless every te
 
 ## 7. What stops a first paying customer
 
-Not code in this list alone: no text has reached a real handset, the migrations and functions
-are not deployed, and no price exists. An owner's campaign can only be switched on after ARC has
+Not code in this list alone: no text has reached a real handset, the functions that receive a
+lead and send a text are not deployed, and no price exists. An owner's campaign can only be switched on after ARC has
 configured the account (number, hours, compliance), which is still an operator's work per client.

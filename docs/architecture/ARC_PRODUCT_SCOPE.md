@@ -176,7 +176,9 @@ decision. 5.3 stands as a later improvement. 5.4 stands: no speed is claimed.
 
 Bennett asked for five more things to be built. Four move across the boundary and are built.
 The fifth does not move, and what was built toward it is stated below so that it is not read
-as more than it is. Nothing here is deployed.
+as more than it is. The migrations and the `crm`, `ops` and `ledger` functions were put on the
+live project the same day; what that does and does not make work is at the top of
+`ARC_SAAS_IMPLEMENTATION_STATUS.md`.
 
 | Was | Now | Built |
 | --- | --- | --- |
