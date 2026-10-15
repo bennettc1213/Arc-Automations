@@ -7,6 +7,38 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.50.0] - 2026-10-14
+
+**The phone functions are on the live project, and two gaps the safety pass left are closed.**
+ARC-GO-330's first hosted action, plus items 1 and 3 of ARC_LEAD_RECOVERY_READINESS.md §7.4.
+
+### Added
+
+- `0037_events_append_only.sql`: the event log refuses an update, a delete or a truncate for
+  every role, the service key included, with the test-client purge's exception. Not yet
+  applied to live.
+- `resumeStrandedIntakes` (`engine/runtime.ts`), run by `dispatch` before each claim: a lead
+  recorded 2–60 minutes ago whose intake never reached an ending is finished on its own lead
+  and run, under that run's pin. A forwarded call answers Twilio 200 whatever happened, so
+  this is the only thing that would ever finish one.
+- Engine store reads `hasEvent` and `listRecentLeads` (MemoryStore and `supabaseStore`);
+  MemoryStore stamps leads from a settable `clock`.
+- Gate scenarios, on both stores: the log refuses the service key; a call whose recording
+  died before its text was queued, or before its run started, gets its one text; a refused
+  call is not started later and a stranded call over an hour old is not texted.
+
+### Changed
+
+- `intakeLead`: a repeat delivery of a lead whose intake stopped partway finishes it instead
+  of returning "already recorded". The first-response decision is made as of the resume; the
+  evidence and the response time keep the arrival time.
+
+### Deployed
+
+- Live: `twilio`, `dispatch`, `lead-intake`, `ingest`, `client-login` (first deploy, from
+  `57222b6`, gate passed). Each refuses an unsigned caller; no Twilio secret is set, so
+  nothing can be received or sent yet.
+
 ## [1.49.1] - 2026-10-13
 
 **The SaaS foundation's database and its three live functions are on the live project.** No code

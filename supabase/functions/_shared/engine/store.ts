@@ -396,6 +396,9 @@ export interface EngineStore extends ConfigStore, LifecycleStore, ConnectionStor
   findOpenLeadByPhone(tenantId: string, phone: string): Promise<LeadRow | null>;
   createLead(row: Omit<LeadRow, 'createdAt' | 'updatedAt'>): Promise<LeadRow>;
   updateLead(tenantId: string, leadId: string, patch: Partial<LeadRow>): Promise<LeadRow>;
+  /** every client's leads created in [fromIso, toIso), oldest first — the dispatcher's look
+      for an intake that stopped partway. a worker read, never a tenant's. */
+  listRecentLeads(fromIso: string, toIso: string, limit: number): Promise<LeadRow[]>;
 
   /* conversations & messages */
   getOrCreateConversation(tenantId: string, leadId: string, channel?: string): Promise<ConversationRow>;
@@ -498,6 +501,8 @@ export interface EngineStore extends ConfigStore, LifecycleStore, ConnectionStor
 
   /* evidence */
   emit(tenantId: string, events: unknown[]): Promise<{ written: number; invalid: string[] }>;
+  /** whether this client's log holds an event with this key. */
+  hasEvent(tenantId: string, eventKey: string): Promise<boolean>;
 }
 
 /* ── the in-memory implementation ───────────────────────── */
@@ -536,6 +541,8 @@ export class MemoryStore extends MemoryLifecycleStore implements EngineStore {
   handoffs: HandoffRow[] = [];
   suppressions: SuppressionRow[] = [];
   events: { tenantId: string; event: Record<string, unknown> }[] = [];
+  /** what stamps a lead's `createdAt`, as the database's clock does; a test world sets its own. */
+  clock: () => Date = () => new Date();
   invalidEvents: string[] = [];
   effects: EffectAttemptRow[] = [];
   /**
@@ -596,11 +603,19 @@ export class MemoryStore extends MemoryLifecycleStore implements EngineStore {
   }
 
   // deno-lint-ignore require-await
+  async listRecentLeads(fromIso: string, toIso: string, limit: number) {
+    return this.leads
+      .filter((l) => l.createdAt >= fromIso && l.createdAt < toIso)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .slice(0, limit);
+  }
+
+  // deno-lint-ignore require-await
   async createLead(row: Omit<LeadRow, 'createdAt' | 'updatedAt'>) {
     if (this.leads.some((l) => l.tenantId === row.tenantId && l.correlationId === row.correlationId)) {
       throw new Error('duplicate key value violates unique constraint "leads_tenant_id_correlation_id_key"');
     }
-    const now = new Date().toISOString();
+    const now = this.clock().toISOString();
     const lead: LeadRow = { ...row, createdAt: now, updatedAt: now };
     this.leads.push(lead);
     return lead;
@@ -1226,6 +1241,11 @@ export class MemoryStore extends MemoryLifecycleStore implements EngineStore {
     }
     this.invalidEvents.push(...invalid);
     return { written, invalid };
+  }
+
+  // deno-lint-ignore require-await
+  async hasEvent(tenantId: string, eventKey: string) {
+    return this.events.some((e) => e.tenantId === tenantId && e.event.event_key === eventKey);
   }
 
   /* ── test conveniences ── */

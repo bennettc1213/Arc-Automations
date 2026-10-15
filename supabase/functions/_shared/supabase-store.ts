@@ -345,6 +345,18 @@ export function supabaseStore(db: Db): EngineStore {
       return data ? toLead(data) : null;
     },
 
+    async listRecentLeads(fromIso, toIso, limit) {
+      const { data, error } = await db
+        .from('leads')
+        .select(LEAD_COLUMNS)
+        .gte('created_at', fromIso)
+        .lt('created_at', toIso)
+        .order('created_at', { ascending: true })
+        .limit(limit);
+      if (error) fail('recent leads read', error);
+      return (data ?? []).map(toLead);
+    },
+
     async findOpenLeadByPhone(tenantId, phone) {
       const { data, error } = await db
         .from('leads')
@@ -1028,6 +1040,17 @@ export function supabaseStore(db: Db): EngineStore {
       const result = await writeEvents(sink, tenantId, valid);
       if (result.error) throw new Error(`event write failed: ${result.error}`);
       return { written: result.written, invalid };
+    },
+
+    async hasEvent(tenantId, eventKey) {
+      const { data, error } = await db
+        .from('events')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('event_key', eventKey)
+        .limit(1);
+      if (error) fail('event read by key', error);
+      return (data ?? []).length > 0;
     },
   };
 }

@@ -440,9 +440,12 @@ Read with the CLI. Nothing was changed.
 
 ### 6.3 The order, each line its own authorisation
 
-1. Deploy `twilio`, `dispatch`, `lead-intake`, `ingest` and `client-login`; redeploy `ops` and
-   `ledger`. Until the Twilio pair is set every phone webhook answers 403, so this exposes
-   nothing.
+1. **Done 2026-10-14.** `twilio`, `dispatch`, `lead-intake`, `ingest` and `client-login`
+   deployed from `main` after the gate passed. `ops` and `ledger` were already current
+   (redeployed 2026-10-13 from `53ddecc`). Each refuses an unsigned caller: the phone webhooks
+   answer 403, `dispatch` and `ingest` 401, `lead-intake` refuses an unknown form. Until the
+   Twilio pair is set this exposes nothing. Migration `0037` (section 7.4, item 1) is not on
+   live yet; applying it is its own action.
 2. Create the Twilio account or choose the one to use. Set the four missing secrets.
 3. Turn on `pg_cron` and `pg_net`; create the two schedules in `DEPLOYMENT.md` section 5.
    See one dispatcher run in the logs.
@@ -546,20 +549,24 @@ database suite skipped. `npm run gate` is the answer to the last one.
 
 Each needs a decision or a hosted project, not a test.
 
-1. **The event log has no database guard against the service role.** A browser cannot write
-   `events` at all: that is row level security, and the suite proves it. Code holding the
-   service key can update or delete a row, and nothing in the schema refuses it. Other
-   append-only tables have a trigger. Adding one here is a migration, and the test-client purge
-   would need its exception.
+1. **Closed by `0037` (2026-10-14).** The event log had no database guard against the service
+   role: a browser could not write `events`, but code holding the service key could update or
+   delete a row. `0037` refuses an update, a delete or a truncate for every role, with the
+   test-client purge's exception, and the suite checks it with the service key.
 2. **A paused client's owner gets no alert text.** While a client is paused, a reply that says
    "I can smell gas" still reaches a person's list on the needs-you screen and in the console.
    No text goes to the owner, because a paused client sends nothing. That is the existing
    rule, and the suite states it rather than hiding it. Whether a safety alert to the owner
    should be exempt from a pause is a decision.
-3. **A missed call whose own recording fails halfway is not picked up again.** The fix in 7.3
-   covers messages. If the database fails during the few writes that record a new call, the
-   lead can be on record with no text queued, and a redelivery finds the lead and stops. In
-   the pilot's setup the caller still hears their sentence.
+3. **Closed (2026-10-14).** A missed call whose own recording failed halfway was not picked up
+   again: the lead was on record with no text queued, and a redelivery found the lead and
+   stopped. Now a lead whose intake never reached an ending (no run and no "not permitted"
+   written down, or a run with nothing queued that is not finished) is finished on the same
+   lead and run, under that run's pin, by a redelivery or by the dispatcher
+   (`resumeStrandedIntakes`, each tick, for leads 2 to 60 minutes old). The dispatcher is what
+   matters in the pilot's setup: the voice webhook answers 200 whatever happened, so Twilio
+   never sends it again. A stranded call older than the hour is left alone rather than texted,
+   and nothing yet alerts anyone about one.
 4. **Two connections at once.** The claim's `for update skip locked` is exercised one call
    after another, because the test database has one connection. Section 6 asks for it on the
    hosted one.

@@ -50,7 +50,7 @@ import {
 import { canonicalJson, configHash } from '../canonical-json.ts';
 import { type Resolution } from '../config/compose.ts';
 import { resolveEffectiveConfig } from '../config/engine.ts';
-import { authorizeModuleExecution, type ExecutionDecision } from '../lifecycle/authorize.ts';
+import { authorizeModuleExecution } from '../lifecycle/authorize.ts';
 import { safeSummary } from '../lifecycle/engine.ts';
 import { EXECUTION_DENIAL_CODES, type ExecutionDenialCode, LifecycleStoreError, type RunMode } from '../lifecycle/model.ts';
 import { type LeadRecoveryConfig, QUESTION_KEYS, type QuestionKey } from '../lead-recovery-config.ts';
@@ -637,6 +637,13 @@ export interface IntakeResult {
  * `created: false` having queued nothing. That is the mechanism behind "duplicate Twilio
  * callbacks must not duplicate leads, runs or messages" — not a de-dup table, not a
  * timestamp window, a unique index on a value that cannot differ between the two calls.
+ *
+ * Unless the first delivery stopped partway (ARC_LEAD_RECOVERY_READINESS.md §7.4, item 3):
+ * a lead on record whose intake never reached an ending — no run and no "not permitted",
+ * or a run with nothing queued and not finished — is finished now, on the same lead and
+ * the same run, under the pin that run already has. `resumeStrandedIntakes` does the same
+ * from the dispatcher, because a forwarded call answers Twilio 200 whatever happened and
+ * is never delivered twice.
  */
 export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<IntakeResult> {
   const { store } = deps;
@@ -650,17 +657,18 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
   const existing = await store.getLeadByCorrelation(input.tenantId, correlationId);
   if (existing) {
     const run = await store.getRunForLead(input.tenantId, existing.id, MODULE_KEY);
-    return {
-      ok: true,
-      created: false,
-      lead: existing,
-      run,
-      outcome: 'already recorded — this is a repeat delivery of the same event',
-      queued: [],
-    };
+    if (await intakeSettled(store, existing, run)) {
+      return {
+        ok: true,
+        created: false,
+        lead: existing,
+        run,
+        outcome: 'already recorded — this is a repeat delivery of the same event',
+        queued: [],
+      };
+    }
+    return await resumeIntake(deps, existing, run);
   }
-
-  const loaded = await loadConfig(store, input.tenantId);
 
   /* the lead is recorded either way. a tenant whose module is off or misconfigured still
      had somebody try to reach them, and throwing that away to keep the table tidy would
@@ -691,16 +699,78 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
     isCanary,
   });
 
-  await store.getOrCreateConversation(input.tenantId, lead.id);
+  return await finishIntake(deps, lead, null, now, now);
+}
+
+/** Whether a lead's intake reached an ending: a run that finished or has something queued,
+    or no run and the "not permitted" ending written down. */
+async function intakeSettled(store: EngineStore, lead: LeadRow, run: RunRow | null): Promise<boolean> {
+  if (run) return isTerminal(run.state) || (await store.listActionsForRun(lead.tenantId, run.id)).length > 0;
+  return await store.hasEvent(lead.tenantId, eventKey('lr', 'run_end', lead.correlationId, 'not_permitted'));
+}
+
+/** Finish an intake that stopped partway. Decided as of now — the text, if any, goes now — and
+    its evidence and response time are still dated from when the lead arrived. */
+async function resumeIntake(deps: EngineDeps, lead: LeadRow, run: RunRow | null): Promise<IntakeResult> {
+  const result = await finishIntake(deps, lead, run, deps.now(), new Date(lead.createdAt));
+  return { ...result, created: false, outcome: `finished an intake that stopped partway — ${result.outcome}` };
+}
+
+/**
+ * The dispatcher's look for intakes that stopped partway: leads recorded between
+ * `olderThanMinutes` and `withinMinutes` ago, each finished if it never reached an ending.
+ * The lower bound keeps it off an intake still running; the upper keeps it from texting
+ * about a call from yesterday. Each lead is its own try: one that fails again is left for
+ * the next tick and logged, never thrown past the dispatcher.
+ */
+export async function resumeStrandedIntakes(
+  deps: EngineDeps,
+  options: { olderThanMinutes?: number; withinMinutes?: number; limit?: number } = {},
+): Promise<{ checked: number; resumed: number; failed: number }> {
+  const now = deps.now().getTime();
+  const from = new Date(now - (options.withinMinutes ?? 60) * 60_000);
+  const to = new Date(now - (options.olderThanMinutes ?? 2) * 60_000);
+  const leads = await deps.store.listRecentLeads(iso(from), iso(to), options.limit ?? 200);
+  let resumed = 0;
+  let failed = 0;
+  for (const lead of leads) {
+    try {
+      const run = await deps.store.getRunForLead(lead.tenantId, lead.id, MODULE_KEY);
+      if (await intakeSettled(deps.store, lead, run)) continue;
+      const result = await resumeIntake(deps, lead, run);
+      console.log(`intake resumed for lead ${lead.id} (${lead.tenantId}): ${result.outcome}`);
+      resumed += 1;
+    } catch (error) {
+      console.error(`intake could not be resumed for lead ${lead.id} (${lead.tenantId})`, error);
+      failed += 1;
+    }
+  }
+  return { checked: leads.length, resumed, failed };
+}
+
+/**
+ * The rest of intake, for a lead just recorded or one whose first delivery stopped partway.
+ * A run that already exists keeps its pin and its mode; every write below is keyed, so
+ * running it a second time adds only what the first did not reach. `now` is when it decides;
+ * `arrivedAt` dates the evidence and the response time.
+ */
+async function finishIntake(deps: EngineDeps, lead: LeadRow, existingRun: RunRow | null, now: Date, arrivedAt: Date): Promise<IntakeResult> {
+  const { store } = deps;
+  const tenantId = lead.tenantId;
+  const correlationId = lead.correlationId;
+  const phone = lead.phone;
+  const isCanary = lead.isCanary;
+
+  await store.getOrCreateConversation(tenantId, lead.id);
 
   /* the evidence, in the shape the portal has always read. `call_missed` first so the
      thread's first step is the call, not the lead it produced. */
   const events: Record<string, unknown>[] = [];
-  if (input.source === 'missed_call') {
+  if (lead.source === 'missed_call') {
     events.push(
       baseEvent(lead, {
         event_type: 'call_missed',
-        occurred_at: iso(now),
+        occurred_at: iso(arrivedAt),
         event_key: eventKey('lr', 'call_missed', correlationId),
         payload: { from: phone, caller: lead.customerName, intake: lead.intakeRef },
       }),
@@ -709,10 +779,10 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
   events.push(
     baseEvent(lead, {
       event_type: 'lead_received',
-      occurred_at: iso(new Date(now.getTime() + (input.source === 'missed_call' ? 1000 : 0))),
+      occurred_at: iso(new Date(arrivedAt.getTime() + (lead.source === 'missed_call' ? 1000 : 0))),
       event_key: eventKey('lr', 'lead_received', correlationId),
       payload: {
-        source: input.source,
+        source: lead.source,
         caller: lead.customerName,
         phone,
         loss_type: lead.serviceRequest,
@@ -721,104 +791,31 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
     }),
   );
 
-  /* ── may we speak at all? ──
-     no valid configuration means there is nothing to pin, and a run that cannot prove
-     which configuration it began under is refused outright (0013). so the lead and its
-     evidence are recorded — somebody did try to reach this business — and no run is
-     started for it. the ending is still written down, keyed on the lead, so the thread
-     says why nothing happened. */
-  if (!loaded.ok) {
-    events.push(
-      baseEvent(lead, {
-        event_type: 'automation_completed',
-        occurred_at: iso(deps.now()),
-        status: 'success',
-        event_key: eventKey('lr', 'run_end', correlationId, 'not_permitted'),
-        payload: { stop_reason: 'not_permitted', detail: loaded.reason.slice(0, 300), started: false },
-      }),
-    );
-    await store.emit(input.tenantId, events);
-    return { ok: false, created: true, lead, run: null, outcome: loaded.reason, queued: [] };
+  let started: StartedRun | IntakeResult;
+  if (existingRun) {
+    /* the earlier delivery started this run and stopped before anything was queued. it keeps
+       the pin and the mode it was started with; nothing is authorised or pinned a second time. */
+    await store.emit(tenantId, events);
+    const pinned = await loadPinnedConfig(store, existingRun);
+    if (!pinned.ok) {
+      await stopRun(deps, lead, existingRun, 'not_permitted', pinned.reason);
+      return { ok: false, created: true, lead, run: existingRun, outcome: pinned.reason, queued: [] };
+    }
+    started = { run: existingRun, config: pinned.config, snapshot: pinned.snapshot };
+  } else {
+    started = await startIntakeRun(deps, lead, events);
+  }
+  if (!('snapshot' in started)) return started;
+  const { run, config, snapshot } = started;
+
+  if (run.runMode === 'shadow') {
+    return await evaluateInShadow(deps, { lead, run, config, snapshot, phone, now });
   }
 
-  /* ── may a run start, and in which mode? (ARC-120) ──
-     decided now, from the lifecycle as it stands at this moment, never from what a console
-     showed when the number was set up. a synthetic lead is a test: it proves the pipeline
-     before the module is live and cannot reach a handset (`senderFor()`). a real lead is
-     live — which needs the module active on exactly these versions — or shadow while the
-     module is gathering shadow evidence. every gate below still applies to all three. */
-  const resolution = loaded.loaded.resolution;
-  const lifecycle = await store.getLifecycle(input.tenantId, MODULE_KEY);
-  const requested: RunMode = isCanary ? 'test' : lifecycle?.state === 'shadow' ? 'shadow' : 'live';
-  const authorization = await authorizeModuleExecution(store, {
-    kind: 'start',
-    mode: requested,
-    tenantId: input.tenantId,
-    moduleKey: MODULE_KEY,
-    lead,
-    versions: { tenantVersionId: resolution.tenantVersion.id, moduleVersionId: resolution.moduleVersion.id },
-    config: resolution.config,
-  });
-
-  /* nothing authorises a run, so none is created: the lead and the reason are recorded,
-     keyed on the lead, exactly as for a tenant with no valid configuration. */
-  const refused = async (code: string, detail: string): Promise<IntakeResult> => {
-    events.push(
-      baseEvent(lead, {
-        event_type: 'automation_completed',
-        occurred_at: iso(deps.now()),
-        status: 'success',
-        event_key: eventKey('lr', 'run_end', correlationId, 'not_permitted'),
-        payload: { stop_reason: 'not_permitted', detail: `${code}: ${detail}`.slice(0, 300), started: false },
-      }),
-    );
-    await store.emit(input.tenantId, events);
-    return { ok: false, created: true, lead, run: null, outcome: detail, queued: [] };
-  };
-  if (!authorization.allowed) return await refused(authorization.code, authorization.detail);
-
-  /* freeze the rules this run will live under, before anything is queued against it.
-     the run is created already pinned — the store refuses one that is not — and every
-     action queued against it inherits the same snapshot. */
-  const snapshot = await snapshotConfig(store, input.tenantId, loaded.loaded);
-
-  let run: RunRow;
-  try {
-    run = await store.createRun({
-      id: deps.uuid(),
-      tenantId: input.tenantId,
-      leadId: lead.id,
-      moduleKey: MODULE_KEY,
-      state: 'new',
-      configVersion: loaded.loaded.row.configVersion,
-      configSnapshotId: snapshot.id,
-      /* the mode the lifecycle allowed, fixed on the run. the database authorises it again
-         in this insert, under a lock on the lifecycle (0015). */
-      runMode: authorization.mode,
-      stoppedAt: null,
-      completedAt: null,
-      stopReason: null,
-      lastError: null,
-    });
-  } catch (error) {
-    /* the lifecycle moved between the check above and the insert — a pause landing in
-       between is refused by the database, and handled as the refusal it is. */
-    if (error instanceof LifecycleStoreError) return await refused(error.code, error.message);
-    throw error;
-  }
-
-  await store.emit(input.tenantId, events);
-
-  const config = loaded.loaded.config;
-
-  if (authorization.mode === 'shadow') {
-    return await evaluateInShadow(deps, { lead, run, config, snapshot, phone, now, authorization });
-  }
-
-  const suppression = phone ? await store.isSuppressed(input.tenantId, 'sms', phone, iso(now)) : null;
+  const suppression = phone ? await store.isSuppressed(tenantId, 'sms', phone, iso(now)) : null;
   if (suppression) {
     const why = `this number is on the suppression list (${suppression.reason}) — nothing was sent`;
-    await store.updateLead(input.tenantId, lead.id, { status: 'suppressed' });
+    await store.updateLead(tenantId, lead.id, { status: 'suppressed' });
     await stopRun(deps, lead, run, 'opted_out', why);
     return { ok: false, created: true, lead, run, outcome: why, queued: [] };
   }
@@ -826,8 +823,8 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
   if (!phone || !lead.consentSms) {
     const reason = !phone ? 'no usable SMS number; owner follow-up required'
       : 'SMS permission was not granted; owner follow-up required';
-    await store.updateLead(input.tenantId, lead.id, { status: 'handoff_required' });
-    await moveRun(deps, lead, run, 'handoff_required');
+    await store.updateLead(tenantId, lead.id, { status: 'handoff_required' });
+    if (run.state !== 'handoff_required') await moveRun(deps, lead, run, 'handoff_required');
     await queue(deps, run, 'open_handoff', now, {
       reason, reason_code: 'other', is_safety: false, send_ack: false,
     });
@@ -847,12 +844,12 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
   if (safety.requiresHuman) {
     /* a safety case does not go into a qualification sequence. it goes to a person, now,
        and the customer gets the reviewed acknowledgement rather than a question. */
-    await store.updateLead(input.tenantId, lead.id, {
+    await store.updateLead(tenantId, lead.id, {
       safetyFlags: safety.flags,
       urgency: 'emergency',
       status: 'handoff_required',
     });
-    await moveRun(deps, lead, run, 'handoff_required');
+    if (run.state !== 'handoff_required') await moveRun(deps, lead, run, 'handoff_required');
     const queued = await queue(deps, run, 'open_handoff', now, {
       reason: safety.reasons.join('; ') || 'a safety category was detected in the enquiry',
       reason_code: 'safety',
@@ -876,14 +873,14 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
     return { ok: false, created: true, lead, run, outcome: decision.reason, queued: [] };
   }
 
-  await moveRun(deps, lead, run, 'response_queued');
+  if (run.state !== 'response_queued') await moveRun(deps, lead, run, 'response_queued');
   await queue(deps, run, 'send_first_response', decision.sendAt, {
     body: decision.body,
     template: decision.templateKey,
     to: phone,
     /* the time the lead landed, so the response-time figure is measured from the customer's
        moment rather than from whenever a worker happened to pick the action up. */
-    lead_at: iso(now),
+    lead_at: iso(arrivedAt),
   });
 
   return {
@@ -894,6 +891,106 @@ export async function intakeLead(deps: EngineDeps, input: IntakeInput): Promise<
     outcome: decision.reason,
     queued: ['send_first_response'],
   };
+}
+
+type StartedRun = { run: RunRow; config: LeadRecoveryConfig; snapshot: ConfigSnapshotRow };
+
+/** Start a lead's run, or record why none may start. Emits the intake's evidence either way. */
+async function startIntakeRun(deps: EngineDeps, lead: LeadRow, events: Record<string, unknown>[]): Promise<StartedRun | IntakeResult> {
+  const { store } = deps;
+  const tenantId = lead.tenantId;
+  const correlationId = lead.correlationId;
+  const isCanary = lead.isCanary;
+  const loaded = await loadConfig(store, tenantId);
+
+  /* ── may we speak at all? ──
+     no valid configuration means there is nothing to pin, and a run that cannot prove
+     which configuration it began under is refused outright (0013). so the lead and its
+     evidence are recorded — somebody did try to reach this business — and no run is
+     started for it. the ending is still written down, keyed on the lead, so the thread
+     says why nothing happened. */
+  if (!loaded.ok) {
+    events.push(
+      baseEvent(lead, {
+        event_type: 'automation_completed',
+        occurred_at: iso(deps.now()),
+        status: 'success',
+        event_key: eventKey('lr', 'run_end', correlationId, 'not_permitted'),
+        payload: { stop_reason: 'not_permitted', detail: loaded.reason.slice(0, 300), started: false },
+      }),
+    );
+    await store.emit(tenantId, events);
+    return { ok: false, created: true, lead, run: null, outcome: loaded.reason, queued: [] };
+  }
+
+  /* ── may a run start, and in which mode? (ARC-120) ──
+     decided now, from the lifecycle as it stands at this moment, never from what a console
+     showed when the number was set up. a synthetic lead is a test: it proves the pipeline
+     before the module is live and cannot reach a handset (`senderFor()`). a real lead is
+     live — which needs the module active on exactly these versions — or shadow while the
+     module is gathering shadow evidence. every gate below still applies to all three. */
+  const resolution = loaded.loaded.resolution;
+  const lifecycle = await store.getLifecycle(tenantId, MODULE_KEY);
+  const requested: RunMode = isCanary ? 'test' : lifecycle?.state === 'shadow' ? 'shadow' : 'live';
+  const authorization = await authorizeModuleExecution(store, {
+    kind: 'start',
+    mode: requested,
+    tenantId: tenantId,
+    moduleKey: MODULE_KEY,
+    lead,
+    versions: { tenantVersionId: resolution.tenantVersion.id, moduleVersionId: resolution.moduleVersion.id },
+    config: resolution.config,
+  });
+
+  /* nothing authorises a run, so none is created: the lead and the reason are recorded,
+     keyed on the lead, exactly as for a tenant with no valid configuration. */
+  const refused = async (code: string, detail: string): Promise<IntakeResult> => {
+    events.push(
+      baseEvent(lead, {
+        event_type: 'automation_completed',
+        occurred_at: iso(deps.now()),
+        status: 'success',
+        event_key: eventKey('lr', 'run_end', correlationId, 'not_permitted'),
+        payload: { stop_reason: 'not_permitted', detail: `${code}: ${detail}`.slice(0, 300), started: false },
+      }),
+    );
+    await store.emit(tenantId, events);
+    return { ok: false, created: true, lead, run: null, outcome: detail, queued: [] };
+  };
+  if (!authorization.allowed) return await refused(authorization.code, authorization.detail);
+
+  /* freeze the rules this run will live under, before anything is queued against it.
+     the run is created already pinned — the store refuses one that is not — and every
+     action queued against it inherits the same snapshot. */
+  const snapshot = await snapshotConfig(store, tenantId, loaded.loaded);
+
+  let run: RunRow;
+  try {
+    run = await store.createRun({
+      id: deps.uuid(),
+      tenantId: tenantId,
+      leadId: lead.id,
+      moduleKey: MODULE_KEY,
+      state: 'new',
+      configVersion: loaded.loaded.row.configVersion,
+      configSnapshotId: snapshot.id,
+      /* the mode the lifecycle allowed, fixed on the run. the database authorises it again
+         in this insert, under a lock on the lifecycle (0015). */
+      runMode: authorization.mode,
+      stoppedAt: null,
+      completedAt: null,
+      stopReason: null,
+      lastError: null,
+    });
+  } catch (error) {
+    /* the lifecycle moved between the check above and the insert — a pause landing in
+       between is refused by the database, and handled as the refusal it is. */
+    if (error instanceof LifecycleStoreError) return await refused(error.code, error.message);
+    throw error;
+  }
+
+  await store.emit(tenantId, events);
+  return { run, config: loaded.loaded.config, snapshot };
 }
 
 /* ── shadow mode (ARC-120) ──────────────────────────────── */
@@ -920,7 +1017,6 @@ async function evaluateInShadow(
     snapshot: ConfigSnapshotRow;
     phone: string | null;
     now: Date;
-    authorization: ExecutionDecision;
   },
 ): Promise<IntakeResult> {
   const { store } = deps;

@@ -47,7 +47,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { supabaseStore } from '../_shared/supabase-store.ts';
-import { runDueActions, type EngineDeps } from '../_shared/engine/runtime.ts';
+import { resumeStrandedIntakes, runDueActions, type EngineDeps } from '../_shared/engine/runtime.ts';
 import { classifierFor } from '../_shared/classifier.ts';
 import { RecordingSender, TwilioRestSender } from '../_shared/twilio.ts';
 import { safeEqual } from '../_shared/twilio.ts';
@@ -156,6 +156,18 @@ Deno.serve(async (request) => {
     uuid: () => crypto.randomUUID(),
     worker,
   };
+
+  /* an intake that stopped partway is finished before the claim, so what it queues goes out
+     on this tick. a forwarded call answers Twilio 200 whatever happened, so nothing else
+     would ever pick it up. a failure here is logged and never stops the queue. */
+  try {
+    const intakes = await resumeStrandedIntakes(deps);
+    if (intakes.resumed > 0 || intakes.failed > 0) {
+      console.log(`dispatch ${worker}: intakes resumed ${intakes.resumed}, failed ${intakes.failed}`);
+    }
+  } catch (error) {
+    console.error('dispatch: the look for stranded intakes failed', error);
+  }
 
   try {
     /* the production dispatcher, and the only caller allowed to ask for every

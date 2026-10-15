@@ -44,6 +44,7 @@ import {
   loadPinnedConfig,
   recordPilotTerms,
   resumeAutomation,
+  resumeStrandedIntakes,
   runDueActions,
   sendOwnerReply,
   settleUnknownSend,
@@ -169,6 +170,8 @@ function doors(world) {
     },
 
     async dispatch({ worker = 'scheduler:gate' } = {}) {
+      /* as the function does: intakes that stopped partway first, then the queue. */
+      world.resumed = await resumeStrandedIntakes(engine(worker));
       const details = [];
       for (let round = 0; round < 12; round += 1) {
         const summary = await runDueActions(engine(worker), { limit: 25, worker, tenantId: null });
@@ -208,6 +211,7 @@ function doors(world) {
 function memoryWorld() {
   const store = new MemoryStore();
   let clock = new Date('2026-09-16T14:00:00.000Z');
+  store.clock = () => clock;
   const members = new Map();
   const ids = new Map();
   const idOf = (row) => {
@@ -1077,6 +1081,76 @@ function gate(title, makeWorld, options = {}) {
        exactly like that. the message is already on record by then, so its redelivery used
        to be read as a duplicate and dropped — with whatever the message called for undone. */
 
+    /* a forwarded call is different: the caller must hear their sentence, so the voice
+       webhook answers 200 whatever happened and Twilio never sends it again. the dispatcher's
+       next tick finishes it instead (ARC_LEAD_RECOVERY_READINESS.md §7.4, item 3). */
+
+    test('a missed call whose recording died before its text was queued gets its one text from the dispatcher', async () => {
+      const world = await makeWorld();
+      const client = await world.client();
+      const customer = customerNumber();
+      const callSid = sid('CA');
+
+      failOnce(world, 'scheduleAction');
+      assert.equal((await call(world, client, customer, { callSid })).status, 200, 'the caller still hears their sentence');
+      const lead = await leadOfCall(world, client, callSid);
+      assert.ok(lead, 'the lead is on record');
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 0, 'an intake that may still be running is left alone');
+
+      await world.advance(3 * MINUTE);
+      await world.dispatch();
+      assert.equal(world.resumed.resumed, 1);
+      assert.equal(world.carrier.to(customer).length, 1);
+
+      await call(world, client, customer, { callSid });
+      await world.advance(3 * MINUTE);
+      await world.dispatch();
+      assert.equal(world.resumed.resumed, 0, 'finished once');
+      assert.equal(world.carrier.to(customer).length, 1);
+      const events = await world.events(client);
+      assert.deepEqual([count(events, 'call_missed'), count(events, 'lead_received'), count(events, 'sms_sent')], [1, 1, 1]);
+      assert.deepEqual(world.invalid(), []);
+    });
+
+    test('a missed call whose recording died before its run started is started, on its own lead', async () => {
+      const world = await makeWorld();
+      const client = await world.client();
+      const customer = customerNumber();
+      const callSid = sid('CA');
+
+      failOnce(world, 'createRun');
+      assert.equal((await call(world, client, customer, { callSid })).status, 200);
+      const lead = await leadOfCall(world, client, callSid);
+      assert.equal(await runOf(world, client, lead), null);
+
+      await world.advance(3 * MINUTE);
+      await world.dispatch();
+      assert.equal(world.carrier.to(customer).length, 1);
+      assert.equal((await runOf(world, client, lead))?.leadId, lead.id);
+      assert.equal(count(await world.events(client), 'lead_received'), 1);
+    });
+
+    test('a call whose run was refused is not started later, and an old stranded call is not texted', async () => {
+      const world = await makeWorld();
+      const paused = await world.client();
+      await pause(world, paused);
+      const refused = customerNumber();
+      await call(world, paused, refused, { callSid: sid('CA') });
+      await world.advance(3 * MINUTE);
+      await world.dispatch();
+      assert.equal(world.resumed.resumed, 0, 'its ending is written down');
+
+      const client = await world.client();
+      const old = customerNumber();
+      failOnce(world, 'scheduleAction');
+      await call(world, client, old, { callSid: sid('CA') });
+      await world.advance(2 * HOUR);
+      await world.dispatch();
+      assert.equal(world.resumed.resumed, 0, 'past the hour it is left alone: nobody is texted about a call that old');
+      assert.equal(world.carrier.to(refused).length + world.carrier.to(old).length, 0);
+    });
+
     test('an opt-out whose first delivery died before the number was suppressed is finished by the redelivery', async () => {
       const world = await makeWorld();
       const client = await world.client();
@@ -1732,8 +1806,8 @@ describe('what a signed-in browser can reach, asked of real Postgres', { skip },
       [`delete from public.suppressions where tenant_id = $1`, [mine.tenantId]],
       [`delete from public.handoffs where tenant_id = $1`, [mine.tenantId]],
       [`update public.scheduled_actions set status = 'cancelled' where tenant_id = $1`, [mine.tenantId]],
-      /* the log itself. for a browser this is row level security; for the service role
-         nothing in the schema stops it — see ARC_LEAD_RECOVERY_READINESS.md, section 7.4. */
+      /* the log itself. for a browser this is row level security first; 0037's guard is
+         behind it, and the next test holds it against the service role. */
       [`update public.events set status = 'failure' where tenant_id = $1`, [mine.tenantId]],
       [`delete from public.events where tenant_id = $1`, [mine.tenantId]],
     ];
@@ -1741,6 +1815,21 @@ describe('what a signed-in browser can reach, asked of real Postgres', { skip },
       const changed = await as(db, mine.owner, sql, params).then((result) => result.affectedRows ?? 0, () => 0);
       assert.equal(changed, 0, sql);
     }
+  });
+
+  test('the log refuses an edit, a delete and a truncate even with the service key', async () => {
+    const { db, mine } = await pair();
+    const { rows: [{ count: before }] } = await db.query('select count(*)::int as count from public.events where tenant_id = $1', [mine.tenantId]);
+    assert.ok(before > 0);
+    for (const sql of [
+      `update public.events set status = 'failure' where tenant_id = $1`,
+      `delete from public.events where tenant_id = $1`,
+    ]) {
+      await assert.rejects(db.query(sql, [mine.tenantId]), /events is append-only/, sql);
+    }
+    await assert.rejects(db.query('truncate public.events cascade'), /events is append-only/);
+    const { rows: [{ count: after }] } = await db.query('select count(*)::int as count from public.events where tenant_id = $1', [mine.tenantId]);
+    assert.equal(after, before);
   });
 
   test('a browser cannot call the worker\'s functions', async () => {
