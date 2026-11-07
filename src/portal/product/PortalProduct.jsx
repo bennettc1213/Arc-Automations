@@ -17,6 +17,8 @@ import './product.css';
 
 const PRIMARY = [['', 'Home', 'overview'], ['leads', 'Leads', 'leads'], ['campaigns', 'Campaigns', 'automations'], ['inbox', 'Inbox', 'bell']];
 const SECONDARY = [['connections', 'Connections', 'reliability'], ['settings', 'Settings', 'account'], ['billing', 'Billing', 'reports'], ['help', 'Help', 'support']];
+// the record pages an owner comes back to, in the sidebar; the rest stay under settings → more tools
+const RECORDS = [['jobs', 'Job evidence', 'check'], ['needs-you', 'Outcome questions', 'clock'], ['reports', 'Reports', 'download'], ['activity', 'Activity', 'activity']];
 const LEGACY = ['jobs', 'needs-you', 'account', 'account/details', 'account/records', 'account/summary', 'activity', 'automations', 'reliability', 'reports', 'estimates', 'reviews', 'memberships', 'installs', 'support'];
 const TOOLS = [['account/records', 'Contact records and tasks'], ['account/summary', 'Monthly fee summary'], ['jobs', 'Job evidence'], ['needs-you', 'Outcome questions'], ['reports', 'Reports and exports'], ['account/details', 'Account details'], ['automations', 'What is running now'], ['activity', 'Activity history'], ['reliability', 'Reliability']];
 // the model's own figures, under the words an owner would use for them
@@ -240,7 +242,7 @@ export default function PortalProduct({ data, base, live = true, onSignOut, onRe
   const route = location.pathname.slice(base.length).replace(/^\//, '');
   const legacy = LEGACY.includes(route);
   const demo = state.mode === 'demo';
-  const page = [...PRIMARY, ...SECONDARY, ['setup', 'Setup']].find(([path]) => path ? route === path || route.startsWith(path + '/') : route === '')?.[1] || 'Account tools';
+  const page = [...PRIMARY, ...RECORDS, ...SECONDARY, ['setup', 'Setup'], ...TOOLS].find(([path]) => path ? route === path || route.startsWith(path + '/') : route === '')?.[1] || 'Account tools';
   useEffect(() => { if (!demoAdapter) { const next = productionState(data); stateRef.current = next; setState(next); } }, [data, demoAdapter]);
   useEffect(() => { setMenu(false); }, [location.pathname]);
 
@@ -277,42 +279,45 @@ export default function PortalProduct({ data, base, live = true, onSignOut, onRe
   const unread = state.leads.filter(lead => lead.unread).length;
   const item = ([path, label, icon]) => (
     <NavLink key={path} to={`${base}${path ? '/' + path : ''}`} end={path === ''} onClick={() => setMenu(false)}>
-      <Icon name={icon} />{label}
+      <Icon name={icon} /><span className="ap-nav-text">{label}</span>
       {path === 'inbox' && unread > 0 && <span className="ap-nav-count" aria-label={`${unread} unread`}>{unread}</span>}
     </NavLink>
   );
   const nav = mobile => (
     <>
-      <Link className="ap-brand" to="/portal"><ArcMark size={24} /><span>arc<span className="ap-accent">.</span>portal</span></Link>
+      <Link className="ap-brand" to="/portal">
+        <ArcMark size={22} />
+        <span className="ap-brand-word">ARC</span>
+        <span className="ap-brand-tag">Portal</span>
+      </Link>
       <div className="ap-business">
         <span className="ap-avatar">{initials(state.business.name || 'A').slice(0, 1)}</span>
         <div><b>{state.business.name || 'Your business'}</b><small>{demo ? 'Demo business' : state.business.trade || 'Your workspace'}</small></div>
       </div>
       <nav aria-label={mobile ? 'Mobile portal navigation' : 'Portal navigation'}>
+        <p className="ap-nav-label">Workspace</p>
         {PRIMARY.map(item)}
-        {settingUp(state) && <NavLink to={`${base}/setup`} onClick={() => setMenu(false)}><Icon name="check" />Finish setup<span className="ap-nav-count">{state.setupStep + 1}/{SETUP_STEPS.length}</span></NavLink>}
-        <div className="ap-nav-separator" />
+        {settingUp(state) && <NavLink to={`${base}/setup`} onClick={() => setMenu(false)}><Icon name="check" /><span className="ap-nav-text">Finish setup</span><span className="ap-nav-count">{state.setupStep + 1}/{SETUP_STEPS.length}</span></NavLink>}
+        <p className="ap-nav-label">Records</p>
+        {RECORDS.map(item)}
+        <p className="ap-nav-label">Account</p>
         {SECONDARY.map(item)}
       </nav>
       <div className="ap-sidebar-foot">
-        <Link to="/">Back to ARC ↗</Link>
-        {onSignOut && <Button quiet onClick={onSignOut}>Sign out</Button>}
+        {demo && (
+          <div className="ap-plan">
+            <span className="ap-plan-dot" aria-hidden="true" />
+            <div><b>Demo workspace</b><small>Sample data only</small></div>
+          </div>
+        )}
+        <div className="ap-sidebar-links">
+          <Link to="/">Back to ARC <span aria-hidden="true">↗</span></Link>
+          {onSignOut && <Button quiet onClick={onSignOut}>Sign out</Button>}
+        </div>
       </div>
     </>
   );
 
-  // Compatibility pages retain their existing working implementation and route addresses.
-  if (legacy) {
-    return (
-      <>
-        <div className="ap-compat">
-          <Link to={base}>← Back to your portal</Link>
-          {demo && <span>Demo - sample data; no messages are sent. Historical account tools use a separate sample archive.</span>}
-        </div>
-        {renderLegacy()}
-      </>
-    );
-  }
   return (
     <div className="portal ap">
       <a className="ap-skip" href="#ap-main" onClick={e => { e.preventDefault(); main.current?.focus(); }}>Skip to content</a>
@@ -320,12 +325,23 @@ export default function PortalProduct({ data, base, live = true, onSignOut, onRe
       <div className="ap-main">
         <header className="ap-topbar">
           <Button aria-label="Open navigation" onClick={() => setMenu(true)} className="ap-menu-button"><Icon name="menu" /></Button>
-          <span>{state.business.name || 'Your business'} <span className="ap-breadcrumb">/ {page}</span></span>
+          <nav className="ap-crumbs" aria-label="You are here">
+            <Link to={base}>{state.business.name || 'Your business'}</Link>
+            <span aria-hidden="true">/</span>
+            <span aria-current="page">{page}</span>
+          </nav>
+          <div className="ap-topbar-actions">
+            {demo && <span className="ap-chip"><span className="ap-chip-dot" aria-hidden="true" />Demo</span>}
+            <Link className="ap-topbar-link" to={`${base}/help`}>Help</Link>
+            {demo
+              ? <Link className="ap-button ap-button--primary ap-button--sm" to="/login">Sign in <span aria-hidden="true">→</span></Link>
+              : <span className="ap-avatar ap-avatar--sm" title={state.business.name || 'Your business'}>{initials(state.business.name || 'A').slice(0, 2)}</span>}
+          </div>
         </header>
         {demo && (
           <div className="ap-demo-banner">
-            <span><b>Demo</b> A made-up business with sample data; no messages are sent.</span>
-            <div><Button onClick={() => setReset(true)}>Reset demo</Button><Link to="/login">Sign in →</Link></div>
+            <span>A made-up heating and cooling company with sample data. No messages are sent.</span>
+            <Button quiet onClick={() => setReset(true)}>Reset demo</Button>
           </div>
         )}
         {notice && (
@@ -334,8 +350,9 @@ export default function PortalProduct({ data, base, live = true, onSignOut, onRe
             <Button quiet aria-label="Dismiss notice" onClick={() => setNotice('')}>Dismiss</Button>
           </div>
         )}
-        <main id="ap-main" ref={main} tabIndex={-1} className="ap-content">
-          <Routes>
+        <main id="ap-main" ref={main} tabIndex={-1} className={`ap-content${legacy ? ' ap-content--records' : ''}`}>
+          {/* the record pages keep their own implementation and addresses, inside this frame */}
+          {legacy ? renderLegacy({ embedded: true }) : <Routes>
             <Route index element={<Overview {...props} />} />
             <Route path="overview" element={<Navigate replace to={base} />} />
             <Route path="setup" element={<Setup {...props} />} />
@@ -351,7 +368,7 @@ export default function PortalProduct({ data, base, live = true, onSignOut, onRe
             <Route path="billing" element={<Billing state={state} base={base} />} />
             <Route path="help" element={<Help base={base} />} />
             <Route path="*" element={<Section title="Page not found"><Link to={base}>Back to Home</Link></Section>} />
-          </Routes>
+          </Routes>}
         </main>
       </div>
       {menu && <Dialog title="Navigation" onClose={() => setMenu(false)}>{nav(true)}</Dialog>}

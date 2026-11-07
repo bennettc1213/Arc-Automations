@@ -7,6 +7,30 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.51.0] - 2026-11-06
+
+**The client portal, remodelled after Instela.** One frame for every client page, one button,
+and a cursor that wraps what you are about to press. No route, data shape or rule changed.
+
+### Changed
+
+- Every record page (job evidence, outcome questions, reports, activity, account tools) now
+  opens inside the portal's own sidebar and top bar (`LegacyWorkspace` `embedded`), at the
+  same address, instead of swapping to a second shell behind a "back to your portal" bar.
+- Sidebar grouped into Workspace, Records and Account, with an active dot; a desktop top bar
+  with where-you-are, a demo chip, help and sign in; page titles with an eyebrow and a rule.
+- Buttons are sentence case with 6px corners; the record pages' lowercase mono captions are
+  sans, sentence case and at least 13.5px. The ops console is untouched.
+- `/portal` rebuilt: a header, a sentence-case hero, a labelled sample-data preview of the
+  workspace in place of the ASCII field, three feature cards and a closing call to action.
+- Sign-in, the email-sent screen, the callback and sign-up are one card.
+
+### Added
+
+- `MagneticCursor`: on `/portal`, `/login`, `/signup`, `/demo` and the dashboard the native
+  pointer stays and an outline snaps around a button, which leans toward the pointer. The
+  marketing site keeps the square cursor.
+
 ## [1.50.0] - 2026-10-14
 
 **The phone functions are on the live project, and two gaps the safety pass left are closed.**

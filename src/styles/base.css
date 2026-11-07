@@ -64,10 +64,32 @@ html {
   background: var(--accent-hot);
 }
 
-/* the square cursor replaces the native one — desktop, motion-ok only */
+/* the square cursor replaces the native one — desktop, motion-ok only. the client portal
+   keeps the native pointer (`cursor-native`, set by MagneticCursor) the whole time — the
+   magnetic outline is drawn around a button, never in place of the pointer. */
 @media (pointer: fine) and (prefers-reduced-motion: no-preference) {
-  * {
+  html:not(.cursor-native) * {
     cursor: none !important;
+  }
+}
+
+.magnetic-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #fff;
+  mix-blend-mode: exclusion;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, width, height, opacity;
+}
+
+@media print {
+  .magnetic-cursor {
+    display: none !important;
   }
 }
 

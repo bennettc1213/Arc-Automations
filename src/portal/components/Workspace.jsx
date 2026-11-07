@@ -60,7 +60,7 @@ function readCollapsed() {
   }
 }
 
-export function LegacyWorkspace({ data, base, email, onSignOut, banner, live = true, owner: ownerProp, onReload }) {
+export function LegacyWorkspace({ data, base, email, onSignOut, banner, live = true, owner: ownerProp, onReload, embedded = false }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -190,6 +190,49 @@ export function LegacyWorkspace({ data, base, email, onSignOut, banner, live = t
   /* `onReload` (ARC-MK-220) is handed only to the one screen that writes: needs you. */
   const pageProps = { data, base, live, onExport: exportLeads };
 
+  /* inside the portal's own shell (PortalProduct): the same pages at the same addresses, with
+     the shell's sidebar and top bar instead of this one's — so reaching a record or a report
+     never swaps the whole frame out from under the owner. */
+  if (embedded) {
+    return (
+      <div className={`portal ws ws--embedded${owner ? ' ws--owner' : ''}`}>
+        <div className="ws__page" id={PAGE_ID} tabIndex={-1}>
+          <header className="ws-embed-head">
+            <p className="ws-embed-head__eyebrow">Records and reports</p>
+            <h1>{page.title}</h1>
+            {page.blurb && <p>{page.blurb}</p>}
+          </header>
+          <Routes>
+            <Route path="jobs" element={<Jobs {...pageProps} />} />
+            <Route path="needs-you" element={<NeedsYou {...pageProps} onChanged={onReload} />} />
+            <Route path="account" element={owner ? <OwnerAccount {...pageProps} /> : <Account {...pageProps} />} />
+            <Route path="account/details" element={<Account {...pageProps} />} />
+            <Route path="account/records" element={<Inbox {...pageProps} />} />
+            <Route path="account/summary" element={<ThisMonth {...pageProps} />} />
+            <Route path="estimates" element={<Estimates {...pageProps} />} />
+            <Route path="reviews" element={<Reviews {...pageProps} />} />
+            <Route path="memberships" element={<Memberships {...pageProps} />} />
+            <Route path="installs" element={<Installs {...pageProps} />} />
+            <Route path="activity" element={<Activity {...pageProps} />} />
+            <Route path="automations" element={<Automations {...pageProps} />} />
+            <Route path="reliability" element={<Reliability {...pageProps} />} />
+            <Route path="reports" element={<Reports {...pageProps} />} />
+            <Route path="support" element={<Support {...pageProps} />} />
+            <Route path="*" element={<ThisMonth {...pageProps} />} />
+          </Routes>
+        </div>
+        <CommandPalette
+          open={paletteOpen}
+          onClose={() => setPaletteOpen(false)}
+          base={base}
+          data={data}
+          actions={paletteActions}
+          items={items}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className={`portal ws${railCollapsed ? ' ws--tight' : ''}${drawerOpen ? ' ws--open' : ''}${owner ? ' ws--owner' : ''}`}>
       {/* first in the tab order: past the rail and the top bar, straight to the page. */}
@@ -297,5 +340,5 @@ export function LegacyWorkspace({ data, base, email, onSignOut, banner, live = t
 }
 
 export default function Workspace(props) {
-  return <PortalProduct {...props} renderLegacy={() => <LegacyWorkspace {...props} />} />;
+  return <PortalProduct {...props} renderLegacy={(extra) => <LegacyWorkspace {...props} {...extra} />} />;
 }

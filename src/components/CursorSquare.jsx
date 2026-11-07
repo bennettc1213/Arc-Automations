@@ -1,5 +1,16 @@
 import { useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useMedia, useReducedMotion } from '../lib/hooks';
+import MagneticCursor from './MagneticCursor';
+
+/* the client's side of the product: the portal's door, sign-in and the workspace. there the
+   browser keeps its own pointer and buttons get the magnetic outline instead of the square. */
+const CLIENT_PATHS = /^\/(portal|demo|login|signup|auth)(\/|$)/;
+
+export default function Cursor() {
+  const { pathname } = useLocation();
+  return CLIENT_PATHS.test(pathname) ? <MagneticCursor /> : <CursorSquare />;
+}
 
 const INTERACTIVE =
   'a, button, [role="button"], input, .wrow__bar, .acc__head, .chip--physics, .toolkit__pit';
@@ -24,7 +35,7 @@ const TRAIL = [
  * overshoot. Fast movement stretches it; stopping settles it back into
  * the core. Desktop only, killed under 768px and reduced motion.
  */
-export default function CursorSquare() {
+function CursorSquare() {
   const fine = useMedia('(pointer: fine)');
   const wide = useMedia('(min-width: 769px)');
   const reduced = useReducedMotion();
