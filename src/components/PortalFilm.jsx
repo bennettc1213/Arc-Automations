@@ -321,16 +321,27 @@ export default function PortalFilm() {
         <span className="pf-ring" key={`ring-${scene}-${run}`} style={{ left: cursor.x - 15, top: cursor.y - 15 }} />
       )}
 
-      {/* the site's own cursor, borrowed. an arrow pointer here would be the only arrow on a
-          site that replaced its pointer with a square. */}
+      {/* an ordinary arrow pointer: the film is a picture of somebody using software, and
+          a pointer is what tells a visitor that. its tip is the origin, so the point the
+          scene aims at is the point the arrow touches. */}
       {!reduced && (
         <span
           className="pf-cursor"
           style={{
-            transform: `translate3d(${cursor.x - 5}px, ${cursor.y - 5}px, 0) scale(${clicking ? 0.72 : 1})`,
+            transform: `translate3d(${cursor.x - 2}px, ${cursor.y - 1.5}px, 0) scale(${clicking ? 0.85 : 1})`,
             opacity: cursor.shown && !fading ? 1 : 0,
           }}
-        />
+        >
+          <svg width="20" height="24" viewBox="0 0 20 24" aria-hidden="true">
+            <path
+              d="M2 1.5v18.2l4.7-4.3 3.3 7.4 3.1-1.4-3.3-7.3h6.6z"
+              fill="#fff"
+              stroke="#0a0a0b"
+              strokeWidth="1.5"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
       )}
     </div>
   );

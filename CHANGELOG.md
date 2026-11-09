@@ -7,6 +7,12 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.51.2] - 2026-11-09
+
+**The hero film's hand is a real cursor.** The orange square is now an ordinary arrow pointer
+whose tip lands on the button it presses, with the same click ring. Nothing else in the film
+changed.
+
 ## [1.51.1] - 2026-11-09
 
 **The hero film now shows the portal an owner actually gets.** It had been a replica of the
