@@ -7,6 +7,23 @@ documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.51.1] - 2026-11-09
+
+**The hero film now shows the portal an owner actually gets.** It had been a replica of the
+thirteen-page workspace — nine modules, a lifecycle strip, a table, ten-pixel type — which is
+not what a launch client sees and read as far too complex for a landing page.
+
+### Changed
+- `PortalFilm` is rebuilt as the owner portal's own story in thirteen seconds: **this month**
+  (three figures, one button) → **needs you** (the one question, six answers) → one tap →
+  **jobs**, where the lead just answered now reads "counts". A four-item rail, no search,
+  chips, tables, sparklines or lifecycle. Type is larger; the framer-motion and weak-device
+  branches are gone in favour of plain CSS.
+- Its words moved to `src/components/portal-film-data.js`, and the new
+  `tests/portal-film.test.js` holds every figure, status, question and answer to what
+  `buildProofLedger`, `ownerMonth`, `ownerNeeds` and the ledger's rule derive for `/demo` —
+  the film cannot drift from the page its caption links to.
+
 ## [1.51.0] - 2026-11-06
 
 **The client portal, remodelled after Instela.** One frame for every client page, one button,

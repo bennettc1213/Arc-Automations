@@ -342,7 +342,7 @@ describe('the demo company is a heating and cooling company', () => {
     assert.match(DEMO_TENANT.name, /heating/i);
     assert.equal(DEMO_TENANT.isDemo, true);
     assert.match(read('src/portal/demo/crm-demo.js'), new RegExp(`name: '${PROOF_LEDGER_COMPANY}'`));
-    assert.match(read('src/components/PortalFilm.jsx'), /Halstead Heating &amp; Air/);
+    assert.ok(read('src/components/portal-film-data.js').includes(`FILM_COMPANY = '${PROOF_LEDGER_COMPANY}'`));
   });
 
   test('no restoration job is left in what the demo shows', () => {
@@ -355,7 +355,8 @@ describe('the demo company is a heating and cooling company', () => {
     ]) {
       assert.doesNotMatch(read(file), trade, file);
     }
-    const film = read('src/components/PortalFilm.jsx');
-    assert.doesNotMatch(film, /Halstead Restoration|water — |loss type/);
+    for (const file of ['src/components/PortalFilm.jsx', 'src/components/portal-film-data.js']) {
+      assert.doesNotMatch(read(file), /Halstead Restoration|water — |loss type/, file);
+    }
   });
 });
